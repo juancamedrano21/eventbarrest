@@ -1,0 +1,44 @@
+<?php
+
+declare(strict_types=1);
+
+use App\Domains\Platform\Models\Tenant;
+use App\Domains\Tenancy\Concerns\BelongsToTenant;
+use Symfony\Component\Finder\Finder;
+
+/**
+ * A single business model that forgets the trait exposes its whole table.
+ * "Enforced in code review" is not enforcement — this is.
+ */
+$platformModels = [
+    Tenant::class,
+];
+
+it('makes every domain model tenant-scoped', function () use ($platformModels): void {
+    $modelsPath = app_path('Domains');
+
+    if (! is_dir($modelsPath)) {
+        expect(true)->toBeTrue();
+
+        return;
+    }
+
+    $files = Finder::create()->files()->in($modelsPath)->path('/Models/')->name('*.php');
+
+    foreach ($files as $file) {
+        $class = 'App\\Domains\\'.str_replace(
+            ['/', '.php'],
+            ['\\', ''],
+            $file->getRelativePathname()
+        );
+
+        if (! class_exists($class) || in_array($class, $platformModels, true)) {
+            continue;
+        }
+
+        expect(in_array(BelongsToTenant::class, class_uses_recursive($class), true))->toBeTrue(
+            "Model [{$class}] must use the BelongsToTenant trait, or be listed as a platform-level ".
+            'model in this test with a reason.'
+        );
+    }
+});
