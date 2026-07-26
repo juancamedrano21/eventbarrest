@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Domains\Platform\Models;
 
 use App\Domains\Platform\Enums\TenantStatus;
+use App\Models\User;
 use Database\Factories\TenantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -35,6 +37,14 @@ class Tenant extends Model
         return [
             'status' => TenantStatus::class,
         ];
+    }
+
+    /**
+     * @return HasMany<User, $this>
+     */
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
     }
 
     public function getActivitylogOptions(): LogOptions

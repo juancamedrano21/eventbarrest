@@ -62,6 +62,33 @@ vendor/bin/phpstan analyse  # análisis estático (Larastan, nivel 6)
 vendor/bin/pest             # tests (incluye la suite TenantIsolation)
 ```
 
+## Usuarios, roles y los dos paneles
+
+| Panel | Quién entra | Qué exige |
+|---|---|---|
+| `/admin` | Staff de la plataforma | `is_platform_admin` |
+| `/app` | Equipo de un negocio | pertenecer a un tenant **no suspendido** |
+
+El staff de plataforma **no** entra en `/app`: no pertenece a ningún negocio.
+Para asistir a un tenant se usará suplantación auditada, no un acceso directo.
+
+Los roles son **por negocio** (spatie/permission en modo teams, con `tenant_id`
+como equipo): `owner`, `admin`, `event_manager`, `unit_manager`, `warehouse` y
+`cashier`, con los permisos de la matriz del documento 04. Un rol concedido en un
+negocio no concede nada en otro.
+
+**Onboarding de un negocio nuevo:** en `/admin` se crea el negocio (sus roles se
+aprovisionan solos) y, en su pestaña *Equipo*, se le da su primer **dueño**. Sin
+dueño nadie puede entrar en `/app`. Después el dueño gestiona su equipo desde el
+panel del negocio.
+
+Tras añadir un permiso o rol nuevo al catálogo, los negocios ya existentes se
+actualizan con:
+
+```bash
+php artisan identity:provision-roles
+```
+
 ## Multi-tenancy: las reglas de oro
 
 Todo modelo de negocio **debe** usar `App\Domains\Tenancy\Concerns\BelongsToTenant`

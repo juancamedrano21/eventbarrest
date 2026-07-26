@@ -23,6 +23,16 @@ $platformTables = [
     'failed_jobs',
     'personal_access_tokens',
     'activity_log',
+    // Tablas de spatie/laravel-permission. Tienen su propio modelo de
+    // aislamiento (modo teams con tenant_id) que el paquete aplica por su
+    // cuenta, y los permisos son deliberadamente globales: lo que pertenece a
+    // cada negocio son los roles y sus asignaciones, no el catálogo de
+    // permisos. IdentityIsolationTest verifica que ese aislamiento funciona.
+    'permissions',
+    'roles',
+    'model_has_permissions',
+    'model_has_roles',
+    'role_has_permissions',
 ];
 
 $businessTables = fn (): array => collect(Schema::getTableListing(schemaQualified: false))
