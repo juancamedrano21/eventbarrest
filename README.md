@@ -24,17 +24,31 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-1. En MAMP PRO crea la base de datos **`eventbarrest`** (MySQL 8) y arranca MySQL.
-2. Migra, siembra el super admin y arranca:
+1. En MAMP PRO arranca MySQL 8 y crea la base de datos del proyecto.
+2. Ajusta `DB_*` y `REDIS_*` en el `.env` a tu MAMP, y `APP_URL` al vhost.
+3. Migra y siembra el super admin:
 
 ```bash
 php artisan migrate --seed
-composer run dev
 ```
 
 El seeder crea el usuario de plataforma `admin@eventbarrest.test` con contraseña
 `password` (configurable con `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` en `.env`;
-cámbiala siempre fuera de local). Entra en `/admin` para gestionar los negocios.
+fuera de local el seeder **exige** una contraseña propia). Entra en `/admin`.
+
+## Assets: servimos por vhost, no por `artisan serve`
+
+El proyecto se sirve desde el vhost de MAMP (por ejemplo `https://boleturest.test`,
+apuntando a `public/`), así que los assets van **compilados**, no por el dev server
+de Vite. Tras clonar, y cada vez que cambien assets o se actualice Filament:
+
+```bash
+composer run build
+```
+
+Eso ejecuta `npm run build`, republica los assets de Filament (`filament:assets`)
+y limpia las cachés. `composer run dev` (Vite con recarga en caliente) solo aplica
+si trabajas contra `php artisan serve`; con vhost, usa siempre el build.
 
 Paneles: `/admin` (super admin de la plataforma) · `/app` (negocio/tenant).
 Colas: `php artisan horizon` (dashboard en `/horizon`, abierto solo en local hasta
