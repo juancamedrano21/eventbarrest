@@ -58,6 +58,7 @@ erDiagram
         bigint id PK
         string name
         string rnc "RNC del negocio"
+        enum type "business|organizer"
         enum status "active|suspended|trial"
         bigint plan_id FK
     }
@@ -182,24 +183,32 @@ erDiagram
 
 ## Decisiones de modelado clave
 
-1. **`OPERATING_UNITS` unifica sucursal y punto de evento.** Ventas, stock, cajas y
-   dispositivos siempre referencian una unidad operativa; la modalidad es un atributo,
-   no una estructura distinta. `event_id NULL` ⇒ sucursal.
+1. **El tipo de cuenta separa los dos mundos.** `TENANTS.type` es `business` u
+   `organizer` y no cambia: un negocio tiene sucursales, un organizador tiene eventos.
+   Como son cuentas distintas, el aislamiento entre un festival y cualquier negocio ya
+   lo garantiza `tenant_id` — no hace falta ninguna regla extra. Una barra de festival
+   con el mismo nombre que un negocio cliente es, a todos los efectos, otra entidad.
 
-2. **Inventario de eventos = movimientos, no tablas nuevas.** Asignar inventario a un
-   punto de evento es un `transfer_out` de la bodega principal + `event_allocation` en
+2. **`OPERATING_UNITS` unifica sucursal y punto de evento.** Ventas, stock, cajas y
+   dispositivos siempre referencian una unidad operativa; el mundo al que pertenece es
+   un atributo, no una estructura distinta. `event_id NULL` ⇒ sucursal (cuenta de
+   negocio); `event_id` presente ⇒ punto de venta de ese evento (cuenta de organizador).
+   Gracias a esto, POS, inventario y reportería son el mismo código en ambos mundos.
+
+3. **Inventario de eventos = movimientos, no tablas nuevas.** Asignar inventario a un
+   punto de evento es un `transfer_out` de la bodega del evento + `event_allocation` en
    el punto. La devolución al cerrar es el movimiento inverso. La liquidación del
    evento se calcula: asignado − vendido (según recetas) − mermas − devuelto = faltante.
 
-3. **Consumo de inventario derivado de recetas.** Al pagar una orden, cada
+4. **Consumo de inventario derivado de recetas.** Al pagar una orden, cada
    `ORDER_ITEM` explota su receta y genera `STOCK_MOVEMENTS` tipo `sale_consumption`.
    Un producto `simple` con `track_stock` consume su propio ítem 1:1.
 
-4. **Precio congelado en la venta.** `ORDER_ITEMS.unit_price_cents` copia el precio
+5. **Precio congelado en la venta.** `ORDER_ITEMS.unit_price_cents` copia el precio
    vigente; cambiar el catálogo nunca altera ventas históricas.
 
-5. **UUIDs en órdenes/pagos, IDs autoincrementales en todo lo demás.** Solo lo que
+6. **UUIDs en órdenes/pagos, IDs autoincrementales en todo lo demás.** Solo lo que
    nace offline necesita UUID. El resto usa `BIGINT` por rendimiento de índices.
 
-6. **`sold_at` ≠ `created_at`.** La hora fiscal y de reportería es la hora en que se
+7. **`sold_at` ≠ `created_at`.** La hora fiscal y de reportería es la hora en que se
    vendió en el POS, no la hora en que llegó al servidor.

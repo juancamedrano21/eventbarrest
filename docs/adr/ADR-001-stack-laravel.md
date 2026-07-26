@@ -13,8 +13,9 @@ Se evaluó si "todo en Laravel" (incluido el frontend) es viable o tiene limitan
 
 ## Decisión
 
-1. **Monolito Laravel** (última LTS disponible al iniciar) para todo el backend,
-   organizado en módulos de dominio. Sin microservicios.
+1. **Monolito Laravel 13** (`^13.0`, publicado 2026-03-17) para todo el backend,
+   organizado en módulos de dominio. Sin microservicios. Versiones completas del
+   stack en [08 — Estructura del Proyecto](../08-estructura-proyecto.md).
 2. **Back-office en Laravel puro**: Blade + Livewire (TALL stack). Ninguna necesidad
    de SPA ahí.
 3. **El módulo POS es una PWA** (Vue 3 + IndexedDB + Service Worker) **servida por el

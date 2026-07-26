@@ -62,7 +62,7 @@ de negocio vive en servicios de dominio; Filament solo orquesta UI.
   concepto de unidad operativa del [modelo de datos](03-modelo-datos.md).
 - **Dashboard** por contexto: ventas de hoy, órdenes, ticket promedio, alertas de
   stock, ventas por hora, top productos.
-- **Vista de evento en vivo** (modalidad eventos): leaderboard de puntos de venta,
+- **Vista de evento en vivo** (cuentas de organizador): leaderboard de puntos de venta,
   semáforo de stock por punto, terminales sin sincronizar, botón de liquidación.
 
 ## Super admin — estructura

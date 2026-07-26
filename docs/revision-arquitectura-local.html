@@ -1,4 +1,4 @@
-<title>ProyectoRest — Arquitectura y diseño v0.1</title>
+<title>ProyectoRest — Arquitectura y diseño v0.3</title>
 <style>
 :root{
   --paper:#f6f9f7; --surface:#ffffff; --ink:#182420; --ink-soft:#46554f;
@@ -103,7 +103,7 @@ footer.doc{border-top:1px solid var(--line);margin-top:3rem;padding-top:1.4rem;f
 <div class="shell">
 <nav class="toc" aria-label="Índice del documento">
   <p class="brand">ProyectoRest</p>
-  <p class="brand-sub">Arquitectura · v0.1</p>
+  <p class="brand-sub">Arquitectura · v0.3</p>
   <ol>
     <li><a href="#resumen"><span class="n">—</span>Resumen ejecutivo</a></li>
     <li><a href="#vision"><span class="n">01</span>Visión y alcance</a></li>
@@ -113,6 +113,7 @@ footer.doc{border-top:1px solid var(--line);margin-top:3rem;padding-top:1.4rem;f
     <li><a href="#offline"><span class="n">05</span>POS offline</a></li>
     <li><a href="#fiscal"><span class="n">06</span>Fiscalidad RD</a></li>
     <li><a href="#ui"><span class="n">07</span>Diseño de UI</a></li>
+    <li><a href="#estructura"><span class="n">08</span>Stack y estructura</a></li>
     <li><a href="#adrs"><span class="n">ADR</span>Decisiones</a></li>
     <li><a href="#preguntas"><span class="n">?</span>Preguntas abiertas</a></li>
   </ol>
@@ -125,7 +126,7 @@ footer.doc{border-top:1px solid var(--line);margin-top:3rem;padding-top:1.4rem;f
   <p class="lede">Todo lo acordado hasta hoy — visión, arquitectura, modelo de datos, seguridad, modo offline, fiscalidad dominicana y diseño de interfaces — consolidado para que el equipo lo revise y lo discuta <em>antes</em> de escribir la primera línea de código.</p>
   <div class="meta">
     <span class="chip accent">Para revisión del equipo</span>
-    <span class="chip">Versión 0.1</span>
+    <span class="chip">Versión 0.3 — dos tipos de cuenta</span>
     <span class="chip">25 de julio de 2026</span>
     <span class="chip">Fuente: <code>docs/*.md</code> del repositorio</span>
   </div>
@@ -134,14 +135,16 @@ footer.doc{border-top:1px solid var(--line);margin-top:3rem;padding-top:1.4rem;f
 <section id="resumen">
   <p class="eyebrow">Resumen ejecutivo</p>
   <h2>Qué vamos a construir y sobre qué columna vertebral</h2>
-  <p>Un SaaS multi-tenant donde cada negocio (bar, restaurante, discoteca u organizador de eventos) opera aislado con sus propios usuarios, inventario, ventas y reportería, administrado globalmente desde un panel de super admin. Hay dos modalidades: <b>comercio propio</b> (operación permanente en sucursales) y <b>eventos</b> (contenedores temporales que crean mini bares y restaurantes dentro).</p>
+  <p>Un SaaS multi-tenant donde cada cuenta opera completamente aislada, con sus propios usuarios, inventario, ventas y reportería, administrada desde un panel de super admin. Hay <b>dos tipos de cuenta</b>, y son <b>dos mundos cerrados</b>: la <b>cuenta de negocio</b> (bar, restaurante o discoteca, con sus sucursales) y la <b>cuenta de organizador</b> (productora que monta festivales, con sus eventos dentro).</p>
   <pre class="plain">Plataforma (Super Admin)
-└── Tenant (Negocio)
-    ├── Comercio propio → Sucursales           (operación permanente)
-    └── Eventos → Evento → Puntos de venta     (operación temporal)</pre>
-  <p>La abstracción que sostiene todo: la sucursal y el punto de venta de un evento son el mismo concepto — la <b>unidad operativa</b>. Ventas, inventario, cajas y personal siempre cuelgan de una unidad operativa; la modalidad es un atributo, no una estructura distinta. Así ambas modalidades comparten el 90% del código.</p>
+├── Cuenta de Negocio        → Sucursales                 (operación permanente)
+└── Cuenta de Organizador    → Evento → Puntos de venta   (operación temporal)
+                                        (barras y cocinas)</pre>
+  <div class="note"><span class="tag">La regla que separa los dos mundos</span>
+  <b>Un evento nunca comparte datos con un negocio.</b> Si un negocio que ya es cliente nuestro quiere poner una barra en un festival, esa barra <b>se crea dentro del evento</b>, con su propio catálogo, inventario y personal. Aunque lleve el mismo nombre, no comparte nada: ni productos, ni stock, ni ventas, ni reportería. Son cuentas distintas, así que el aislamiento es el mismo que entre dos clientes cualesquiera.</div>
+  <p>Lo que sí comparten los dos mundos es el <b>código</b>: la sucursal y el punto de venta de un evento son el mismo concepto — la <b>unidad operativa</b>. Ventas, inventario, cajas y personal siempre cuelgan de una unidad operativa, así que POS, inventario y reportería se construyen una sola vez.</p>
   <div class="cols">
-    <div class="card"><h4>Stack</h4><p>Monolito Laravel full-stack. Back-office en Livewire (Filament); solo el POS es una PWA con JavaScript, por el requisito offline.</p></div>
+    <div class="card"><h4>Stack</h4><p>Monolito <b>Laravel 13</b> (PHP 8.4) con <b>Filament 5</b> para los paneles. El POS es una PWA Vue 3 por el requisito offline — y la misma app se empaquetará como APK para terminales SUNMI en fase 3.</p></div>
     <div class="card"><h4>Offline-first</h4><p>El POS vende sin internet: base local en el navegador, sincronización idempotente por lotes, foliado fiscal por bloques por terminal.</p></div>
     <div class="card"><h4>República Dominicana</h4><p>NCF y e-CF (DGII, Ley 32-23), ITBIS 18%, propina legal 10%, exportes 606/607. Moneda DOP.</p></div>
   </div>
@@ -152,13 +155,13 @@ footer.doc{border-top:1px solid var(--line);margin-top:3rem;padding-top:1.4rem;f
   <h2>Visión y alcance</h2>
   <h3>El problema</h3>
   <p>Bares, restaurantes y discotecas manejan inventario, ventas y personal con herramientas fragmentadas o con papel. En eventos (festivales, conciertos, ferias) el problema se multiplica: barras y cocinas temporales sin control centralizado de inventario ni ventas, con conectividad poco confiable.</p>
-  <h3>Las dos modalidades</h3>
+  <h3>Los dos tipos de cuenta</h3>
+  <p>No son dos modalidades de una misma cuenta: son dos mundos cerrados que no comparten datos. El tipo se decide al dar de alta la cuenta y no cambia.</p>
   <div class="table-scroll"><table>
-    <tr><th>Modalidad</th><th>Quién</th><th>Cómo opera</th></tr>
-    <tr><td><b>Comercio propio</b></td><td>Restaurante, bar, discoteca, cafetería</td><td>Una o varias sucursales; catálogo e inventario por sucursal (con maestro compartido opcional); turnos, cierres diarios, reportería histórica.</td></tr>
-    <tr><td><b>Eventos</b></td><td>Organizador de festivales, conciertos, ferias, temporadas</td><td>El evento es un contenedor con fechas y presupuesto. Dentro se crean puntos de venta con inventario asignado, personal y terminales propios. Reportería consolidada en vivo; al cerrar: devolución de sobrantes, liquidación y archivo.</td></tr>
+    <tr><th>Tipo de cuenta</th><th>Quién</th><th>Cómo opera</th></tr>
+    <tr><td><b>Negocio</b></td><td>Restaurante, bar, discoteca, cafetería</td><td>Una o varias sucursales; catálogo e inventario propios (con maestro compartido opcional); turnos, cierres diarios, reportería histórica.</td></tr>
+    <tr><td><b>Organizador</b></td><td>Productora de festivales, conciertos, ferias, temporadas</td><td>Dentro de su cuenta crea cada evento: contenedor con fechas y presupuesto. Dentro de cada evento, sus puntos de venta (barras y cocinas) con inventario asignado, personal y terminales propios. Reportería consolidada en vivo; al cerrar: devolución de sobrantes, liquidación y archivo. El organizador conserva el histórico entre ediciones, pero cada evento es un mundo cerrado por dentro.</td></tr>
   </table></div>
-  <p>Un mismo tenant puede tener ambas modalidades activas (una discoteca que además organiza festivales).</p>
   <h3>Actores</h3>
   <div class="table-scroll"><table>
     <tr><th>Actor</th><th>Nivel</th><th>Descripción</th></tr>
@@ -173,9 +176,9 @@ footer.doc{border-top:1px solid var(--line);margin-top:3rem;padding-top:1.4rem;f
   <h3>Fases</h3>
   <div class="table-scroll"><table>
     <tr><th>Fase</th><th>Contenido</th></tr>
-    <tr><td><b>MVP</b></td><td>Tenants con alta manual · comercio propio con una sucursal · catálogo con recetas e insumos · inventario (compras, ajustes, consumo por venta) · POS offline-first con efectivo/tarjeta y apertura/cierre de caja · NCF · reportería básica (ventas, top productos, cierre Z) · usuarios y roles.</td></tr>
-    <tr><td><b>Fase 2</b></td><td>Modalidad eventos completa · multi-sucursal con transferencias · e-CF según calendario DGII · planes self-service con pasarela · app de comandas para meseros.</td></tr>
-    <tr><td><b>Fase 3</b></td><td>Pasarelas locales (Azul, CardNET) en el POS · órdenes de compra a proveedores · pronóstico de demanda · API pública.</td></tr>
+    <tr><td><b>MVP</b></td><td>Cuentas con alta manual · cuenta de negocio con una sucursal · catálogo con recetas e insumos · inventario (compras, ajustes, consumo por venta) · POS offline-first con efectivo/tarjeta y apertura/cierre de caja · NCF · reportería básica (ventas, top productos, cierre Z) · usuarios y roles.</td></tr>
+    <tr><td><b>Fase 2</b></td><td>Cuentas de organizador: eventos, puntos de venta, asignación de inventario y liquidación · multi-sucursal con transferencias · e-CF según calendario DGII · planes self-service con pasarela · app de comandas para meseros.</td></tr>
+    <tr><td><b>Fase 3</b></td><td>Pagos integrados en el POS con el <b>SDK de Portal sobre terminales SUNMI P2 / P3 MIX</b> (APK vía Capacitor, ADR-005) · evaluar Azul/CardNET · órdenes de compra a proveedores · pronóstico de demanda · API pública.</td></tr>
     <tr><td><b>Fuera de alcance</b></td><td>Delivery y pedidos en línea de clientes finales · nómina · contabilidad formal (se exporta).</td></tr>
   </table></div>
 </section>
@@ -316,7 +319,8 @@ erDiagram
   </table></div>
   <h3>Decisiones de modelado</h3>
   <ol>
-    <li><b>La unidad operativa unifica sucursal y punto de evento.</b> La modalidad es un atributo, no una estructura paralela.</li>
+    <li><b>El tipo de cuenta separa los dos mundos</b> (<code>business</code> u <code>organizer</code>): el aislamiento entre un festival y cualquier negocio ya lo garantiza <code>tenant_id</code>, sin reglas extra.</li>
+    <li><b>La unidad operativa unifica sucursal y punto de evento.</b> El mundo al que pertenece es un atributo, no una estructura paralela: <code>event_id</code> nulo ⇒ sucursal.</li>
     <li><b>Inventario de eventos = movimientos, no tablas nuevas.</b> Asignar stock a un punto es <code>transfer_out</code> + <code>event_allocation</code>; la liquidación se calcula: asignado − vendido (según recetas) − mermas − devuelto = faltante.</li>
     <li><b>Consumo derivado de recetas.</b> Al pagar, cada línea explota su receta y genera <code>sale_consumption</code>. Un producto simple con stock consume 1:1.</li>
     <li><b>Precio congelado en la venta.</b> Cambiar el catálogo nunca altera ventas históricas.</li>
@@ -361,6 +365,8 @@ erDiagram
 <section id="offline">
   <p class="eyebrow">Documento 05</p>
   <h2>POS offline y sincronización</h2>
+  <div class="note"><span class="tag">¿App de Android o página web? — las dos, con un solo código</span>
+  El POS es <b>una sola aplicación</b> (PWA en Vue). En el MVP se usa desde el navegador de cualquier tablet, iPad o PC: se abre una vez con internet, se "instala" desde Chrome y desde entonces abre con su icono, a pantalla completa y sin red. En fase 3, <b>esa misma app</b> se empaqueta como APK para los terminales SUNMI P2 / P3 MIX con Capacitor, sumando cobro integrado con el SDK de Portal e impresión por la térmica del propio equipo (ver ADR-005). El modo offline funciona idéntico en ambos empaques.</div>
   <p>Principios: el POS siempre opera contra su base local (IndexedDB) — la red es una mejora, nunca un requisito para vender. El servidor es la fuente de verdad del catálogo; el POS lo es de sus propias ventas hasta sincronizar. Cada terminal crea órdenes con UUID propio, así que <b>las ventas no pueden entrar en conflicto</b>, y la sincronización es idempotente (upsert por UUID: reenviar un lote no duplica nada).</p>
   <pre class="mermaid">
 sequenceDiagram
@@ -482,6 +488,55 @@ stateDiagram-v2
   <p>Cada tenant configura logo y color de acento, aplicados a la cabecera del POS, la pantalla de bloqueo, los tickets (con datos fiscales y RNC) y sus correos transaccionales. El back-office mantiene la identidad de la plataforma; white-label completo no es MVP.</p>
 </section>
 
+<section id="estructura">
+  <p class="eyebrow">Documento 08</p>
+  <h2>Stack definitivo y estructura del proyecto</h2>
+  <p>Versiones verificadas contra Packagist y laravel.com el 25 de julio de 2026. Laravel 13 se publicó el 17 de marzo de 2026 y Filament 5.7 lo soporta oficialmente.</p>
+  <div class="table-scroll"><table>
+    <tr><th>Capa</th><th>Elección</th><th>Notas</th></tr>
+    <tr><td>Lenguaje</td><td><b>PHP 8.4</b></td><td>Ya instalado en el entorno del equipo</td></tr>
+    <tr><td>Framework</td><td><b>Laravel ^13.0</b></td><td>Hoy en 13.22; upgrade guide oficial desde 12 estima ~10 min</td></tr>
+    <tr><td>Paneles admin</td><td><b>Filament ^5.7</b></td><td>Incluye Livewire; multi-panel (super admin + tenant)</td></tr>
+    <tr><td>POS (PWA)</td><td>Vue 3 + Pinia + Dexie + Workbox</td><td>TypeScript; IndexedDB y service worker</td></tr>
+    <tr><td>Base de datos</td><td>MySQL 8</td><td>Índices compuestos por <code>tenant_id</code></td></tr>
+    <tr><td>Cache / colas</td><td>Redis + Horizon</td><td>e-CF, reportes y emails en background</td></tr>
+    <tr><td>Auth API POS</td><td>Sanctum</td><td>Tokens de dispositivo</td></tr>
+    <tr><td>Roles / auditoría</td><td>spatie permission ^6 · activitylog</td><td>Teams = tenant</td></tr>
+    <tr><td>Calidad</td><td><b>Pest 4</b> · Pint · Larastan</td><td>Todo en CI desde el primer commit</td></tr>
+    <tr><td>SUNMI (fase 3)</td><td>Capacitor</td><td>Empaqueta la misma app Vue como APK (ADR-005)</td></tr>
+  </table></div>
+  <h3>Estructura de carpetas (monolito modular)</h3>
+  <pre class="plain">proyectorest/
+├── app/
+│   ├── Domains/                  ← un módulo por dominio del doc 02
+│   │   ├── Platform/  Identity/  Tenancy/  Catalog/  Inventory/
+│   │   ├── Sales/  EventManagement/  Fiscal/  Reporting/  Sync/
+│   │   └── (cada dominio: Models / Actions / Events / Services)
+│   ├── Filament/Admin/           ← panel super admin
+│   ├── Filament/App/             ← panel del tenant
+│   └── Http/Controllers/Api/V1/  ← sincronización del POS
+├── resources/js/pos/             ← la PWA del POS (Vue 3 + TS)
+│   └── platform/                 ← adaptadores web | sunmi (pagos, impresión)
+└── tests/TenantIsolation/        ← suite obligatoria de aislamiento (ADR-002)</pre>
+  <p>Nota de nombre: el módulo "Events" del doc 02 se llama <code>EventManagement</code> en código, para no chocar con la carpeta <code>Events/</code> (eventos de dominio) de cada módulo.</p>
+  <h3>Convenciones clave</h3>
+  <ul>
+    <li>La lógica vive en <b>Actions</b> (un caso de uso = una clase); controladores y recursos Filament solo orquestan.</li>
+    <li>Dependencias entre dominios solo vía servicios públicos o eventos — nunca modelos ajenos directamente.</li>
+    <li>Dinero siempre en <b>centavos enteros</b>; formateo solo en presentación.</li>
+    <li>API <b>versionada desde el día 1</b> (<code>/api/v1</code>): siempre habrá POS viejos offline sincronizando tarde.</li>
+    <li>Enums nativos de PHP para todos los estados (orden, movimiento, comprobante…).</li>
+  </ul>
+  <h3>Primeros hitos de código</h3>
+  <ol>
+    <li>Esqueleto Laravel 13 + CI (Pint, Larastan, Pest) en verde desde el primer commit.</li>
+    <li><code>Domains/Tenancy</code> con <code>BelongsToTenant</code> + suite <code>TenantIsolation</code>.</li>
+    <li><code>Domains/Platform</code>: tenants + panel Admin de Filament.</li>
+    <li><code>Domains/Identity</code>: roles del doc 04.</li>
+    <li>Dominio por dominio según el MVP del doc 01.</li>
+  </ol>
+</section>
+
 <section id="adrs">
   <p class="eyebrow">Decisiones de arquitectura</p>
   <h2>ADRs — qué decidimos y por qué</h2>
@@ -509,6 +564,12 @@ stateDiagram-v2
     <p>Una secuencia fiscal es un contador único y dos terminales sin red no pueden compartirlo en vivo. Solución: el servidor reserva sub-rangos de la secuencia por terminal; el terminal folia localmente dentro de su bloque, y en cada sync se registra consumo y se reabastece. Folios de terminales revocados se anulan, nunca se reasignan. Costo asumido: los NCF no salen en orden cronológico global — trazabilidad garantizada por terminal + timestamp. El e-CF (fase 2) reutiliza la misma infraestructura, con emisión asíncrona vía cola: una venta jamás espera por DGII.</p>
     <p><b>Descartado:</b> foliar solo en servidor (el POS offline no emitiría comprobante) · foliar al sincronizar (el cliente se va sin comprobante) · una secuencia DGII por terminal (carga administrativa absurda).</p>
   </div>
+
+  <div class="adr">
+    <h3><span class="id">ADR-005</span> POS: PWA web + wrapper Capacitor para SUNMI <span class="pill">Aceptada</span></h3>
+    <p>El plan de producto incluye cobro con tarjeta integrado usando el SDK de Portal, que corre nativo en terminales SUNMI P2 y P3 MIX (Android con lector EMV/NFC e impresora térmica integrados), manteniendo además la versión web. Decisión: <b>un solo código de POS, dos empaques</b> — la PWA web (MVP) y, en fase 3, la misma app Vue empaquetada como APK con Capacitor. Los puentes nativos son mínimos y sin lógica de negocio: <code>PortalPayments</code> (cobro integrado) y <code>SunmiPrinter</code> (térmica del equipo, que resuelve la impresión en estos terminales). La app detecta sus capacidades al enrolar (<code>web</code> | <code>sunmi</code>) y usa el adaptador correspondiente; ventas, offline, sync y NCF son idénticos en ambos.</p>
+    <p><b>Descartado:</b> app nativa Kotlin separada (duplica todo el POS) · TWA (no accede a SDKs nativos) · reescritura en Flutter/React Native (tira la inversión de la PWA). El APK se distribuye por el canal de SUNMI, sin Google Play.</p>
+  </div>
 </section>
 
 <section id="preguntas">
@@ -517,10 +578,10 @@ stateDiagram-v2
   <p>La revisión debería producir respuestas, no solo lectura. Estas son las decisiones que siguen abiertas y quién debería opinar:</p>
   <ol class="qlist">
     <li><div>Bloques NCF por terminal, folios anulados y numeración no consecutiva en los reportes 606/607: ¿es aceptable ante DGII tal como está diseñado?<span class="who">Contador dominicano</span></div></li>
-    <li><div>Hardware objetivo del POS: ¿tablets Android, iPads o PCs táctiles? Afecta pruebas de la PWA, teclado e impresión.<span class="who">Equipo + operación</span></div></li>
-    <li><div>Impresión de tickets: térmicas de red vs. Bluetooth vs. USB — las PWA tienen límites con USB/Bluetooth; la impresión por red es la vía segura. ¿Confirmamos ese requisito de hardware?<span class="who">Equipo técnico</span></div></li>
-    <li><div>Filament: hacer una prueba de concepto de multi-panel + multi-tenancy con nuestro modelo antes de comprometernos.<span class="who">Equipo técnico</span></div></li>
-    <li><div>¿La modalidad eventos queda completa en fase 2, o el MVP necesita una versión reducida (un evento, pocos puntos) para validar el diferenciador?<span class="who">Negocio</span></div></li>
+    <li><div>Hardware objetivo del POS: ¿tablets Android, iPads o PCs táctiles? Afecta pruebas de la PWA, teclado e impresión. <b>Actualización 25/07:</b> los pagos integrados correrán en terminales SUNMI P2 / P3 MIX (ADR-005); queda definir los dispositivos del POS web del MVP.<span class="who">Equipo + operación</span></div></li>
+    <li><div>Impresión de tickets: térmicas de red vs. Bluetooth vs. USB — las PWA tienen límites con USB/Bluetooth; la impresión por red es la vía segura. <b>Actualización 25/07:</b> en los SUNMI queda resuelta con la térmica integrada; falta definir las impresoras de red para el POS web.<span class="who">Equipo técnico</span></div></li>
+    <li><div>Filament: hacer una prueba de concepto de multi-panel + multi-tenancy con nuestro modelo antes de comprometernos. <b>Actualización 25/07:</b> versión fijada en 5.7 con soporte verificado de Laravel 13; la POC sigue pendiente como hito 3.<span class="who">Equipo técnico</span></div></li>
+    <li><div>¿Las cuentas de organizador quedan completas en fase 2, o el MVP necesita una versión reducida (un evento, pocos puntos) para validar el diferenciador?<span class="who">Negocio</span></div></li>
     <li><div>e-CF: ¿integración directa con DGII o vía proveedor de facturación autorizado? (ADR pendiente; decidir cuando el calendario alcance a nuestros tenants.)<span class="who">Negocio + contador</span></div></li>
     <li><div>¿Precios de carta con ITBIS incluido por defecto? Común en bares; el sistema soporta ambos, falta decidir el default.<span class="who">Negocio</span></div></li>
     <li><div>Nombre del producto: "ProyectoRest" es provisional.<span class="who">Todos</span></div></li>
@@ -528,16 +589,17 @@ stateDiagram-v2
 </section>
 
 <footer class="doc">
-  <p>ProyectoRest · Documento de revisión v0.1 · 25 de julio de 2026 · Generado a partir de <code>docs/01…07</code> y <code>docs/adr/ADR-001…004</code> del repositorio. Los archivos Markdown son la fuente de verdad; este HTML es la vista consolidada para revisión.</p>
+  <p>ProyectoRest · Documento de revisión v0.3 · 26 de julio de 2026 · Generado a partir de <code>docs/01…08</code> y <code>docs/adr/ADR-001…005</code> del repositorio. Los archivos Markdown son la fuente de verdad; este HTML es la vista consolidada para revisión. <b>Novedades v0.3:</b> los eventos dejan de ser una modalidad dentro de un negocio y pasan a ser un tipo de cuenta propio — dos mundos cerrados que no comparten datos.</p>
 </footer>
 </main>
 </div>
 
+
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
 if (window.mermaid) {
-  var dark = document.documentElement.getAttribute('data-theme') === 'dark' ||
-    (document.documentElement.getAttribute('data-theme') !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  window.mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'neutral' });
+  var dark = document.documentElement.getAttribute("data-theme") === "dark" ||
+    (document.documentElement.getAttribute("data-theme") !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral" });
 }
 </script>
