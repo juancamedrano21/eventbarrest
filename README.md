@@ -25,12 +25,16 @@ php artisan key:generate
 ```
 
 1. En MAMP PRO crea la base de datos **`eventbarrest`** (MySQL 8) y arranca MySQL.
-2. Migra y arranca:
+2. Migra, siembra el super admin y arranca:
 
 ```bash
-php artisan migrate
+php artisan migrate --seed
 composer run dev
 ```
+
+El seeder crea el usuario de plataforma `admin@eventbarrest.test` con contraseña
+`password` (configurable con `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` en `.env`;
+cámbiala siempre fuera de local). Entra en `/admin` para gestionar los negocios.
 
 Paneles: `/admin` (super admin de la plataforma) · `/app` (negocio/tenant).
 Colas: `php artisan horizon` (dashboard en `/horizon`, abierto solo en local hasta

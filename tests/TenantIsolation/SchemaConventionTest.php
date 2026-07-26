@@ -22,6 +22,7 @@ $platformTables = [
     'job_batches',
     'failed_jobs',
     'personal_access_tokens',
+    'activity_log',
 ];
 
 $businessTables = fn (): array => collect(Schema::getTableListing(schemaQualified: false))
