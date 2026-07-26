@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Admin\Resources\Tenants\Schemas;
 
 use App\Domains\Platform\Enums\TenantStatus;
+use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Platform\Models\Tenant;
 use App\Domains\Platform\Rules\ValidRnc;
 use Closure;
@@ -18,8 +19,23 @@ class TenantForm
     {
         return $schema
             ->components([
+                Select::make('type')
+                    ->label('Tipo de cuenta')
+                    ->options(TenantType::class)
+                    ->default(TenantType::Business)
+                    ->required()
+                    ->live()
+                    // Inmutable tras el alta: de él dependen la estructura
+                    // operativa entera y todo lo vendido bajo ella.
+                    ->disabled(fn (string $operation): bool => $operation === 'edit')
+                    ->dehydrated(fn (string $operation): bool => $operation === 'create')
+                    ->helperText(fn (mixed $state): ?string => match (true) {
+                        $state instanceof TenantType => $state->description(),
+                        is_string($state) => TenantType::tryFrom($state)?->description(),
+                        default => null,
+                    }),
                 TextInput::make('name')
-                    ->label('Nombre del negocio')
+                    ->label('Nombre de la cuenta')
                     ->required()
                     ->maxLength(255),
                 TextInput::make('rnc')

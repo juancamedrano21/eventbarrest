@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Factories;
 
 use App\Domains\Platform\Enums\TenantStatus;
+use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Platform\Models\Tenant;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -20,8 +21,14 @@ class TenantFactory extends Factory
         return [
             'name' => fake()->company(),
             'rnc' => fake()->unique()->numerify('#########'),
+            'type' => TenantType::Business,
             'status' => TenantStatus::Active,
         ];
+    }
+
+    public function organizer(): static
+    {
+        return $this->state(['type' => TenantType::Organizer]);
     }
 
     public function suspended(): static

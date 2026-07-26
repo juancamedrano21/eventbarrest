@@ -33,6 +33,8 @@ class UserResource extends Resource
 
     protected static ?string $navigationLabel = 'Equipo';
 
+    protected static ?int $navigationSort = 90;
+
     /**
      * User no lleva BelongsToTenant (el login ocurre sin contexto de tenant),
      * así que el aislamiento de esta pantalla se declara aquí, explícitamente:

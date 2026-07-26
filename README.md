@@ -62,6 +62,40 @@ vendor/bin/phpstan analyse  # análisis estático (Larastan, nivel 6)
 vendor/bin/pest             # tests (incluye la suite TenantIsolation)
 ```
 
+## Los dos mundos: negocio y organizador
+
+No hay una modalidad que se active dentro de una cuenta. Hay **dos tipos de cuenta**,
+y son dos mundos cerrados que no comparten datos:
+
+| `tenants.type` | Quién | Estructura operativa | Qué ve en `/app` |
+|---|---|---|---|
+| `business` | Bar, restaurante, discoteca | **Sucursales** | Sucursales |
+| `organizer` | Productora de festivales | **Eventos** → sus puntos de venta | Eventos |
+
+`tenants.type` se elige al dar de alta la cuenta y **es inmutable**: de él dependen
+toda la estructura operativa y las ventas que cuelgan de ella.
+
+**Un evento nunca comparte datos con un negocio.** Si un negocio que ya es cliente
+quiere poner una barra en un festival, esa barra **se crea dentro del evento**, con su
+propio catálogo, inventario y personal. Aunque lleve el mismo nombre, no comparte nada
+con su negocio: son cuentas distintas y el aislamiento es el mismo que entre dos
+clientes cualesquiera.
+
+Lo que **no se puede hacer**, y está impedido en el modelo (no solo en las acciones):
+
+- Crear un evento en una cuenta de negocio, o una sucursal suelta en una de organizador.
+- Colgar un punto de venta del evento de otra cuenta.
+- Mover una unidad operativa a otro evento, o convertir una sucursal en punto de venta
+  (`event_id` es inmutable, también frente a updates masivos). Si dejó de operar, se
+  cierra por estado.
+- Cambiar el tipo de una cuenta después del alta.
+
+**La unidad operativa** (`operating_units`) unifica ambos mundos: `event_id` nulo es una
+sucursal, con `event_id` es un punto de venta. Todo lo transaccional (ventas, stock,
+cajas, terminales) cuelga de ella, así que POS e inventario se construyen una sola vez.
+Cada unidad declara además **qué despacha** — barra, cocina o mixta —, lo que decidirá
+qué catálogo ve el POS y por qué impresora salen las comandas.
+
 ## Usuarios, roles y los dos paneles
 
 | Panel | Quién entra | Qué exige |

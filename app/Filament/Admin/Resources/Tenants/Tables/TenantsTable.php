@@ -7,6 +7,7 @@ namespace App\Filament\Admin\Resources\Tenants\Tables;
 use App\Domains\Platform\Actions\ActivateTenant;
 use App\Domains\Platform\Actions\SuspendTenant;
 use App\Domains\Platform\Enums\TenantStatus;
+use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Platform\Models\Tenant;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
@@ -20,8 +21,11 @@ class TenantsTable
     {
         return $table
             ->columns([
+                TextColumn::make('type')
+                    ->label('Tipo')
+                    ->badge(),
                 TextColumn::make('name')
-                    ->label('Negocio')
+                    ->label('Cuenta')
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('rnc')
@@ -42,6 +46,9 @@ class TenantsTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                SelectFilter::make('type')
+                    ->label('Tipo de cuenta')
+                    ->options(TenantType::class),
                 SelectFilter::make('status')
                     ->label('Estado')
                     ->options(TenantStatus::class),
@@ -54,8 +61,8 @@ class TenantsTable
                     ->color('danger')
                     ->visible(fn (Tenant $record): bool => $record->status !== TenantStatus::Suspended)
                     ->requiresConfirmation()
-                    ->modalHeading('Suspender negocio')
-                    ->modalDescription('Sus usuarios y terminales perderán acceso hasta que se reactive. No se borra ningún dato.')
+                    ->modalHeading('Suspender cuenta')
+                    ->modalDescription('Su equipo y sus terminales perderán acceso hasta que se reactive. No se borra ningún dato.')
                     ->action(fn (Tenant $record) => app(SuspendTenant::class)($record)),
                 Action::make('activar')
                     ->label('Activar')

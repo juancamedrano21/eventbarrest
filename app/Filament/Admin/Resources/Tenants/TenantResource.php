@@ -24,9 +24,9 @@ class TenantResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'name';
 
-    protected static ?string $modelLabel = 'negocio';
+    protected static ?string $modelLabel = 'cuenta';
 
-    protected static ?string $pluralModelLabel = 'negocios';
+    protected static ?string $pluralModelLabel = 'cuentas';
 
     public static function form(Schema $schema): Schema
     {

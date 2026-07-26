@@ -6,6 +6,7 @@ namespace App\Filament\Admin\Resources\Tenants\Pages;
 
 use App\Domains\Platform\Actions\CreateTenant as CreateTenantAction;
 use App\Domains\Platform\Enums\TenantStatus;
+use App\Domains\Platform\Enums\TenantType;
 use App\Filament\Admin\Resources\Tenants\TenantResource;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
@@ -25,6 +26,7 @@ class CreateTenant extends CreateRecord
         return app(CreateTenantAction::class)(
             $data['name'],
             $data['rnc'] ?? null,
+            TenantType::coerce($data['type']),
             TenantStatus::coerce($data['status']),
         );
     }
