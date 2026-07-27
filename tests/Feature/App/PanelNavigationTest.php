@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
+use App\Domains\Business\Actions\CreateBranch;
 use App\Domains\EventManagement\Actions\CreateEvent;
+use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
-use App\Domains\Operations\Actions\CreateBranch;
-use App\Domains\Operations\Actions\CreateEventOutlet;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantType;

@@ -4,18 +4,17 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Domains\EventManagement\Models\Event;
+use App\Domains\Business\Models\Branch;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
-use App\Domains\Operations\Models\OperatingUnit;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<OperatingUnit>
+ * @extends Factory<Branch>
  */
-class OperatingUnitFactory extends Factory
+class BranchFactory extends Factory
 {
-    protected $model = OperatingUnit::class;
+    protected $model = Branch::class;
 
     public function definition(): array
     {
@@ -24,15 +23,6 @@ class OperatingUnitFactory extends Factory
             'kind' => OperatingUnitKind::Mixed,
             'status' => OperatingUnitStatus::Active,
         ];
-    }
-
-    public function inEvent(Event $event): static
-    {
-        return $this->state([
-            'event_id' => $event->id,
-            'name' => 'Barra '.fake()->unique()->word(),
-            'kind' => OperatingUnitKind::Bar,
-        ]);
     }
 
     public function kitchen(): static

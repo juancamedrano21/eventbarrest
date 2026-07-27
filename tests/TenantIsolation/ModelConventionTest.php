@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use App\Domains\Business\Models\BusinessAccount;
+use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Domains\Platform\Models\Tenant;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use Symfony\Component\Finder\Finder;
@@ -12,6 +14,8 @@ use Symfony\Component\Finder\Finder;
  */
 $platformModels = [
     Tenant::class,
+    BusinessAccount::class,
+    OrganizerAccount::class,
 ];
 
 it('makes every domain model tenant-scoped', function () use ($platformModels): void {

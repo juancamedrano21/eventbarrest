@@ -6,9 +6,8 @@ namespace App\Domains\EventManagement\Models;
 
 use App\Domains\EventManagement\Enums\EventStatus;
 use App\Domains\Operations\Exceptions\InvalidOperatingUnitException;
-use App\Domains\Operations\Models\OperatingUnit;
-use App\Domains\Platform\Models\Tenant;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
+use App\Domains\Tenancy\TenantContext;
 use Carbon\CarbonInterface;
 use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -53,24 +52,24 @@ class Event extends Model
 
     protected static function booted(): void
     {
-        // Un festival solo existe dentro de una cuenta de organizador. La
-        // regla vive aquí y no solo en la acción, porque cualquier seeder o
-        // job futuro escribe por el modelo.
+        // Un festival solo existe en el mundo de los organizadores. La regla
+        // vive aquí y no en una acción, porque cualquier seeder o job futuro
+        // escribe por el modelo.
         static::creating(function (Event $event): void {
-            $tenant = Tenant::query()->find($event->tenant_id);
+            $tenant = app(TenantContext::class)->current();
 
-            if ($tenant !== null && ! $tenant->isOrganizer()) {
+            if ($tenant !== null && ! $tenant instanceof OrganizerAccount) {
                 throw InvalidOperatingUnitException::wrongAccountType($tenant->type);
             }
         });
     }
 
     /**
-     * @return HasMany<OperatingUnit, $this>
+     * @return HasMany<EventOutlet, $this>
      */
-    public function operatingUnits(): HasMany
+    public function outlets(): HasMany
     {
-        return $this->hasMany(OperatingUnit::class);
+        return $this->hasMany(EventOutlet::class, 'event_id');
     }
 
     protected static function newFactory(): EventFactory

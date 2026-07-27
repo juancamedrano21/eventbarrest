@@ -23,16 +23,13 @@ class CreateTenant
         TenantStatus $status = TenantStatus::Trial,
     ): Tenant {
         return DB::transaction(function () use ($name, $rnc, $type, $status): Tenant {
-            $tenant = new Tenant([
+            // La clase del mundo fija su propio tipo al nacer: aquí solo se
+            // elige qué mundo se está dando de alta.
+            $tenant = $type->accountClass()::create([
                 'name' => $name,
                 'rnc' => $rnc,
                 'status' => $status,
             ]);
-
-            // El tipo no es fillable: define el mundo de la cuenta y solo se
-            // fija aquí, al darla de alta.
-            $tenant->type = $type;
-            $tenant->save();
 
             app(ProvisionTenantRoles::class)($tenant);
 

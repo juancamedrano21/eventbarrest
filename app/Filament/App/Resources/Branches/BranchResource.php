@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\Branches;
 
+use App\Domains\Business\Models\Branch;
+use App\Domains\Business\Models\BusinessAccount;
 use App\Domains\Identity\Enums\Permission;
-use App\Domains\Operations\Models\OperatingUnit;
 use App\Filament\App\Resources\Branches\Pages\CreateBranch;
 use App\Filament\App\Resources\Branches\Pages\EditBranch;
 use App\Filament\App\Resources\Branches\Pages\ListBranches;
@@ -17,7 +18,6 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -26,7 +26,7 @@ use Illuminate\Database\Eloquent\Model;
  */
 class BranchResource extends Resource
 {
-    protected static ?string $model = OperatingUnit::class;
+    protected static ?string $model = Branch::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedBuildingStorefront;
 
@@ -40,13 +40,6 @@ class BranchResource extends Resource
 
     protected static ?int $navigationSort = 10;
 
-    public static function getEloquentQuery(): Builder
-    {
-        // Equivale al scope branches() del modelo, escrito aquí de forma
-        // explícita porque el builder de Filament llega sin tipar.
-        return parent::getEloquentQuery()->whereNull('event_id');
-    }
-
     /**
      * Dos condiciones, no una: estar en el mundo correcto (cuenta de negocio)
      * y tener el permiso de la matriz del documento 04. Un cajero pertenece a
@@ -56,7 +49,7 @@ class BranchResource extends Resource
     {
         $user = Filament::auth()->user();
 
-        return $user?->tenant?->isBusiness() === true
+        return $user?->tenant instanceof BusinessAccount
             && $user->can(Permission::OperatingUnitsManage->value);
     }
 

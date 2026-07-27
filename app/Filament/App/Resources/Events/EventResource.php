@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\App\Resources\Events;
 
 use App\Domains\EventManagement\Models\Event;
+use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Domains\Identity\Enums\Permission;
 use App\Filament\App\Resources\Events\Pages\CreateEvent;
 use App\Filament\App\Resources\Events\Pages\EditEvent;
@@ -47,7 +48,7 @@ class EventResource extends Resource
     {
         $user = Filament::auth()->user();
 
-        return $user?->tenant?->isOrganizer() === true
+        return $user?->tenant instanceof OrganizerAccount
             && $user->can(Permission::EventsManage->value);
     }
 

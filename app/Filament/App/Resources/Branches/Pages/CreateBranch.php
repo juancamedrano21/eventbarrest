@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\Branches\Pages;
 
-use App\Domains\Operations\Actions\CreateBranch as CreateBranchAction;
+use App\Domains\Business\Actions\CreateBranch as CreateBranchAction;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
 use App\Filament\App\Resources\Branches\BranchResource;

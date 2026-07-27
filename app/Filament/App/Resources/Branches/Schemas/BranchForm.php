@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\Branches\Schemas;
 
+use App\Domains\Business\Models\Branch;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
-use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Tenancy\TenantContext;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -30,7 +30,7 @@ class BranchForm
                     // acotar por tenant a mano: Rule::unique va por el query
                     // builder y no pasa por el global scope.
                     ->unique(
-                        table: OperatingUnit::class,
+                        table: Branch::class,
                         ignoreRecord: true,
                         modifyRuleUsing: fn (Unique $rule): Unique => $rule
                             ->where('tenant_id', app(TenantContext::class)->id())

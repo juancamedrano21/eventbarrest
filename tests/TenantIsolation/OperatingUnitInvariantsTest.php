@@ -2,25 +2,29 @@
 
 declare(strict_types=1);
 
+use App\Domains\Business\Actions\CreateBranch;
+use App\Domains\Business\Models\Branch;
+use App\Domains\Business\Models\BusinessAccount;
 use App\Domains\EventManagement\Actions\CreateEvent;
-use App\Domains\EventManagement\Models\Event;
-use App\Domains\Operations\Actions\CreateBranch;
-use App\Domains\Operations\Actions\CreateEventOutlet;
+use App\Domains\EventManagement\Actions\CreateEventOutlet;
+use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitType;
 use App\Domains\Operations\Exceptions\InvalidOperatingUnitException;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantType;
+use App\Domains\Platform\Exceptions\TenantBaseIsNotCreatableException;
 use App\Domains\Platform\Exceptions\TenantTypeIsImmutableException;
+use App\Domains\Platform\Models\Tenant;
 use App\Domains\Tenancy\TenantContext;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Los invariantes de los dos mundos, verificados contra los ataques reales
- * encontrados en auditoría. Viven en el modelo y en el query builder, no solo
- * en las acciones: cualquier seeder, importador o job futuro escribe por ahí.
+ * encontrados en auditoría. La separación es estructural (cada mundo tiene
+ * sus clases), y estos tests fijan lo que ninguna clase permite.
  */
 beforeEach(function (): void {
     $this->business = app(CreateTenant::class)('Bar del Puerto', null, TenantType::Business);
@@ -38,28 +42,32 @@ beforeEach(function (): void {
 
 afterEach(fn () => app(TenantContext::class)->clear());
 
-describe('el modelo defiende los mundos, no solo las acciones', function (): void {
-    it('refuses an event created straight on a business account', function (): void {
-        $this->context->runAs($this->business, fn () => Event::create([
-            'name' => 'Festival Fantasma',
-            'starts_at' => now()->addWeek(),
-            'ends_at' => now()->addWeeks(2),
+describe('la estructura es de clases, no de datos', function (): void {
+    it('refuses to create through the neutral base', function (): void {
+        $this->context->runAs($this->business, fn () => OperatingUnit::create([
+            'name' => 'Directa', 'kind' => OperatingUnitKind::Mixed,
         ]));
     })->throws(InvalidOperatingUnitException::class);
 
-    it('refuses a loose branch created straight on an organizer account', function (): void {
-        $this->context->runAs($this->organizer, fn () => OperatingUnit::create([
-            'name' => 'Sucursal Imposible',
-            'kind' => OperatingUnitKind::Mixed,
-        ]));
-    })->throws(InvalidOperatingUnitException::class);
+    it('a branch is a branch no matter what the caller forces', function (): void {
+        $branch = $this->context->runAs($this->business, function () {
+            $branch = new Branch(['name' => 'Terca', 'kind' => OperatingUnitKind::Mixed]);
+            $branch->type = OperatingUnitType::EventOutlet;
+            $branch->event_id = $this->rivalEvent->id;
+            $branch->save();
 
-    it('refuses an outlet hanging from another accounts event', function (): void {
-        $this->context->runAs($this->organizer, function (): void {
-            $unit = new OperatingUnit(['name' => 'Barra intrusa', 'kind' => OperatingUnitKind::Bar]);
-            $unit->event_id = $this->rivalEvent->id;
-            $unit->save();
+            return $branch;
         });
+
+        expect($branch->fresh())
+            ->type->toBe(OperatingUnitType::Branch)
+            ->event_id->toBeNull();
+    });
+
+    it('an outlet cannot exist without an event', function (): void {
+        $this->context->runAs($this->organizer, fn () => EventOutlet::create([
+            'name' => 'Suelta', 'kind' => OperatingUnitKind::Bar,
+        ]));
     })->throws(InvalidOperatingUnitException::class);
 });
 
@@ -84,14 +92,14 @@ describe('la unidad no cambia de evento', function (): void {
         ));
 
         $this->context->set($this->organizer);
-        OperatingUnit::query()->update(['event_id' => $this->rivalEvent->id]);
+        EventOutlet::query()->update(['event_id' => $this->rivalEvent->id]);
     })->throws(InvalidOperatingUnitException::class);
 
-    it('refuses to turn a branch into an event outlet with a mass update', function (): void {
+    it('refuses to rewrite the world discriminator with a mass update', function (): void {
         $this->context->runAs($this->business, fn () => app(CreateBranch::class)('Sucursal Centro'));
 
         $this->context->set($this->business);
-        OperatingUnit::query()->update(['event_id' => $this->rivalEvent->id]);
+        OperatingUnit::query()->update(['type' => OperatingUnitType::EventOutlet->value]);
     })->throws(InvalidOperatingUnitException::class);
 
     it('still allows ordinary edits', function (): void {
@@ -123,6 +131,18 @@ describe('el tipo de cuenta es inmutable', function (): void {
             ->name->toBe('Bar Renombrado')
             ->type->toBe(TenantType::Business);
     });
+
+    it('refuses to rewrite the account type with a mass update on the base', function (): void {
+        Tenant::query()->whereKey($this->business->id)->update(['type' => TenantType::Organizer->value]);
+    })->throws(TenantTypeIsImmutableException::class);
+
+    it('refuses to flip a whole world with a mass update on a child', function (): void {
+        BusinessAccount::query()->update(['type' => TenantType::Organizer->value]);
+    })->throws(TenantTypeIsImmutableException::class);
+
+    it('refuses to create an account through the neutral base', function (): void {
+        Tenant::create(['name' => 'Cuenta sin mundo']);
+    })->throws(TenantBaseIsNotCreatableException::class);
 });
 
 describe('la base de datos también protege', function (): void {

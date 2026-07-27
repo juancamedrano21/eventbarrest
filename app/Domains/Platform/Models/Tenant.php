@@ -4,20 +4,29 @@ declare(strict_types=1);
 
 namespace App\Domains\Platform\Models;
 
-use App\Domains\EventManagement\Models\Event;
-use App\Domains\Operations\Models\OperatingUnit;
+use App\Domains\Business\Models\BusinessAccount;
+use App\Domains\EventManagement\Models\OrganizerAccount;
+use App\Domains\Platform\Eloquent\TenantBuilder;
 use App\Domains\Platform\Enums\TenantStatus;
 use App\Domains\Platform\Enums\TenantType;
+use App\Domains\Platform\Exceptions\TenantBaseIsNotCreatableException;
 use App\Domains\Platform\Exceptions\TenantTypeIsImmutableException;
 use App\Models\User;
+use App\Support\Eloquent\HasChildModels;
 use Database\Factories\TenantFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
 /**
+ * La vista de plataforma de una cuenta: alta, plan, suspensión, equipo.
+ * Neutral respecto a los mundos — cada uno tiene su propia clase
+ * (BusinessAccount, OrganizerAccount) y las filas se hidratan como la que
+ * les corresponde. El super admin administra cuentas; los mundos operan.
+ *
  * @property int $id
  * @property string $name
  * @property string|null $rnc
@@ -26,18 +35,30 @@ use Spatie\Activitylog\Traits\LogsActivity;
  */
 class Tenant extends Model
 {
+    use HasChildModels;
+
     /** @use HasFactory<TenantFactory> */
     use HasFactory;
 
     use LogsActivity;
 
-    // 'type' queda fuera a propósito: define el mundo de la cuenta y toda su
-    // estructura operativa. Se fija solo al crear, desde CreateTenant.
+    protected $table = 'tenants';
+
+    // 'type' queda fuera a propósito: define el mundo de la cuenta y solo lo
+    // fijan las clases hijas al nacer.
     protected $fillable = [
         'name',
         'rnc',
         'status',
     ];
+
+    public static function childTypes(): array
+    {
+        return [
+            TenantType::Business->value => BusinessAccount::class,
+            TenantType::Organizer->value => OrganizerAccount::class,
+        ];
+    }
 
     protected function casts(): array
     {
@@ -45,6 +66,32 @@ class Tenant extends Model
             'type' => TenantType::class,
             'status' => TenantStatus::class,
         ];
+    }
+
+    protected static function booted(): void
+    {
+        // La base es una vista, no un mundo: las cuentas nacen como
+        // BusinessAccount u OrganizerAccount, nunca aquí.
+        static::creating(function (Tenant $tenant): void {
+            if ($tenant::class === self::class) {
+                throw TenantBaseIsNotCreatableException::make();
+            }
+        });
+
+        static::updating(function (Tenant $tenant): void {
+            if ($tenant->isDirty('type')) {
+                throw TenantTypeIsImmutableException::forTenant($tenant->name);
+            }
+        });
+    }
+
+    /**
+     * @param  QueryBuilder  $query
+     * @return TenantBuilder<*>
+     */
+    public function newEloquentBuilder($query): TenantBuilder
+    {
+        return new TenantBuilder($query);
     }
 
     /**
@@ -55,39 +102,14 @@ class Tenant extends Model
         return $this->hasMany(User::class);
     }
 
-    protected static function booted(): void
-    {
-        static::updating(function (Tenant $tenant): void {
-            if ($tenant->isDirty('type')) {
-                throw TenantTypeIsImmutableException::forTenant($tenant->name);
-            }
-        });
-    }
-
-    /**
-     * @return HasMany<Event, $this>
-     */
-    public function events(): HasMany
-    {
-        return $this->hasMany(Event::class);
-    }
-
-    /**
-     * @return HasMany<OperatingUnit, $this>
-     */
-    public function operatingUnits(): HasMany
-    {
-        return $this->hasMany(OperatingUnit::class);
-    }
-
     public function isOrganizer(): bool
     {
-        return $this->type === TenantType::Organizer;
+        return false;
     }
 
     public function isBusiness(): bool
     {
-        return $this->type === TenantType::Business;
+        return false;
     }
 
     public function getActivitylogOptions(): LogOptions

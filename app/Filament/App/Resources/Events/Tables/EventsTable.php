@@ -28,9 +28,9 @@ class EventsTable
                     ->label('Comienza')
                     ->dateTime('d M Y, H:i')
                     ->sortable(),
-                TextColumn::make('operating_units_count')
+                TextColumn::make('outlets_count')
                     ->label('Puntos de venta')
-                    ->counts('operatingUnits')
+                    ->counts('outlets')
                     ->alignCenter(),
                 TextColumn::make('status')
                     ->label('Estado')

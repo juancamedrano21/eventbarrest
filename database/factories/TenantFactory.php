@@ -16,6 +16,22 @@ class TenantFactory extends Factory
 {
     protected $model = Tenant::class;
 
+    /**
+     * La factory respeta los mundos: instancia la clase de cuenta que
+     * corresponde al tipo, para que un Tenant de test se comporte igual que
+     * uno real (relaciones y polimorfismo incluidos).
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function newModel(array $attributes = []): Tenant
+    {
+        $type = TenantType::coerce($attributes['type'] ?? TenantType::Business);
+
+        $class = $type->accountClass();
+
+        return new $class($attributes);
+    }
+
     public function definition(): array
     {
         return [

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domains\Platform\Enums;
 
+use App\Domains\Business\Models\BusinessAccount;
+use App\Domains\EventManagement\Models\OrganizerAccount;
+use App\Domains\Platform\Models\Tenant;
 use Filament\Support\Contracts\HasColor;
 use Filament\Support\Contracts\HasLabel;
 
@@ -23,6 +26,17 @@ enum TenantType: string implements HasColor, HasLabel
     public static function coerce(self|string $value): self
     {
         return $value instanceof self ? $value : self::from($value);
+    }
+
+    /**
+     * @return class-string<Tenant>
+     */
+    public function accountClass(): string
+    {
+        return match ($this) {
+            self::Business => BusinessAccount::class,
+            self::Organizer => OrganizerAccount::class,
+        };
     }
 
     public function getLabel(): string

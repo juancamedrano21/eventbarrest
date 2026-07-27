@@ -59,7 +59,7 @@ describe('alta de sucursales', function (): void {
 
     it('rejects a duplicate branch name with a form error, not a crash', function (): void {
         signInTo($this, $this->businessOwner, $this->business);
-        app(App\Domains\Operations\Actions\CreateBranch::class)('Sucursal Centro');
+        app(App\Domains\Business\Actions\CreateBranch::class)('Sucursal Centro');
 
         Livewire::test(CreateBranch::class)
             ->fillForm([

@@ -81,7 +81,22 @@ propio catálogo, inventario y personal. Aunque lleve el mismo nombre, no compar
 con su negocio: son cuentas distintas y el aislamiento es el mismo que entre dos
 clientes cualesquiera.
 
-Lo que **no se puede hacer**, y está impedido en el modelo (no solo en las acciones):
+**Cada mundo tiene sus propias clases y carpetas** — la separación es estructural,
+no un condicional:
+
+| Dominio | Modelos | Qué contiene |
+|---|---|---|
+| `Domains/Business` | `BusinessAccount`, `Branch` | El mundo de los negocios: cuentas y sucursales |
+| `Domains/EventManagement` | `OrganizerAccount`, `Event`, `EventOutlet` | El mundo de los eventos: cuentas, festivales y sus puntos de venta |
+| `Domains/Operations` | `OperatingUnit` (base neutral) | Lo compartido: enums (barra/cocina, estados), builder, la vista de reportería |
+| `Domains/Platform` | `Tenant` (base neutral) | La vista de plataforma: alta, plan, suspensión |
+
+Las bases son herencia sobre una sola tabla (STI): la tabla `operating_units` es una
+(así ventas y stock apuntan a una sola FK y el POS se construye una vez), pero cada
+fila se hidrata como la clase de su mundo. `Branch::create()` solo sabe crear
+sucursales; `EventOutlet` no existe sin evento — no hay ningún `if` que decida.
+
+Lo que **no se puede hacer**, y está impedido estructuralmente:
 
 - Crear un evento en una cuenta de negocio, o una sucursal suelta en una de organizador.
 - Colgar un punto de venta del evento de otra cuenta.

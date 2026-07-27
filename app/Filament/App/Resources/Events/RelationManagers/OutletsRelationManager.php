@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\Events\RelationManagers;
 
+use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Models\Event;
-use App\Domains\Operations\Actions\CreateEventOutlet;
+use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
-use App\Domains\Operations\Models\OperatingUnit;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\Select;
@@ -28,7 +28,7 @@ use Illuminate\Validation\Rules\Unique;
  */
 class OutletsRelationManager extends RelationManager
 {
-    protected static string $relationship = 'operatingUnits';
+    protected static string $relationship = 'outlets';
 
     protected static ?string $title = 'Puntos de venta';
 
@@ -44,7 +44,7 @@ class OutletsRelationManager extends RelationManager
                     ->required()
                     ->maxLength(255)
                     ->unique(
-                        table: OperatingUnit::class,
+                        table: EventOutlet::class,
                         ignoreRecord: true,
                         modifyRuleUsing: function (Unique $rule): Unique {
                             /** @var Event $event */
@@ -93,7 +93,7 @@ class OutletsRelationManager extends RelationManager
             ->headerActions([
                 CreateAction::make()
                     ->label('Añadir punto de venta')
-                    ->using(function (array $data): OperatingUnit {
+                    ->using(function (array $data): EventOutlet {
                         /** @var Event $event */
                         $event = $this->getOwnerRecord();
 
