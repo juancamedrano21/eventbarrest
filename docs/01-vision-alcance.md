@@ -45,6 +45,12 @@ Productora que monta festivales, conciertos, ferias o temporadas.
 - Al cerrar el evento: devolución de inventario sobrante, liquidación y archivo.
 - El organizador conserva el histórico entre ediciones ("el año pasado vendimos X")
   y reutiliza su equipo, pero **cada evento es un mundo cerrado por dentro**.
+- **Los puestos son vendedores terceros independientes** (decisión 2026-07-27): el
+  organizador cede el espacio y cada puesto opera su propio negocio — su menú, su
+  personal, su caja — **sin ver a los demás puestos**. El organizador tiene derecho a
+  ver el **rendimiento** de cada puesto (reportes), no a operarlo. Implicación:
+  usuarios asignados a su punto de venta, catálogo por puesto en el mundo eventos, y
+  vista consolidada de solo lectura para el organizador.
 
 ### La regla que separa los dos mundos
 

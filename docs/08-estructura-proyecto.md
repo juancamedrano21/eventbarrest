@@ -38,11 +38,10 @@ Notas de Laravel 13 que nos tocan directamente:
 proyectorest/
 ├── app/
 │   ├── Domains/                    # ← el corazón: un folder por módulo (doc 02)
-│   │   ├── Platform/               # tenants, planes, suscripciones
-│   │   │   ├── Models/
-│   │   │   ├── Actions/            # casos de uso: CreateTenant, SuspendTenant…
-│   │   │   ├── Events/             # eventos de dominio (TenantSuspended…)
-│   │   │   └── Services/
+│   │   ├── Platform/               # vista de plataforma: Tenant (base), planes, alta
+│   │   ├── Business/               # EL MUNDO NEGOCIOS: BusinessAccount, Branch (sucursales)
+│   │   ├── EventManagement/        # EL MUNDO EVENTOS: OrganizerAccount, Event, EventOutlet
+│   │   ├── Operations/             # base neutral compartida: OperatingUnit (STI), enums
 │   │   ├── Identity/               # usuarios, roles, invitaciones
 │   │   ├── Tenancy/                # contexto y aislamiento
 │   │   │   ├── Concerns/BelongsToTenant.php   # trait con global scope
@@ -51,7 +50,6 @@ proyectorest/
 │   │   ├── Catalog/                # productos, categorías, recetas
 │   │   ├── Inventory/              # insumos, stock, movimientos
 │   │   ├── Sales/                  # órdenes, pagos, cajas
-│   │   ├── EventManagement/        # eventos y sus puntos de venta (ver nota ↓)
 │   │   ├── Fiscal/                 # NCF, bloques, e-CF
 │   │   ├── Reporting/              # consultas de lectura, cierre Z
 │   │   └── Sync/                   # push/pull del POS, idempotencia
@@ -91,6 +89,13 @@ proyectorest/
 > **Nota de nombre:** el módulo "Events" del doc 02 se llama **`EventManagement`** en
 > código, para no chocar con la convención `Events/` (eventos de dominio) dentro de
 > cada módulo — evita el namespace confuso `Domains\Events\Events\…`.
+
+> **Los dos mundos son estructurales:** cada uno tiene sus modelos (`Branch` y
+> `BusinessAccount` en Business; `Event`, `EventOutlet` y `OrganizerAccount` en
+> EventManagement) por **herencia sobre una sola tabla** (STI). La tabla es una —
+> ventas y stock apuntan a una sola FK — pero la clase es el mundo: crear una
+> sucursal en un organizador no se valida con un `if`, simplemente no se puede
+> escribir.
 
 ## Convenciones de código
 
