@@ -54,6 +54,17 @@ Paneles: `/admin` (super admin de la plataforma) · `/app` (negocio/tenant).
 Colas: `php artisan horizon` (dashboard en `/horizon`, abierto solo en local hasta
 que el dominio Identity traiga los roles de plataforma).
 
+## Entorno de prueba (demo)
+
+```bash
+php artisan db:seed --class=DemoSeeder
+```
+
+Crea dos cuentas con equipo, catálogo y stock real (contraseña de todos:
+`Demo-2026`): **Bar Demo** (negocio, con sucursal, Presidente y Mojito con
+escandallo) y **Producciones Demo** (organizador, con el Festival del Mar 2026 y
+sus tres puntos de venta). Solo funciona en local; es idempotente.
+
 ## Calidad — los tres candados del CI
 
 ```bash
