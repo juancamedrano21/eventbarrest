@@ -7,6 +7,7 @@ namespace App\Filament\App\Resources\Events\RelationManagers;
 use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
+use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
 use Filament\Actions\CreateAction;
@@ -16,15 +17,15 @@ use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Validation\Rules\Unique;
 
 /**
- * Los puntos de venta de un evento: las barras y cocinas que operan dentro.
- *
- * Aquí es donde entra un negocio que quiera participar en el festival: se crea
- * como punto del evento, con su propio catálogo, inventario y personal. Aunque
- * lleve el mismo nombre que un negocio cliente, no comparte nada con él.
+ * Los puntos de venta del evento: las barras y cocinas que cada negocio
+ * participante monta. Un punto pertenece siempre a un negocio invitado —
+ * el organizador relaciona, el negocio opera.
  */
 class OutletsRelationManager extends RelationManager
 {
@@ -38,6 +39,16 @@ class OutletsRelationManager extends RelationManager
     {
         return $schema
             ->components([
+                Select::make('vendor_id')
+                    ->label('Negocio')
+                    ->options(fn (): array => $this->invitedVendors()->pluck('name', 'id')->all())
+                    ->required()
+                    ->searchable()
+                    ->helperText('Solo aparecen los negocios invitados a este evento.')
+                    // El negocio define de quién es el stock y las ventas del
+                    // punto: se elige al crear y no cambia.
+                    ->disabled(fn (string $operation): bool => $operation === 'edit')
+                    ->dehydrated(fn (string $operation): bool => $operation === 'create'),
                 TextInput::make('name')
                     ->label('Nombre')
                     ->placeholder('Barra principal')
@@ -46,16 +57,17 @@ class OutletsRelationManager extends RelationManager
                     ->unique(
                         table: EventOutlet::class,
                         ignoreRecord: true,
-                        modifyRuleUsing: function (Unique $rule): Unique {
+                        modifyRuleUsing: function (Unique $rule, mixed $get): Unique {
                             /** @var Event $event */
                             $event = $this->getOwnerRecord();
 
                             return $rule
                                 ->where('tenant_id', $event->tenant_id)
-                                ->where('event_id', $event->getKey());
+                                ->where('event_id', $event->getKey())
+                                ->where('vendor_id', $get('vendor_id'));
                         },
                     )
-                    ->validationMessages(['unique' => 'Este evento ya tiene un punto de venta con ese nombre.']),
+                    ->validationMessages(['unique' => 'Ese negocio ya tiene un punto de venta con ese nombre en este evento.']),
                 Select::make('kind')
                     ->label('Qué despacha')
                     ->options(OperatingUnitKind::class)
@@ -80,6 +92,10 @@ class OutletsRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('name')
             ->columns([
+                TextColumn::make('vendor.name')
+                    ->label('Negocio')
+                    ->searchable()
+                    ->sortable(),
                 TextColumn::make('name')
                     ->label('Punto de venta')
                     ->searchable(),
@@ -90,6 +106,11 @@ class OutletsRelationManager extends RelationManager
                     ->label('Estado')
                     ->badge(),
             ])
+            ->filters([
+                SelectFilter::make('vendor_id')
+                    ->label('Negocio')
+                    ->options(fn (): array => $this->invitedVendors()->pluck('name', 'id')->all()),
+            ])
             ->headerActions([
                 CreateAction::make()
                     ->label('Añadir punto de venta')
@@ -97,8 +118,11 @@ class OutletsRelationManager extends RelationManager
                         /** @var Event $event */
                         $event = $this->getOwnerRecord();
 
+                        $vendor = Vendor::query()->findOrFail($data['vendor_id']);
+
                         return app(CreateEventOutlet::class)(
                             $event,
+                            $vendor,
                             $data['name'],
                             OperatingUnitKind::coerce($data['kind']),
                             OperatingUnitStatus::coerce($data['status']),
@@ -110,6 +134,17 @@ class OutletsRelationManager extends RelationManager
             ])
             ->defaultSort('name')
             ->emptyStateHeading('Este evento aún no tiene puntos de venta')
-            ->emptyStateDescription('Añade sus barras y cocinas para poder vender.');
+            ->emptyStateDescription('Invita negocios al evento y añade sus barras y cocinas.');
+    }
+
+    /**
+     * @return Collection<int, Vendor>
+     */
+    private function invitedVendors(): Collection
+    {
+        /** @var Event $event */
+        $event = $this->getOwnerRecord();
+
+        return $event->vendors()->orderBy('name')->get();
     }
 }

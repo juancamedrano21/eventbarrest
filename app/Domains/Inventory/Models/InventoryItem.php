@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Inventory\Models;
 
+use App\Domains\EventManagement\Concerns\BelongsToVendor;
 use App\Domains\Inventory\Enums\MeasurementUnit;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use Database\Factories\InventoryItemFactory;
@@ -22,6 +23,7 @@ use Illuminate\Database\Eloquent\Model;
 class InventoryItem extends Model
 {
     use BelongsToTenant;
+    use BelongsToVendor;
 
     /** @use HasFactory<InventoryItemFactory> */
     use HasFactory;

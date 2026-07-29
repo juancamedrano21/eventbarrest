@@ -6,7 +6,7 @@ use App\Domains\Business\Actions\CreateBranch;
 use App\Domains\Business\Models\Branch;
 use App\Domains\Business\Models\BusinessAccount;
 use App\Domains\EventManagement\Actions\CreateEvent;
-use App\Domains\EventManagement\Actions\CreateEventOutlet;
+use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\Models\OrganizerAccount;
@@ -63,8 +63,8 @@ describe('cada mundo tiene su clase', function (): void {
     it('creates events with their outlets', function (): void {
         [$event, $bar, $kitchen, $outletCount] = $this->context->runAs($this->organizer, function () {
             $event = app(CreateEvent::class)('Festival del Mar', now()->addWeek(), now()->addWeeks(2), 'Malecón');
-            $bar = app(CreateEventOutlet::class)($event, 'Barra principal', OperatingUnitKind::Bar);
-            $kitchen = app(CreateEventOutlet::class)($event, 'Cocina', OperatingUnitKind::Kitchen);
+            $bar = outletFor($event, 'Barra principal', OperatingUnitKind::Bar);
+            $kitchen = outletFor($event, 'Cocina', OperatingUnitKind::Kitchen);
 
             return [$event, $bar, $kitchen, $event->outlets()->count()];
         });
@@ -90,22 +90,22 @@ describe('los mundos no se mezclan', function (): void {
         $this->context->runAs($this->organizer, fn () => app(CreateBranch::class)('Sucursal Imposible'));
     })->throws(InvalidOperatingUnitException::class);
 
-    it('refuses an outlet hanging from another accounts event', function (): void {
+    it('refuses to invite your business to another accounts event', function (): void {
         $event = $this->context->runAs($this->organizer, fn () => app(CreateEvent::class)(
             'Festival Ajeno', now()->addWeek(), now()->addWeeks(2)
         ));
 
         $other = app(CreateTenant::class)('Otra Productora', null, TenantType::Organizer);
 
-        $this->context->runAs($other, fn () => app(CreateEventOutlet::class)(
-            $event, 'Barra intrusa', OperatingUnitKind::Bar
-        ));
-    })->throws(InvalidOperatingUnitException::class);
+        // El negocio nace en la otra cuenta: invitarlo al evento ajeno es
+        // el primer muro, antes incluso de llegar al punto de venta.
+        $this->context->runAs($other, fn () => outletFor($event, 'Barra intrusa', OperatingUnitKind::Bar));
+    })->throws(VendorException::class);
 
     it('hides events and units of one account from another', function (): void {
         $this->context->runAs($this->organizer, function (): void {
             $event = app(CreateEvent::class)('Festival Privado', now()->addWeek(), now()->addWeeks(2));
-            app(CreateEventOutlet::class)($event, 'Barra privada', OperatingUnitKind::Bar);
+            outletFor($event, 'Barra privada', OperatingUnitKind::Bar);
         });
         $this->context->runAs($this->business, fn () => app(CreateBranch::class)('Sucursal Privada'));
 
@@ -120,7 +120,7 @@ describe('consultas por mundo y vista neutral', function (): void {
     beforeEach(function (): void {
         $this->context->runAs($this->organizer, function (): void {
             $event = app(CreateEvent::class)('Festival Mixto', now()->addWeek(), now()->addWeeks(2));
-            app(CreateEventOutlet::class)($event, 'Barra A', OperatingUnitKind::Bar);
+            outletFor($event, 'Barra A', OperatingUnitKind::Bar);
         });
     });
 

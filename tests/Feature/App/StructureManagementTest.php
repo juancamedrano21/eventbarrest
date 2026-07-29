@@ -120,6 +120,8 @@ describe('alta de eventos y sus puntos de venta', function (): void {
             'Festival del Mar', now()->addWeek(), now()->addWeeks(2)
         ));
 
+        $vendor = $this->context->runAs($this->organizer, fn () => vendorIn($event, 'Bar Manolo'));
+
         signInTo($this, $this->organizerOwner, $this->organizer);
 
         Livewire::test(OutletsRelationManager::class, [
@@ -127,6 +129,7 @@ describe('alta de eventos y sus puntos de venta', function (): void {
             'pageClass' => EditEvent::class,
         ])
             ->callAction(TestAction::make('create')->table(), data: [
+                'vendor_id' => $vendor->id,
                 'name' => 'Cocina central',
                 'kind' => OperatingUnitKind::Kitchen->value,
                 'status' => OperatingUnitStatus::Active->value,
@@ -134,6 +137,7 @@ describe('alta de eventos y sus puntos de venta', function (): void {
             ->assertHasNoActionErrors();
 
         expect(OperatingUnit::query()->where('name', 'Cocina central')->sole())
+            ->vendor_id->toBe($vendor->id)
             ->type->toBe(OperatingUnitType::EventOutlet)
             ->kind->toBe(OperatingUnitKind::Kitchen)
             ->status->toBe(OperatingUnitStatus::Active)

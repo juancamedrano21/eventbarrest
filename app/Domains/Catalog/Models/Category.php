@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Enums\DispatchArea;
+use App\Domains\EventManagement\Concerns\BelongsToVendor;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use Database\Factories\CategoryFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Category extends Model
 {
     use BelongsToTenant;
+    use BelongsToVendor;
 
     /** @use HasFactory<CategoryFactory> */
     use HasFactory;

@@ -6,18 +6,21 @@ namespace App\Domains\EventManagement\Actions;
 
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
+use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
 
 /**
- * Alta de un punto de venta (barra o cocina) dentro de un evento. El modelo
- * EventOutlet es quien garantiza que el evento exista, sea de la cuenta
- * activa y que esta sea de organizador.
+ * Alta de un punto de venta (barra o cocina) que un negocio atiende dentro
+ * de un evento. El modelo EventOutlet garantiza que el evento y el negocio
+ * sean de la cuenta activa, que esta sea de organizador, y que el negocio
+ * participe de verdad en ese evento.
  */
 class CreateEventOutlet
 {
     public function __invoke(
         Event $event,
+        Vendor $vendor,
         string $name,
         OperatingUnitKind $kind,
         OperatingUnitStatus $status = OperatingUnitStatus::Active,
@@ -29,6 +32,7 @@ class CreateEventOutlet
         ]);
 
         $outlet->event_id = $event->id;
+        $outlet->vendor_id = $vendor->id;
         $outlet->save();
 
         return $outlet;

@@ -2,6 +2,14 @@
 
 declare(strict_types=1);
 
+use App\Domains\EventManagement\Actions\CreateEventOutlet;
+use App\Domains\EventManagement\Actions\CreateVendor;
+use App\Domains\EventManagement\Actions\InviteVendorToEvent;
+use App\Domains\EventManagement\Models\Event;
+use App\Domains\EventManagement\Models\EventOutlet;
+use App\Domains\EventManagement\Models\Vendor;
+use App\Domains\Operations\Enums\OperatingUnitKind;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\Concerns\RefreshesDatabaseWithFixtures;
 use Tests\TestCase;
@@ -19,4 +27,34 @@ function actAsTenantPermissions(?int $tenantId): void
 {
     setPermissionsTeamId($tenantId);
     app(PermissionRegistrar::class)->forgetCachedPermissions();
+}
+
+/**
+ * Un punto de venta necesita ahora un negocio invitado al evento: los
+ * negocios son quienes venden dentro de un festival. El helper crea el
+ * negocio, lo invita y devuelve el punto listo.
+ */
+function outletFor(
+    Event $event,
+    string $name,
+    OperatingUnitKind $kind,
+    ?Vendor $vendor = null,
+): EventOutlet {
+    $vendor ??= vendorIn($event);
+
+    return app(CreateEventOutlet::class)($event, $vendor, $name, $kind);
+}
+
+/** Da de alta un negocio y lo invita al evento. */
+function vendorIn(
+    Event $event,
+    ?string $name = null,
+): Vendor {
+    $vendor = app(CreateVendor::class)(
+        $name ?? 'Negocio '.Str::random(6)
+    );
+
+    app(InviteVendorToEvent::class)($event, $vendor);
+
+    return $vendor;
 }

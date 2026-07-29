@@ -6,6 +6,7 @@ namespace App\Domains\Catalog\Models;
 
 use App\Domains\Catalog\Enums\ProductType;
 use App\Domains\Catalog\Exceptions\CatalogException;
+use App\Domains\EventManagement\Concerns\BelongsToVendor;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use Database\Factories\ProductFactory;
@@ -38,6 +39,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Product extends Model
 {
     use BelongsToTenant;
+    use BelongsToVendor;
 
     /** @use HasFactory<ProductFactory> */
     use HasFactory;

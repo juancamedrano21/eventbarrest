@@ -12,6 +12,7 @@ use Carbon\CarbonInterface;
 use Database\Factories\EventFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -62,6 +63,26 @@ class Event extends Model
                 throw InvalidOperatingUnitException::wrongAccountType($tenant->type);
             }
         });
+    }
+
+    /**
+     * Los negocios que participan en este evento.
+     *
+     * @return BelongsToMany<Vendor, $this>
+     */
+    public function vendors(): BelongsToMany
+    {
+        return $this->belongsToMany(Vendor::class, 'event_vendor')
+            ->withPivot(['id', 'tenant_id', 'commission_bps'])
+            ->withTimestamps();
+    }
+
+    /**
+     * @return HasMany<EventVendor, $this>
+     */
+    public function participations(): HasMany
+    {
+        return $this->hasMany(EventVendor::class);
     }
 
     /**

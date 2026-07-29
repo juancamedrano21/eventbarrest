@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domains\EventManagement\Models;
 
+use App\Domains\EventManagement\Concerns\BelongsToVendor;
+use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Operations\Enums\OperatingUnitType;
 use App\Domains\Operations\Exceptions\InvalidOperatingUnitException;
 use App\Domains\Operations\Models\OperatingUnit;
@@ -23,10 +25,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * relación alguna con su negocio de la plataforma.
  *
  * @property int|null $event_id Nulo solo antes de guardar: el hook creating lo exige
+ * @property int|null $vendor_id El negocio que atiende el punto; el hook creating lo exige
  * @property-read Event $event
+ * @property-read Vendor|null $vendor
  */
 class EventOutlet extends OperatingUnit
 {
+    use BelongsToVendor;
+
     /** @use HasFactory<EventOutletFactory> */
     use HasFactory;
 
@@ -58,6 +64,29 @@ class EventOutlet extends OperatingUnit
 
             if ($eventTenantId !== $outlet->tenant_id) {
                 throw InvalidOperatingUnitException::eventOutsideTenant();
+            }
+
+            // El punto de venta lo atiende un negocio, y ese negocio tiene
+            // que estar invitado al evento: sin participación no hay barra.
+            if ($outlet->vendor_id === null) {
+                throw VendorException::outletNeedsAVendor();
+            }
+
+            $vendor = Vendor::query()->withoutTenancy()->find($outlet->vendor_id);
+
+            if ($vendor === null || $vendor->tenant_id !== $outlet->tenant_id) {
+                throw VendorException::vendorOutsideTenant();
+            }
+
+            $participates = EventVendor::query()->withoutTenancy()
+                ->where('event_id', $outlet->event_id)
+                ->where('vendor_id', $outlet->vendor_id)
+                ->exists();
+
+            if (! $participates) {
+                $event = Event::query()->withoutTenancy()->find($outlet->event_id);
+
+                throw VendorException::vendorNotInEvent($vendor->name, (string) $event?->name);
             }
         });
     }

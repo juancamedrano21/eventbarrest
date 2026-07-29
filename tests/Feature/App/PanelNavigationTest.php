@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 use App\Domains\Business\Actions\CreateBranch;
 use App\Domains\EventManagement\Actions\CreateEvent;
-use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
 use App\Domains\Operations\Enums\OperatingUnitKind;
@@ -88,7 +87,7 @@ it('never lists event outlets among the branches', function (): void {
     $outlet = $context->runAs($this->organizer, function () {
         $event = app(CreateEvent::class)('Festival', now()->addWeek(), now()->addWeeks(2));
 
-        return app(CreateEventOutlet::class)($event, 'Barra principal', OperatingUnitKind::Bar);
+        return outletFor($event, 'Barra principal', OperatingUnitKind::Bar);
     });
 
     signInTo($this, $this->businessOwner, $this->business);

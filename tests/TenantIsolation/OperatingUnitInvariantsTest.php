@@ -6,7 +6,6 @@ use App\Domains\Business\Actions\CreateBranch;
 use App\Domains\Business\Models\Branch;
 use App\Domains\Business\Models\BusinessAccount;
 use App\Domains\EventManagement\Actions\CreateEvent;
-use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitType;
@@ -73,8 +72,7 @@ describe('la estructura es de clases, no de datos', function (): void {
 
 describe('la unidad no cambia de evento', function (): void {
     it('refuses to move an outlet to another event with save', function (): void {
-        $outlet = $this->context->runAs($this->organizer, fn () => app(CreateEventOutlet::class)(
-            $this->event, 'Barra principal', OperatingUnitKind::Bar
+        $outlet = $this->context->runAs($this->organizer, fn () => outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar
         ));
 
         $other = $this->context->runAs($this->organizer, fn () => app(CreateEvent::class)(
@@ -87,8 +85,7 @@ describe('la unidad no cambia de evento', function (): void {
     })->throws(InvalidOperatingUnitException::class);
 
     it('refuses to move an outlet with a mass update', function (): void {
-        $this->context->runAs($this->organizer, fn () => app(CreateEventOutlet::class)(
-            $this->event, 'Barra principal', OperatingUnitKind::Bar
+        $this->context->runAs($this->organizer, fn () => outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar
         ));
 
         $this->context->set($this->organizer);
@@ -103,8 +100,7 @@ describe('la unidad no cambia de evento', function (): void {
     })->throws(InvalidOperatingUnitException::class);
 
     it('still allows ordinary edits', function (): void {
-        $outlet = $this->context->runAs($this->organizer, fn () => app(CreateEventOutlet::class)(
-            $this->event, 'Barra principal', OperatingUnitKind::Bar
+        $outlet = $this->context->runAs($this->organizer, fn () => outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar
         ));
 
         $this->context->set($this->organizer);
@@ -163,20 +159,30 @@ describe('la base de datos también protege', function (): void {
         expect(DB::table('operating_units')->where('name', 'Sucursal Centro')->count())->toBe(2);
     });
 
-    it('refuses two outlets with the same name in one event', function (): void {
+    it('refuses two outlets with the same name in one business', function (): void {
         $this->context->set($this->organizer);
-        app(CreateEventOutlet::class)($this->event, 'Barra principal', OperatingUnitKind::Bar);
+        $vendor = vendorIn($this->event, 'Bar Manolo');
+        outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar, $vendor);
 
-        expect(fn () => app(CreateEventOutlet::class)($this->event, 'Barra principal', OperatingUnitKind::Bar))
+        expect(fn () => outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar, $vendor))
             ->toThrow(UniqueConstraintViolationException::class);
+    });
+
+    it('lets two businesses have their own barra principal in one event', function (): void {
+        $this->context->set($this->organizer);
+
+        outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar, vendorIn($this->event, 'Bar Manolo'));
+        outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar, vendorIn($this->event, 'Pizzería Napoli'));
+
+        expect(DB::table('operating_units')->where('name', 'Barra principal')->count())->toBe(2);
     });
 
     it('allows the same outlet name in different events', function (): void {
         $this->context->set($this->organizer);
         $other = app(CreateEvent::class)('Otro Festival', now()->addMonth(), now()->addMonth()->addDays(2));
 
-        app(CreateEventOutlet::class)($this->event, 'Barra principal', OperatingUnitKind::Bar);
-        app(CreateEventOutlet::class)($other, 'Barra principal', OperatingUnitKind::Bar);
+        outletFor($this->event, 'Barra principal', OperatingUnitKind::Bar);
+        outletFor($other, 'Barra principal', OperatingUnitKind::Bar);
 
         expect(DB::table('operating_units')->where('name', 'Barra principal')->count())->toBe(2);
     });
