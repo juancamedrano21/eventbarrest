@@ -7,6 +7,7 @@ namespace App\Filament\App\Resources\Events;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Domains\Identity\Enums\Permission;
+use App\Domains\Identity\Exceptions\MissingPermissionException;
 use App\Filament\App\Resources\Events\Pages\CreateEvent;
 use App\Filament\App\Resources\Events\Pages\EditEvent;
 use App\Filament\App\Resources\Events\Pages\ListEvents;
@@ -57,8 +58,19 @@ class EventResource extends Resource
         return static::shouldRegisterNavigation();
     }
 
+    /**
+     * Un 403 seco obliga a depurar a ciegas. Si el usuario está en el mundo
+     * correcto pero le falta el permiso, se lo decimos con nombre.
+     */
     public static function canCreate(): bool
     {
+        $user = Filament::auth()->user();
+
+        if ($user !== null && $user->tenant instanceof OrganizerAccount
+            && ! $user->can(Permission::EventsManage->value)) {
+            throw MissingPermissionException::for(Permission::EventsManage);
+        }
+
         return static::canViewAny();
     }
 

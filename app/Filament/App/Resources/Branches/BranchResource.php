@@ -7,6 +7,7 @@ namespace App\Filament\App\Resources\Branches;
 use App\Domains\Business\Models\Branch;
 use App\Domains\Business\Models\BusinessAccount;
 use App\Domains\Identity\Enums\Permission;
+use App\Domains\Identity\Exceptions\MissingPermissionException;
 use App\Filament\App\Resources\Branches\Pages\CreateBranch;
 use App\Filament\App\Resources\Branches\Pages\EditBranch;
 use App\Filament\App\Resources\Branches\Pages\ListBranches;
@@ -60,6 +61,13 @@ class BranchResource extends Resource
 
     public static function canCreate(): bool
     {
+        $user = Filament::auth()->user();
+
+        if ($user !== null && $user->tenant instanceof BusinessAccount
+            && ! $user->can(Permission::OperatingUnitsManage->value)) {
+            throw MissingPermissionException::for(Permission::OperatingUnitsManage);
+        }
+
         return static::canViewAny();
     }
 
