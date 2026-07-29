@@ -41,3 +41,23 @@ it('lets a fresh organizer owner reach the catalog', function (): void {
 it('keeps the branches screen out of an organizer account', function (): void {
     $this->actingAs($this->owner)->get('/app/branches')->assertForbidden();
 });
+
+it('survives the roles relation being loaded before the team is set', function (): void {
+    // El fallo real que sufrió una cuenta nueva: si algo consulta los roles
+    // antes de que el middleware fije el equipo, Eloquent cachea la relación
+    // vacía y el usuario pierde todos sus permisos durante la petición.
+    $this->actingAs($this->owner);
+    setPermissionsTeamId(null);
+    $this->owner->roles->count();
+
+    $this->get('/app/events/create')->assertOk();
+});
+
+it('recovers permissions for the whole request, not just the first check', function (): void {
+    $this->actingAs($this->owner);
+    setPermissionsTeamId(null);
+    $this->owner->roles->count();
+
+    $this->get('/app/events')->assertOk();
+    $this->get('/app/products')->assertOk();
+});

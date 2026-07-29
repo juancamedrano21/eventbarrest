@@ -29,6 +29,15 @@ class SetTenantContext
         if ($tenant !== null && $tenant->status !== TenantStatus::Suspended) {
             app(TenantContext::class)->set($tenant);
             app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+
+            // La relación roles() se filtra por el equipo VIGENTE cuando se
+            // carga. Si algo la tocó antes de esta línea (autenticación,
+            // un observer, una vista), quedó cacheada con equipo nulo — es
+            // decir, vacía — y el usuario perdería todos sus permisos
+            // durante el resto de la petición. Se descarta para que se
+            // vuelva a cargar ya con el equipo correcto.
+            // Dentro de este if el usuario existe: sin él no habría tenant.
+            $user->unsetRelation('roles')->unsetRelation('permissions');
         }
 
         return $next($request);
