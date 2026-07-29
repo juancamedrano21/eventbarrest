@@ -35,6 +35,14 @@ describe('cada mundo tiene su clase', function (): void {
             ->and(Tenant::factory()->organizer()->create())->toBeInstanceOf(OrganizerAccount::class);
     });
 
+    it('derives implicit foreign keys from the base class, not the child', function (): void {
+        // Sin esto, la pestaña Equipo del admin revienta en cuentas de
+        // organizador: users() derivaría organizer_account_id.
+        expect($this->organizer->getForeignKey())->toBe('tenant_id')
+            ->and($this->business->getForeignKey())->toBe('tenant_id')
+            ->and($this->organizer->users()->count())->toBe(0);
+    });
+
     it('creates accounts as their world class', function (): void {
         expect($this->business)->toBeInstanceOf(BusinessAccount::class)
             ->and($this->organizer)->toBeInstanceOf(OrganizerAccount::class)

@@ -6,6 +6,7 @@ namespace App\Support\Eloquent;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 /**
  * Lado hijo de la herencia sobre una sola tabla (STI).
@@ -30,6 +31,19 @@ trait IsChildModel
         static::creating(function (Model $model): void {
             $model->setAttribute(static::childTypeColumn(), static::childTypeValue());
         });
+    }
+
+    /**
+     * Las claves foráneas implícitas también apuntan a la base: la fila de
+     * un OrganizerAccount se referencia como tenant_id, no como
+     * organizer_account_id. Sin esto, cualquier hasMany del padre revienta
+     * al llamarse sobre una instancia hija.
+     */
+    public function getForeignKey(): string
+    {
+        $parent = get_parent_class($this);
+
+        return Str::snake(class_basename($parent !== false ? $parent : static::class)).'_'.$this->getKeyName();
     }
 
     /**
