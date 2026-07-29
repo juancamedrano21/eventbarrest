@@ -8,10 +8,12 @@ use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\Models\Vendor;
+use App\Domains\Identity\Enums\Permission;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -20,6 +22,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rules\Unique;
 
 /**
@@ -34,6 +37,15 @@ class OutletsRelationManager extends RelationManager
     protected static ?string $title = 'Puntos de venta';
 
     protected static ?string $modelLabel = 'punto de venta';
+
+    /**
+     * Los relation managers no heredan el gate del recurso padre: sin esto,
+     * cualquiera con acceso al evento podía operar aquí.
+     */
+    public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
+    {
+        return Filament::auth()->user()?->can(Permission::EventOutletsManage->value) === true;
+    }
 
     public function form(Schema $schema): Schema
     {

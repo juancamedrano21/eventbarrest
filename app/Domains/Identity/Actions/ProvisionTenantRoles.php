@@ -20,8 +20,34 @@ use Spatie\Permission\PermissionRegistrar;
  */
 class ProvisionTenantRoles
 {
+    /** Todos los roles existen y cada uno tiene exactamente sus permisos. */
+    private function alreadyProvisioned(Tenant $tenant): bool
+    {
+        $roles = Role::query()
+            ->where('tenant_id', $tenant->id)
+            ->withCount('permissions')
+            ->get()
+            ->keyBy('name');
+
+        foreach (RoleEnum::cases() as $case) {
+            $role = $roles->get($case->value);
+
+            if ($role === null || $role->permissions_count !== count($case->permissions())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function __invoke(Tenant $tenant): void
     {
+        // Salida temprana: crear un usuario llamaba a esto y, aunque no
+        // cambiara nada, vaciaba la caché de permisos de TODA la plataforma.
+        if ($this->alreadyProvisioned($tenant)) {
+            return;
+        }
+
         $registrar = app(PermissionRegistrar::class);
         $previousTeam = $registrar->getPermissionsTeamId();
 

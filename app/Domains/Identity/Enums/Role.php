@@ -72,7 +72,7 @@ enum Role: string implements HasLabel
             self::EventManager => [
                 Permission::EventsManage->value,
                 Permission::EventsSettle->value,
-                Permission::OperatingUnitsManage->value,
+                Permission::EventOutletsManage->value,
                 Permission::InventoryAllocateToEvent->value,
                 Permission::ReportsViewUnit->value,
             ],

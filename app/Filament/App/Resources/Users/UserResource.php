@@ -18,6 +18,7 @@ use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class UserResource extends Resource
 {
@@ -51,6 +52,21 @@ class UserResource extends Resource
     public static function canViewAny(): bool
     {
         return Filament::auth()->user()?->can(Permission::UsersManage->value) === true;
+    }
+
+    public static function canCreate(): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return static::canViewAny();
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return static::canViewAny();
     }
 
     public static function form(Schema $schema): Schema

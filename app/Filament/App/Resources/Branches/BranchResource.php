@@ -51,7 +51,7 @@ class BranchResource extends Resource
         $user = Filament::auth()->user();
 
         return $user?->tenant instanceof BusinessAccount
-            && $user->can(Permission::OperatingUnitsManage->value);
+            && $user->can(Permission::BranchesManage->value);
     }
 
     public static function canViewAny(): bool
@@ -64,8 +64,8 @@ class BranchResource extends Resource
         $user = Filament::auth()->user();
 
         if ($user !== null && $user->tenant instanceof BusinessAccount
-            && ! $user->can(Permission::OperatingUnitsManage->value)) {
-            throw MissingPermissionException::for(Permission::OperatingUnitsManage);
+            && ! $user->can(Permission::BranchesManage->value)) {
+            throw MissingPermissionException::for(Permission::BranchesManage);
         }
 
         return static::canViewAny();

@@ -20,16 +20,20 @@ class AssignTenantRole
             return $user;
         }
 
-        // Un negocio sin dueño se queda sin nadie que pueda administrarlo.
-        if ($role !== RoleEnum::Owner && app(TenantOwners::class)->isLastOwner($user)) {
-            throw LastOwnerException::cannotDemote($user->name);
-        }
-
         $registrar = app(PermissionRegistrar::class);
         $previousTeam = $registrar->getPermissionsTeamId();
 
         try {
+            // El equipo se fija ANTES de cualquier comprobación: la acción no
+            // hereda el del ambiente, que fuera del panel de negocio puede no
+            // existir (panel de plataforma, comandos, jobs).
             $registrar->setPermissionsTeamId($tenantId);
+
+            // Una cuenta sin dueño se queda sin nadie que pueda administrarla.
+            if ($role !== RoleEnum::Owner && app(TenantOwners::class)->isLastOwner($user)) {
+                throw LastOwnerException::cannotDemote($user->name);
+            }
+
             $user->syncRoles([$role->value]);
         } finally {
             $registrar->setPermissionsTeamId($previousTeam);

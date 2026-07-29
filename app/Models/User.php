@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Domains\Identity\Enums\Role;
+use App\Domains\Identity\Queries\UserRoles;
 use App\Domains\Platform\Enums\TenantStatus;
 use App\Domains\Platform\Models\Tenant;
 use Database\Factories\UserFactory;
@@ -63,6 +65,21 @@ class User extends Authenticatable implements FilamentUser
         return $this->belongsTo(Tenant::class);
     }
 
+    /**
+     * Roles cuyo trabajo entero ocurre en el POS: hoy, el cajero. Entrar al
+     * panel de gestión solo les mostraría un menú vacío.
+     */
+    public function onlyOperatesThePos(): bool
+    {
+        // Consulta explícita, no getRoleNames(): canAccessPanel se evalúa al
+        // autenticar, antes de que el middleware fije el equipo de permisos,
+        // y ahí la relación de roles vendría vacía.
+        $roles = app(UserRoles::class)->namesFor($this);
+
+        return $roles->isNotEmpty()
+            && $roles->diff([Role::Cashier->value])->isEmpty();
+    }
+
     public function isPlatformStaff(): bool
     {
         return $this->is_platform_admin === true;
@@ -75,8 +92,11 @@ class User extends Authenticatable implements FilamentUser
             'admin' => $this->isPlatformStaff(),
             // El panel del negocio exige pertenecer a un tenant que no esté
             // suspendido: suspender corta el acceso de todo su equipo.
+            // El cajero queda fuera a propósito: su trabajo ocurre en el POS,
+            // y aquí solo vería un panel sin una sola pantalla.
             'app' => $this->tenant !== null
-                && $this->tenant->status !== TenantStatus::Suspended,
+                && $this->tenant->status !== TenantStatus::Suspended
+                && ! $this->onlyOperatesThePos(),
             default => false,
         };
     }

@@ -54,10 +54,13 @@ class AppPanelProvider extends PanelProvider
                 DisableBladeIconComponents::class,
                 DispatchServingFilamentEvent::class,
             ])
+            // isPersistent: las páginas reautorizan en cada hidratación de
+            // Livewire (buscar, paginar, abrir un modal), y esas peticiones
+            // no vuelven a pasar por el stack normal del panel. Sin esto,
+            // llegan sin equipo de permisos y responden 403.
             ->authMiddleware([
                 Authenticate::class,
-                // Después de autenticar: sin usuario no hay tenant que fijar.
                 SetTenantContext::class,
-            ]);
+            ], isPersistent: true);
     }
 }

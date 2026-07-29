@@ -16,11 +16,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // En el grupo web, no en el panel: Filament navega por SPA y pide el
-        // contenido a la ruta de Livewire, que es global y no hereda los
-        // middleware del panel. Sin el contexto ahí, el usuario llega sin
-        // equipo de permisos y todas las pantallas responden 403 mientras el
-        // menú —pintado en la carga inicial— se ve correcto.
+        // Las páginas de Filament reautorizan en CADA petición de Livewire
+        // (hook de hidratación), no solo al montar: buscar en una tabla,
+        // paginar o abrir un modal pasan por el endpoint global de Livewire,
+        // que no hereda el stack del panel. Sin el contexto ahí, esa petición
+        // llega sin equipo de permisos y responde 403 aunque la pantalla se
+        // hubiera abierto bien.
+        //
+        // Ojo: esto NO cubre las rutas del panel — Filament les arma su propio
+        // stack sin el grupo web. El panel lo cubre por su lado, con
+        // authMiddleware(..., isPersistent: true) en AppPanelProvider.
         $middleware->web(append: [
             SetTenantContext::class,
         ]);

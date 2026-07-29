@@ -13,7 +13,8 @@ enum Permission: string
 {
     case UsersManage = 'users.manage';
     case CatalogManage = 'catalog.manage';
-    case OperatingUnitsManage = 'operating_units.manage';
+    case BranchesManage = 'branches.manage';
+    case EventOutletsManage = 'event_outlets.manage';
     case VendorsManage = 'vendors.manage';
     case EventsManage = 'events.manage';
     case EventsSettle = 'events.settle';

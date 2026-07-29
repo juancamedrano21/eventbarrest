@@ -8,15 +8,18 @@ use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Enums\VendorStatus;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\Vendor;
+use App\Domains\Identity\Enums\Permission;
 use Filament\Actions\Action;
 use Filament\Actions\AttachAction;
 use Filament\Actions\DetachAction;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Qué negocios participan en este evento y con qué comisión. Es el paso que
@@ -30,6 +33,15 @@ class VendorsRelationManager extends RelationManager
     protected static ?string $title = 'Negocios participantes';
 
     protected static ?string $modelLabel = 'negocio';
+
+    /**
+     * Los relation managers no heredan el gate del recurso padre: sin esto,
+     * cualquiera con acceso al evento podía operar aquí.
+     */
+    public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
+    {
+        return Filament::auth()->user()?->can(Permission::EventsManage->value) === true;
+    }
 
     public function form(Schema $schema): Schema
     {
