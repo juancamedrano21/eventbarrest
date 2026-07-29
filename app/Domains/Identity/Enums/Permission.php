@@ -14,6 +14,7 @@ enum Permission: string
     case UsersManage = 'users.manage';
     case CatalogManage = 'catalog.manage';
     case OperatingUnitsManage = 'operating_units.manage';
+    case VendorsManage = 'vendors.manage';
     case EventsManage = 'events.manage';
     case EventsSettle = 'events.settle';
     case InventoryManage = 'inventory.manage';

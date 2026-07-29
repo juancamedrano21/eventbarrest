@@ -45,9 +45,9 @@ enum Role: string implements HasLabel
     public function description(): string
     {
         return match ($this) {
-            self::Owner => 'Control total del negocio. Siempre debe existir al menos uno.',
-            self::Admin => 'Gestión operativa completa, salvo eliminar el negocio.',
-            self::EventManager => 'Crea y liquida eventos y sus puntos de venta.',
+            self::Owner => 'Control total de la cuenta. Siempre debe existir al menos uno.',
+            self::Admin => 'Gestión operativa completa: da de alta negocios, catálogo y equipo.',
+            self::EventManager => 'Crea y liquida eventos, e invita a ellos los negocios ya dados de alta.',
             self::UnitManager => 'Administra su sucursal o punto de venta: inventario, personal, cierres.',
             self::Warehouse => 'Compras, recepción, transferencias y conteos. Sin acceso a ventas.',
             self::Cashier => 'Opera el POS: órdenes, cobros y su propia caja.',

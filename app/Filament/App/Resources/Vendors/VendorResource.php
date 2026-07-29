@@ -52,7 +52,7 @@ class VendorResource extends Resource
         $user = Filament::auth()->user();
 
         return $user?->tenant instanceof OrganizerAccount
-            && $user->can(Permission::EventsManage->value);
+            && $user->can(Permission::VendorsManage->value);
     }
 
     public static function canViewAny(): bool

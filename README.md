@@ -132,10 +132,27 @@ qué catálogo ve el POS y por qué impresora salen las comandas.
 El staff de plataforma **no** entra en `/app`: no pertenece a ningún negocio.
 Para asistir a un tenant se usará suplantación auditada, no un acceso directo.
 
-Los roles son **por negocio** (spatie/permission en modo teams, con `tenant_id`
+Los roles son **por cuenta** (spatie/permission en modo teams, con `tenant_id`
 como equipo): `owner`, `admin`, `event_manager`, `unit_manager`, `warehouse` y
-`cashier`, con los permisos de la matriz del documento 04. Un rol concedido en un
-negocio no concede nada en otro.
+`cashier`. Un rol concedido en una cuenta no concede nada en otra.
+
+**Quién puede qué en una cuenta de organizador** — administrar la cuenta y
+gestionar un evento son cosas distintas, y tienen permisos distintos:
+
+| Acción | Permiso | Dueño | Admin | Gerente de eventos |
+|---|---|:-:|:-:|:-:|
+| Dar de alta negocios | `vendors.manage` | Sí | Sí | — |
+| Crear eventos e invitar negocios | `events.manage` | Sí | Sí | Sí |
+| Puntos de venta | `operating_units.manage` | Sí | Sí | Sí |
+| Catálogo e insumos | `catalog.manage` | Sí | Sí | — |
+| Equipo | `users.manage` | Sí | Sí | — |
+
+La lógica: **quién administra la cuenta decide qué negocios existen; quien
+gestiona un evento decide cuáles participan en él.** El gerente de eventos monta
+el festival con los negocios ya dados de alta, pero no da de alta negocios nuevos.
+
+Tras añadir un permiso al catálogo, las cuentas existentes lo reciben con
+`php artisan identity:provision-roles`.
 
 **Onboarding de un negocio nuevo:** en `/admin` se crea el negocio (sus roles se
 aprovisionan solos) y, en su pestaña *Equipo*, se le da su primer **dueño**. Sin
