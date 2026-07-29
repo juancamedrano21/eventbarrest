@@ -14,7 +14,6 @@ use App\Filament\App\Resources\Branches\BranchResource;
 use App\Filament\App\Resources\Branches\Pages\ListBranches;
 use App\Filament\App\Resources\Events\EventResource;
 use App\Filament\App\Resources\Events\Pages\ListEvents;
-use Filament\Facades\Filament;
 use Livewire\Livewire;
 
 beforeEach(function (): void {
@@ -26,19 +25,6 @@ beforeEach(function (): void {
 });
 
 afterEach(fn () => app(TenantContext::class)->clear());
-
-/**
- * Livewire::test monta el componente sin pasar por el middleware, así que el
- * contexto de tenant se fija a mano — igual que haría SetTenantContext en una
- * petición real. Sin él, el aislamiento falla cerrado y no se ve ningún dato.
- */
-function signInTo(object $test, $user, $tenant): void
-{
-    $test->actingAs($user);
-    app(TenantContext::class)->set($tenant);
-    actAsTenantPermissions($tenant->id);
-    Filament::setCurrentPanel('app');
-}
 
 it('shows branches only to business accounts', function (): void {
     signInTo($this, $this->businessOwner, $this->business);

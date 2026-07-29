@@ -9,6 +9,8 @@ use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Operations\Enums\OperatingUnitKind;
+use App\Domains\Tenancy\TenantContext;
+use Filament\Facades\Filament;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\Concerns\RefreshesDatabaseWithFixtures;
@@ -57,4 +59,17 @@ function vendorIn(
     app(InviteVendorToEvent::class)($event, $vendor);
 
     return $vendor;
+}
+
+/**
+ * Livewire::test monta el componente sin pasar por el middleware, así que el
+ * contexto de tenant se fija a mano — igual que haría SetTenantContext en una
+ * petición real. Sin él, el aislamiento falla cerrado y no se ve ningún dato.
+ */
+function signInTo(object $test, $user, $tenant): void
+{
+    $test->actingAs($user);
+    app(TenantContext::class)->set($tenant);
+    actAsTenantPermissions($tenant->id);
+    Filament::setCurrentPanel('app');
 }
