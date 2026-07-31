@@ -6,6 +6,8 @@ namespace App\Filament\App\Resources\Products\Tables;
 
 use App\Domains\Catalog\Enums\ProductType;
 use App\Domains\Catalog\Models\Product;
+use App\Domains\EventManagement\Models\Vendor;
+use App\Filament\App\Support\VendorPanel;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -26,6 +28,10 @@ class ProductsTable
                     ->label('Producto')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('vendor.name')
+                    ->label('Comercio')
+                    ->placeholder('De la cuenta')
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 TextColumn::make('category.name')
                     ->label('Categoría')
                     ->sortable(),
@@ -57,6 +63,10 @@ class ProductsTable
                     ->boolean(),
             ])
             ->filters([
+                SelectFilter::make('vendor_id')
+                    ->label('Comercio')
+                    ->options(fn (): array => Vendor::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 SelectFilter::make('category_id')
                     ->label('Categoría')
                     ->relationship('category', 'name'),

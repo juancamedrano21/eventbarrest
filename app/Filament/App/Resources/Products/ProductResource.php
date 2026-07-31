@@ -11,6 +11,7 @@ use App\Filament\App\Resources\Products\Pages\EditProduct;
 use App\Filament\App\Resources\Products\Pages\ListProducts;
 use App\Filament\App\Resources\Products\Schemas\ProductForm;
 use App\Filament\App\Resources\Products\Tables\ProductsTable;
+use App\Filament\App\Support\VendorPanel;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
@@ -21,9 +22,10 @@ use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
 /**
- * El catálogo sirve a los dos mundos por igual: un negocio y una productora
- * definen qué venden de la misma manera. Por eso no hay chequeo de mundo,
- * solo de permiso.
+ * El catálogo sirve a los dos mundos, pero no igual: en una cuenta de
+ * negocio lo administra el equipo de la cuenta; en una de organizador
+ * pertenece a los comercios del evento — solo su personal lo escribe, y el
+ * organizador lo mira consolidado.
  */
 class ProductResource extends Resource
 {
@@ -48,12 +50,12 @@ class ProductResource extends Resource
 
     public static function canCreate(): bool
     {
-        return static::canViewAny();
+        return static::canViewAny() && VendorPanel::writesAllowed();
     }
 
     public static function canEdit(Model $record): bool
     {
-        return static::canViewAny();
+        return static::canViewAny() && VendorPanel::writesAllowed();
     }
 
     public static function form(Schema $schema): Schema

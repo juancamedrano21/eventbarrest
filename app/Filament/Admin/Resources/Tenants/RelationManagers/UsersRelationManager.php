@@ -54,7 +54,10 @@ class UsersRelationManager extends RelationManager
                     ->dehydrated(),
                 Select::make('role')
                     ->label('Rol')
-                    ->options(RoleEnum::class)
+                    // Desde /admin solo se da de alta equipo de cuenta; el
+                    // personal de los comercios lo asigna el organizador
+                    // desde su propio panel.
+                    ->options(RoleEnum::options(RoleEnum::forAccountStaff()))
                     ->default(RoleEnum::Owner)
                     ->required()
                     ->helperText('El primer usuario de un negocio debe ser Dueño.'),
@@ -105,7 +108,9 @@ class UsersRelationManager extends RelationManager
                     ->schema([
                         Select::make('role')
                             ->label('Rol')
-                            ->options(RoleEnum::class)
+                            ->options(fn (User $record): array => $record->worksForAVendor()
+                                ? RoleEnum::options(RoleEnum::forVendorStaff())
+                                : RoleEnum::options(RoleEnum::forAccountStaff()))
                             ->required(),
                     ])
                     ->action(fn (User $record, array $data) => app(AssignTenantRole::class)(

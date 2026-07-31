@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Identity\Actions;
 
+use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Identity\Enums\Role as RoleEnum;
 use App\Domains\Identity\Exceptions\LastOwnerException;
 use App\Domains\Identity\Queries\TenantOwners;
@@ -18,6 +19,16 @@ class AssignTenantRole
 
         if ($tenantId === null) {
             return $user;
+        }
+
+        // Mismas fronteras que en el alta: el personal de un comercio no
+        // asciende a un rol de cuenta cambiándole el rol después.
+        if ($user->vendor_id !== null && ! $role->isForVendorStaff()) {
+            throw VendorException::roleNotForVendorStaff($role->value);
+        }
+
+        if ($user->vendor_id === null && $role === RoleEnum::VendorManager) {
+            throw VendorException::roleOnlyForVendorStaff($role->value);
         }
 
         $registrar = app(PermissionRegistrar::class);

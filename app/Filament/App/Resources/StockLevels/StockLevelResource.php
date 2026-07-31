@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\StockLevels;
 
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Inventory\Actions\AdjustStock;
 use App\Domains\Inventory\Actions\RegisterPurchase;
@@ -13,6 +14,7 @@ use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Filament\App\Resources\StockLevels\Pages\ListStockLevels;
+use App\Filament\App\Support\VendorPanel;
 use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
@@ -63,7 +65,25 @@ class StockLevelResource extends Resource
 
     public static function canEdit(Model $record): bool
     {
-        return static::canViewAny();
+        return static::canViewAny() && VendorPanel::writesAllowed();
+    }
+
+    /**
+     * El stock no lleva vendor_id propio: pertenece al comercio a través de
+     * su unidad (todo puesto de evento exige comercio). Con comercio activo,
+     * solo sus unidades.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $vendors = app(VendorContext::class);
+
+        return parent::getEloquentQuery()->when(
+            $vendors->check(),
+            fn (Builder $query): Builder => $query->whereHas(
+                'operatingUnit',
+                fn (Builder $unit): Builder => $unit->where('vendor_id', $vendors->id()),
+            ),
+        );
     }
 
     public static function form(Schema $schema): Schema
@@ -83,6 +103,10 @@ class StockLevelResource extends Resource
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with(['operatingUnit', 'inventoryItem']))
             ->columns([
+                TextColumn::make('operatingUnit.vendor.name')
+                    ->label('Comercio')
+                    ->placeholder('—')
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 TextColumn::make('operatingUnit.name')
                     ->label('Unidad')
                     ->sortable(),
@@ -115,6 +139,7 @@ class StockLevelResource extends Resource
                     ->label('Registrar compra')
                     ->icon(Heroicon::OutlinedTruck)
                     ->color('success')
+                    ->visible(fn (): bool => VendorPanel::writesAllowed())
                     ->schema([
                         ...self::unitAndItemSelects(),
                         TextInput::make('quantity')
@@ -143,7 +168,8 @@ class StockLevelResource extends Resource
                     ->label('Ajuste')
                     ->icon(Heroicon::OutlinedScale)
                     ->color('warning')
-                    ->visible(fn (): bool => Filament::auth()->user()?->can(Permission::InventoryAdjust->value) === true)
+                    ->visible(fn (): bool => VendorPanel::writesAllowed()
+                        && Filament::auth()->user()?->can(Permission::InventoryAdjust->value) === true)
                     ->schema([
                         ...self::unitAndItemSelects(),
                         TextInput::make('quantity')
@@ -168,7 +194,8 @@ class StockLevelResource extends Resource
                     ->label('Merma')
                     ->icon(Heroicon::OutlinedTrash)
                     ->color('danger')
-                    ->visible(fn (): bool => Filament::auth()->user()?->can(Permission::InventoryAdjust->value) === true)
+                    ->visible(fn (): bool => VendorPanel::writesAllowed()
+                        && Filament::auth()->user()?->can(Permission::InventoryAdjust->value) === true)
                     ->schema([
                         ...self::unitAndItemSelects(),
                         TextInput::make('quantity')
@@ -191,16 +218,17 @@ class StockLevelResource extends Resource
                 Action::make('traslado')
                     ->label('Traslado')
                     ->icon(Heroicon::OutlinedArrowsRightLeft)
-                    ->visible(fn (): bool => Filament::auth()->user()?->can(Permission::InventoryTransfer->value) === true)
+                    ->visible(fn (): bool => VendorPanel::writesAllowed()
+                        && Filament::auth()->user()?->can(Permission::InventoryTransfer->value) === true)
                     ->schema([
                         Select::make('from_unit_id')
                             ->label('Desde')
-                            ->options(fn (): array => OperatingUnit::query()->pluck('name', 'id')->all())
+                            ->options(fn (): array => self::unitOptions())
                             ->required()
                             ->different('to_unit_id'),
                         Select::make('to_unit_id')
                             ->label('Hacia')
-                            ->options(fn (): array => OperatingUnit::query()->pluck('name', 'id')->all())
+                            ->options(fn (): array => self::unitOptions())
                             ->required()
                             ->different('from_unit_id'),
                         Select::make('inventory_item_id')
@@ -238,7 +266,7 @@ class StockLevelResource extends Resource
         return [
             Select::make('operating_unit_id')
                 ->label('Unidad')
-                ->options(fn (): array => OperatingUnit::query()->pluck('name', 'id')->all())
+                ->options(fn (): array => self::unitOptions())
                 ->required(),
             Select::make('inventory_item_id')
                 ->label('Insumo')
@@ -246,6 +274,23 @@ class StockLevelResource extends Resource
                 ->searchable()
                 ->required(),
         ];
+    }
+
+    /**
+     * Con comercio activo, solo sus unidades: su gente no ve — ni elige —
+     * los puestos de otros comercios. (Los insumos ya vienen filtrados por
+     * el scope de vendor del propio modelo.)
+     *
+     * @return array<int|string, string>
+     */
+    private static function unitOptions(): array
+    {
+        $vendors = app(VendorContext::class);
+
+        return OperatingUnit::query()
+            ->when($vendors->check(), fn ($query) => $query->where('vendor_id', $vendors->id()))
+            ->pluck('name', 'id')
+            ->all();
     }
 
     public static function getPages(): array

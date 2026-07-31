@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\StockMovements;
 
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Inventory\Enums\StockMovementType;
 use App\Domains\Inventory\Models\StockMovement;
 use App\Filament\App\Resources\StockMovements\Pages\ListStockMovements;
+use App\Filament\App\Support\VendorPanel;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
@@ -49,6 +51,23 @@ class StockMovementResource extends Resource
         return false;
     }
 
+    /**
+     * Mismo criterio que Existencias: el libro pertenece al comercio a
+     * través de sus unidades. Con comercio activo, solo lo suyo.
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        $vendors = app(VendorContext::class);
+
+        return parent::getEloquentQuery()->when(
+            $vendors->check(),
+            fn (Builder $query): Builder => $query->whereHas(
+                'operatingUnit',
+                fn (Builder $unit): Builder => $unit->where('vendor_id', $vendors->id()),
+            ),
+        );
+    }
+
     public static function table(Table $table): Table
     {
         return $table
@@ -58,6 +77,10 @@ class StockMovementResource extends Resource
                     ->label('Fecha')
                     ->dateTime('d M Y, H:i')
                     ->sortable(),
+                TextColumn::make('operatingUnit.vendor.name')
+                    ->label('Comercio')
+                    ->placeholder('—')
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 TextColumn::make('type')
                     ->label('Tipo')
                     ->badge(),

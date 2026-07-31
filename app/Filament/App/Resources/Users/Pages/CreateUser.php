@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\Users\Pages;
 
+use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role as RoleEnum;
 use App\Filament\App\Resources\Users\UserResource;
@@ -16,8 +17,10 @@ class CreateUser extends CreateRecord
     protected static string $resource = UserResource::class;
 
     /**
-     * La pertenencia al negocio la fija la acción de dominio a partir del
-     * usuario autenticado; nunca llega desde el formulario.
+     * La pertenencia a la cuenta la fija la acción de dominio a partir del
+     * usuario autenticado; nunca llega desde el formulario. El comercio sí
+     * viene del formulario, pero se resuelve con el scope de tenant activo:
+     * un id ajeno simplemente no se encuentra.
      *
      * @param  array<string, mixed>  $data
      */
@@ -27,12 +30,15 @@ class CreateUser extends CreateRecord
 
         abort_if($tenant === null, 403);
 
+        $vendorId = $data['vendor_id'] ?? null;
+
         return app(CreateTenantUser::class)(
             $tenant,
             $data['name'],
             $data['email'],
             $data['password'],
             RoleEnum::coerce($data['role']),
+            $vendorId === null ? null : Vendor::query()->findOrFail((int) $vendorId),
         );
     }
 }

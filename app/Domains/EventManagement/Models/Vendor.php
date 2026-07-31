@@ -10,6 +10,7 @@ use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Platform\Models\Tenant;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
+use App\Models\User;
 use Database\Factories\VendorFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -65,6 +66,24 @@ class Vendor extends Model
                 throw VendorException::onlyInOrganizerAccounts();
             }
         });
+
+        // La base de datos ya lo restringe (restrictOnDelete); este guard
+        // convierte el error críptico de FK en un mensaje operable.
+        static::deleting(function (Vendor $vendor): void {
+            if ($vendor->users()->exists()) {
+                throw VendorException::hasUsers($vendor->name);
+            }
+        });
+    }
+
+    /**
+     * Su gente: los usuarios que operan únicamente dentro de este comercio.
+     *
+     * @return HasMany<User, $this>
+     */
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
     }
 
     /**

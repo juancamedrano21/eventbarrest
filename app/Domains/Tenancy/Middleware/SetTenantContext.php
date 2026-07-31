@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Domains\Tenancy\Middleware;
 
+use App\Domains\EventManagement\Models\Vendor;
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Platform\Enums\TenantStatus;
 use App\Domains\Tenancy\TenantContext;
 use Closure;
@@ -12,9 +14,11 @@ use Spatie\Permission\PermissionRegistrar;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Fija el tenant de la petición a partir del usuario autenticado, tanto para
- * el aislamiento de datos (TenantContext) como para los roles de
- * spatie/permission (que en modo teams necesita saber el equipo activo).
+ * Fija el contexto de la petición a partir del usuario autenticado: el
+ * tenant, tanto para el aislamiento de datos (TenantContext) como para los
+ * roles de spatie/permission (que en modo teams necesita saber el equipo
+ * activo), y el comercio (VendorContext) cuando el usuario es personal de
+ * uno — ese usuario opera SIEMPRE dentro de su comercio.
  *
  * Sin este middleware el panel del negocio no vería ningún dato: TenantScope
  * falla cerrado a propósito.
@@ -38,6 +42,21 @@ class SetTenantContext
             // vuelva a cargar ya con el equipo correcto.
             // Dentro de este if el usuario existe: sin él no habría tenant.
             $user->unsetRelation('roles')->unsetRelation('permissions');
+
+            // Se limpia antes de fijar: fuera de Octane el contenedor puede
+            // conservar el contexto de una petición anterior (tests, colas).
+            $vendors = app(VendorContext::class);
+            $vendors->clear();
+
+            if ($user->vendor_id !== null) {
+                // Con el tenant ya fijado, el scope de Vendor garantiza que
+                // solo se encuentre un comercio de ESTA cuenta.
+                $vendor = Vendor::query()->find($user->vendor_id);
+
+                if ($vendor !== null) {
+                    $vendors->set($vendor);
+                }
+            }
         }
 
         return $next($request);

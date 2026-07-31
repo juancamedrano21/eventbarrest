@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Domains\EventManagement\Enums\VendorStatus;
+use App\Domains\EventManagement\Exceptions\VendorException;
+use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Identity\Enums\Role;
 use App\Domains\Identity\Queries\UserRoles;
 use App\Domains\Platform\Enums\TenantStatus;
@@ -18,6 +21,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Traits\HasRoles;
 
 /**
@@ -29,14 +33,16 @@ use Spatie\Permission\Traits\HasRoles;
  * SetTenantContext fija el tenant del usuario, y las consultas de usuarios
  * dentro del panel de negocio se acotan explícitamente en su Resource.
  *
- * tenant_id e is_platform_admin quedan fuera de Fillable: pertenencia y
- * privilegio nunca se asignan por mass assignment.
+ * tenant_id, vendor_id e is_platform_admin quedan fuera de Fillable:
+ * pertenencia y privilegio nunca se asignan por mass assignment.
  *
  * @property int|null $tenant_id
+ * @property int|null $vendor_id
  * @property bool $is_platform_admin
  * @property string $email
  * @property string $name
  * @property-read Tenant|null $tenant
+ * @property-read Vendor|null $vendor
  */
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
@@ -57,12 +63,54 @@ class User extends Authenticatable implements FilamentUser
         ];
     }
 
+    protected static function booted(): void
+    {
+        // La pertenencia a un comercio es coherente o no es: el comercio debe
+        // existir en la MISMA cuenta del usuario, y el staff de plataforma no
+        // pertenece a ninguno. Consulta cruda a propósito: este guard corre
+        // también sin contexto de tenant (panel admin, comandos, jobs) y ahí
+        // el scope de Vendor fallaría cerrado.
+        static::saving(function (User $user): void {
+            if ($user->vendor_id === null) {
+                return;
+            }
+
+            if ($user->is_platform_admin) {
+                throw VendorException::staffCannotJoinVendor();
+            }
+
+            $vendorTenant = DB::table('vendors')
+                ->where('id', $user->vendor_id)
+                ->value('tenant_id');
+
+            if ($vendorTenant === null || (int) $vendorTenant !== $user->tenant_id) {
+                throw VendorException::userOutsideTenant();
+            }
+        });
+    }
+
     /**
      * @return BelongsTo<Tenant, $this>
      */
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
+    }
+
+    /**
+     * El comercio al que pertenece, si es personal de uno. Vendor lleva
+     * TenantScope: esta relación solo carga con el contexto de tenant fijado.
+     *
+     * @return BelongsTo<Vendor, $this>
+     */
+    public function vendor(): BelongsTo
+    {
+        return $this->belongsTo(Vendor::class);
+    }
+
+    public function worksForAVendor(): bool
+    {
+        return $this->vendor_id !== null;
     }
 
     /**
@@ -96,8 +144,24 @@ class User extends Authenticatable implements FilamentUser
             // y aquí solo vería un panel sin una sola pantalla.
             'app' => $this->tenant !== null
                 && $this->tenant->status !== TenantStatus::Suspended
+                && ! $this->vendorIsSuspended()
                 && ! $this->onlyOperatesThePos(),
             default => false,
         };
+    }
+
+    /**
+     * Suspender un comercio corta el acceso de su gente, igual que suspender
+     * la cuenta corta el de todo su equipo. Consulta cruda: la autenticación
+     * ocurre sin contexto de tenant y el scope de Vendor fallaría cerrado.
+     */
+    private function vendorIsSuspended(): bool
+    {
+        if ($this->vendor_id === null) {
+            return false;
+        }
+
+        return DB::table('vendors')->where('id', $this->vendor_id)->value('status')
+            === VendorStatus::Suspended->value;
     }
 }

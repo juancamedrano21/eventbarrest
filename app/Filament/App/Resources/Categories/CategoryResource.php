@@ -6,9 +6,12 @@ namespace App\Filament\App\Resources\Categories;
 
 use App\Domains\Catalog\Enums\DispatchArea;
 use App\Domains\Catalog\Models\Category;
+use App\Domains\EventManagement\Models\Vendor;
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Tenancy\TenantContext;
 use App\Filament\App\Resources\Categories\Pages\ListCategories;
+use App\Filament\App\Support\VendorPanel;
 use BackedEnum;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
@@ -52,12 +55,12 @@ class CategoryResource extends Resource
 
     public static function canCreate(): bool
     {
-        return static::canViewAny();
+        return static::canViewAny() && VendorPanel::writesAllowed();
     }
 
     public static function canEdit(Model $record): bool
     {
-        return static::canViewAny();
+        return static::canViewAny() && VendorPanel::writesAllowed();
     }
 
     public static function form(Schema $schema): Schema
@@ -72,7 +75,8 @@ class CategoryResource extends Resource
                     table: Category::class,
                     ignoreRecord: true,
                     modifyRuleUsing: fn (Unique $rule): Unique => $rule
-                        ->where('tenant_id', app(TenantContext::class)->id()),
+                        ->where('tenant_id', app(TenantContext::class)->id())
+                        ->where('vendor_id', app(VendorContext::class)->id()),
                 )
                 ->validationMessages(['unique' => 'Ya existe una categoría con ese nombre.']),
             Select::make('dispatch')
@@ -92,6 +96,10 @@ class CategoryResource extends Resource
                     ->label('Categoría')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('vendor.name')
+                    ->label('Comercio')
+                    ->placeholder('De la cuenta')
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 TextColumn::make('dispatch')
                     ->label('Sale de')
                     ->badge(),
@@ -101,6 +109,10 @@ class CategoryResource extends Resource
                     ->alignCenter(),
             ])
             ->filters([
+                SelectFilter::make('vendor_id')
+                    ->label('Comercio')
+                    ->options(fn (): array => Vendor::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 SelectFilter::make('dispatch')
                     ->label('Sale de')
                     ->options(DispatchArea::class),

@@ -51,7 +51,14 @@ class UserResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Filament::auth()->user()?->can(Permission::UsersManage->value) === true;
+        $user = Filament::auth()->user();
+
+        // El equipo lo administra la cuenta, nunca el personal de un
+        // comercio: los usuarios de comercio se crean y asignan desde el
+        // panel del organizador (decisión de producto, no solo permiso).
+        return $user instanceof User
+            && ! $user->worksForAVendor()
+            && $user->can(Permission::UsersManage->value);
     }
 
     public static function canCreate(): bool

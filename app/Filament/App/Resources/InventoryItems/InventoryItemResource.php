@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\InventoryItems;
 
+use App\Domains\EventManagement\Models\Vendor;
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Inventory\Enums\MeasurementUnit;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Tenancy\TenantContext;
 use App\Filament\App\Resources\InventoryItems\Pages\ListInventoryItems;
+use App\Filament\App\Support\VendorPanel;
 use BackedEnum;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
@@ -53,12 +56,12 @@ class InventoryItemResource extends Resource
 
     public static function canCreate(): bool
     {
-        return static::canViewAny();
+        return static::canViewAny() && VendorPanel::writesAllowed();
     }
 
     public static function canEdit(Model $record): bool
     {
-        return static::canViewAny();
+        return static::canViewAny() && VendorPanel::writesAllowed();
     }
 
     public static function form(Schema $schema): Schema
@@ -73,7 +76,8 @@ class InventoryItemResource extends Resource
                     table: InventoryItem::class,
                     ignoreRecord: true,
                     modifyRuleUsing: fn (Unique $rule): Unique => $rule
-                        ->where('tenant_id', app(TenantContext::class)->id()),
+                        ->where('tenant_id', app(TenantContext::class)->id())
+                        ->where('vendor_id', app(VendorContext::class)->id()),
                 )
                 ->validationMessages(['unique' => 'Ya existe un insumo con ese nombre.']),
             Select::make('base_unit')
@@ -103,6 +107,10 @@ class InventoryItemResource extends Resource
                     ->label('Insumo')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('vendor.name')
+                    ->label('Comercio')
+                    ->placeholder('De la cuenta')
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 TextColumn::make('base_unit')
                     ->label('Unidad')
                     ->badge(),
@@ -112,6 +120,10 @@ class InventoryItemResource extends Resource
                     ->sortable(),
             ])
             ->filters([
+                SelectFilter::make('vendor_id')
+                    ->label('Comercio')
+                    ->options(fn (): array => Vendor::query()->orderBy('name')->pluck('name', 'id')->all())
+                    ->visible(fn (): bool => VendorPanel::consolidatedOrganizerView()),
                 SelectFilter::make('base_unit')
                     ->label('Unidad')
                     ->options(MeasurementUnit::class),

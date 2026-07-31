@@ -6,6 +6,7 @@ namespace App\Filament\App\Resources\Products\Schemas;
 
 use App\Domains\Catalog\Enums\ProductType;
 use App\Domains\Catalog\Models\Product;
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Tenancy\TenantContext;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
@@ -28,8 +29,11 @@ class ProductForm
                     ->unique(
                         table: Product::class,
                         ignoreRecord: true,
+                        // El nombre es único dentro del comercio, no de la
+                        // cuenta: dos comercios pueden vender su «Mojito».
                         modifyRuleUsing: fn (Unique $rule): Unique => $rule
-                            ->where('tenant_id', app(TenantContext::class)->id()),
+                            ->where('tenant_id', app(TenantContext::class)->id())
+                            ->where('vendor_id', app(VendorContext::class)->id()),
                     )
                     ->validationMessages(['unique' => 'Ya existe un producto con ese nombre.']),
                 Select::make('category_id')

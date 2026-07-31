@@ -11,7 +11,10 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Actions\CreateEvent;
 use App\Domains\EventManagement\Actions\CreateEventOutlet;
+use App\Domains\EventManagement\Actions\CreateVendor;
+use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Enums\EventStatus;
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
 use App\Domains\Inventory\Actions\RegisterPurchase;
@@ -99,12 +102,14 @@ class DemoSeeder extends Seeder
         });
 
         // ── Mundo eventos ─────────────────────────────────────────────────
+        // El organizador arma el evento e invita a los comercios; cada
+        // comercio tiene su gente, su catálogo y su stock por separado.
         $productora = app(CreateTenant::class)('Producciones Demo', null, TenantType::Organizer, TenantStatus::Active);
 
         app(CreateTenantUser::class)($productora, 'Productor', 'productor@eventos.demo', self::PASSWORD, Role::Owner);
         app(CreateTenantUser::class)($productora, 'Gerente Eventos', 'gerente@eventos.demo', self::PASSWORD, Role::EventManager);
 
-        $context->runAs($productora, function (): void {
+        $context->runAs($productora, function () use ($productora): void {
             $festival = app(CreateEvent::class)(
                 'Festival del Mar 2026',
                 now()->addWeeks(2)->setTime(16, 0),
@@ -113,22 +118,49 @@ class DemoSeeder extends Seeder
                 EventStatus::Active,
             );
 
-            $barra = app(CreateEventOutlet::class)($festival, 'Barra principal', OperatingUnitKind::Bar);
-            app(CreateEventOutlet::class)($festival, 'Barra VIP', OperatingUnitKind::Bar);
-            app(CreateEventOutlet::class)($festival, 'Cocina central', OperatingUnitKind::Kitchen);
+            $cerveceria = app(CreateVendor::class)('La Cervecería del Malecón');
+            $tacos = app(CreateVendor::class)('Tacos del Puerto');
 
-            $tragos = Category::create(['name' => 'Tragos', 'dispatch' => DispatchArea::Bar]);
-            $ronFestival = InventoryItem::create(['name' => 'Ron añejo', 'base_unit' => MeasurementUnit::Milliliter, 'cost_cents' => 0]);
+            app(InviteVendorToEvent::class)($festival, $cerveceria, 1000); // 10 %
+            app(InviteVendorToEvent::class)($festival, $tacos, 1500);      // 15 %
 
-            $cubaLibre = Product::create([
-                'category_id' => $tragos->id,
-                'name' => 'Cuba Libre',
-                'type' => ProductType::Recipe,
-                'price_cents' => 40000,
-            ]);
-            $cubaLibre->recipeItems()->create(['inventory_item_id' => $ronFestival->id, 'quantity' => 60]);
+            $barra = app(CreateEventOutlet::class)($festival, $cerveceria, 'Barra principal', OperatingUnitKind::Bar);
+            $puestoTacos = app(CreateEventOutlet::class)($festival, $tacos, 'Puesto de tacos', OperatingUnitKind::Kitchen);
 
-            app(RegisterPurchase::class)($barra, $ronFestival, 10000, 95, 'Aprovisionamiento festival');
+            app(CreateTenantUser::class)($productora, 'Encargada Cervecería', 'encargada@cerveceria.demo', self::PASSWORD, Role::VendorManager, $cerveceria);
+            app(CreateTenantUser::class)($productora, 'Encargado Tacos', 'encargado@tacos.demo', self::PASSWORD, Role::VendorManager, $tacos);
+
+            $vendors = app(VendorContext::class);
+
+            $vendors->runAs($cerveceria, function () use ($barra): void {
+                $tragos = Category::create(['name' => 'Tragos', 'dispatch' => DispatchArea::Bar]);
+                $ron = InventoryItem::create(['name' => 'Ron añejo', 'base_unit' => MeasurementUnit::Milliliter, 'cost_cents' => 0]);
+
+                $cubaLibre = Product::create([
+                    'category_id' => $tragos->id,
+                    'name' => 'Cuba Libre',
+                    'type' => ProductType::Recipe,
+                    'price_cents' => 40000,
+                ]);
+                $cubaLibre->recipeItems()->create(['inventory_item_id' => $ron->id, 'quantity' => 60]);
+
+                app(RegisterPurchase::class)($barra, $ron, 10000, 95, 'Aprovisionamiento festival');
+            });
+
+            $vendors->runAs($tacos, function () use ($puestoTacos): void {
+                $comida = Category::create(['name' => 'Tacos', 'dispatch' => DispatchArea::Kitchen]);
+                $carne = InventoryItem::create(['name' => 'Carne al pastor', 'base_unit' => MeasurementUnit::Gram, 'cost_cents' => 0]);
+
+                $taco = Product::create([
+                    'category_id' => $comida->id,
+                    'name' => 'Taco al pastor',
+                    'type' => ProductType::Recipe,
+                    'price_cents' => 25000,
+                ]);
+                $taco->recipeItems()->create(['inventory_item_id' => $carne->id, 'quantity' => 120]);
+
+                app(RegisterPurchase::class)($puestoTacos, $carne, 20000, 45, 'Aprovisionamiento festival');
+            });
         });
 
         $this->command?->info('Entorno demo creado. Contraseña de todos: '.self::PASSWORD);

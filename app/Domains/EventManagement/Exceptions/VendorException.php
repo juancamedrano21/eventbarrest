@@ -42,4 +42,34 @@ class VendorException extends RuntimeException
             'Una fila no cambia de negocio: su catálogo, su stock y sus ventas dependen de a quién pertenece.'
         );
     }
+
+    public static function userOutsideTenant(): self
+    {
+        return new self('El comercio del usuario debe pertenecer a su misma cuenta.');
+    }
+
+    public static function staffCannotJoinVendor(): self
+    {
+        return new self('El staff de la plataforma no pertenece a ningún comercio.');
+    }
+
+    public static function roleNotForVendorStaff(string $role): self
+    {
+        return new self(
+            "El personal de un comercio no puede tener el rol [{$role}]: ".
+            'los roles de cuenta se quedan en la cuenta.'
+        );
+    }
+
+    public static function roleOnlyForVendorStaff(string $role): self
+    {
+        return new self("El rol [{$role}] solo existe dentro de un comercio: asigna el usuario a uno.");
+    }
+
+    public static function hasUsers(string $vendor): self
+    {
+        return new self(
+            "[{$vendor}] tiene usuarios asignados: reasígnalos o elimínalos antes de borrar el comercio."
+        );
+    }
 }
