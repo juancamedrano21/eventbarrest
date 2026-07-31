@@ -37,4 +37,14 @@ class CatalogException extends RuntimeException
     {
         return new self('El producto indicado no pertenece a esta cuenta.');
     }
+
+    public static function categoryOutsideVendor(): self
+    {
+        return new self('La categoría debe pertenecer al mismo comercio que el producto.');
+    }
+
+    public static function ingredientOutsideVendor(): self
+    {
+        return new self('El insumo debe pertenecer al mismo comercio: las recetas no cruzan comercios.');
+    }
 }

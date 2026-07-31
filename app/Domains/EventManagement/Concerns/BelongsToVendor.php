@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Domains\EventManagement\Concerns;
 
+use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\Scopes\VendorScope;
 use App\Domains\EventManagement\VendorContext;
+use App\Domains\Tenancy\TenantContext;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -34,11 +36,38 @@ trait BelongsToVendor
         static::addGlobalScope(new VendorScope);
 
         static::creating(function (Model $model): void {
-            if ($model->getAttribute('vendor_id') !== null) {
+            $context = app(VendorContext::class);
+            $given = $model->getAttribute('vendor_id');
+
+            if ($given === null) {
+                $model->setAttribute('vendor_id', $context->id());
+
                 return;
             }
 
-            $model->setAttribute('vendor_id', app(VendorContext::class)->id());
+            // Con comercio activo nadie escribe a nombre de otro.
+            if ($context->check() && (int) $given !== $context->id()) {
+                throw VendorException::writingForAnotherVendor();
+            }
+
+            // Y el comercio explícito debe existir en la cuenta de la fila.
+            // Sin scopes: este guard decide con la verdad, no con la vista.
+            $vendorTenant = Vendor::query()->withoutGlobalScopes()
+                ->whereKey($given)
+                ->value('tenant_id');
+            $rowTenant = $model->getAttribute('tenant_id') ?? app(TenantContext::class)->id();
+
+            if ($vendorTenant === null || (int) $vendorTenant !== (int) $rowTenant) {
+                throw VendorException::vendorOutsideTenant();
+            }
+        });
+
+        // Una fila no cambia de comercio: su stock, sus recetas y sus ventas
+        // dependen de a quién pertenece.
+        static::updating(function (Model $model): void {
+            if ($model->isDirty('vendor_id')) {
+                throw VendorException::vendorIsImmutable();
+            }
         });
     }
 

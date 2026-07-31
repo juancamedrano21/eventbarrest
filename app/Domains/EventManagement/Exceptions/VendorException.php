@@ -69,7 +69,12 @@ class VendorException extends RuntimeException
     public static function hasUsers(string $vendor): self
     {
         return new self(
-            "[{$vendor}] tiene usuarios asignados: reasígnalos o elimínalos antes de borrar el comercio."
+            "[{$vendor}] tiene usuarios asignados: elimínalos antes de borrar el comercio."
         );
+    }
+
+    public static function writingForAnotherVendor(): self
+    {
+        return new self('Con un comercio activo no se escribe a nombre de otro.');
     }
 }

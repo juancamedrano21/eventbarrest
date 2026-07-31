@@ -21,10 +21,15 @@ use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Tenancy\TenantContext;
 use App\Filament\App\Resources\Categories\CategoryResource;
+use App\Filament\App\Resources\Categories\Pages\ListCategories;
 use App\Filament\App\Resources\InventoryItems\InventoryItemResource;
+use App\Filament\App\Resources\Products\Pages\CreateProduct;
 use App\Filament\App\Resources\Products\ProductResource;
+use App\Filament\App\Resources\StockLevels\Pages\ListStockLevels;
 use App\Filament\App\Resources\StockLevels\StockLevelResource;
 use App\Filament\App\Resources\Users\UserResource;
+use Filament\Actions\Testing\TestAction;
+use Livewire\Livewire;
 
 /**
  * El contrato del mundo de eventos en el panel: cada comercio opera SOLO su
@@ -158,4 +163,75 @@ it('leaves the independent business world operating as always', function (): voi
     $owner = app(CreateTenantUser::class)($bar, 'Beto', 'beto@bar.test', 'Secreta-2026', Role::Owner);
 
     expect($this->actingAs($owner)->get('/app/products/create')->getStatusCode())->toBe(200);
+});
+
+// Los modales de una sola página (categorías, insumos) no pasan por una
+// página de crear: su puerta es la RESPUESTA de autorización del recurso.
+// Estos tests fijan que el organizador la tiene negada y el comercio no.
+it('denies the organizer the modal writes at the authorization layer', function (): void {
+    signInTo($this, $this->owner, $this->organizer);
+
+    expect(CategoryResource::getCreateAuthorizationResponse()->allowed())->toBeFalse()
+        ->and(InventoryItemResource::getCreateAuthorizationResponse()->allowed())->toBeFalse()
+        ->and(ProductResource::getCreateAuthorizationResponse()->allowed())->toBeFalse();
+});
+
+it('hides the category create action from the organizer and executes it for vendor staff', function (): void {
+    signInTo($this, $this->owner, $this->organizer);
+    Livewire::test(ListCategories::class)->assertActionHidden(TestAction::make('create')->table());
+
+    signInTo($this, $this->encargada, $this->organizer);
+    Livewire::test(ListCategories::class)
+        ->callAction(TestAction::make('create')->table(), [
+            'name' => 'Refrescos',
+            'dispatch' => DispatchArea::Bar->value,
+        ])
+        ->assertHasNoActionErrors();
+
+    expect(Category::query()->withoutGlobalScopes()
+        ->where('name', 'Refrescos')
+        ->value('vendor_id'))->toBe($this->cerveceria->id);
+});
+
+it('hides the stock write actions from the organizer', function (): void {
+    signInTo($this, $this->owner, $this->organizer);
+
+    Livewire::test(ListStockLevels::class)
+        ->assertActionHidden(TestAction::make('compra')->table())
+        ->assertActionHidden(TestAction::make('traslado')->table());
+});
+
+it('rejects a duplicate product name within the same vendor but allows it in another', function (): void {
+    // La unicidad es por comercio: el «Cuba Libre» de La Cervecería no se
+    // repite en La Cervecería, pero Tacos puede tener el suyo.
+    signInTo($this, $this->encargada, $this->organizer);
+
+    Livewire::test(CreateProduct::class)
+        ->fillForm([
+            'name' => 'Cuba Libre',
+            'category_id' => Category::query()->value('id'),
+            'price_cents' => 350,
+            'type' => ProductType::Simple->value,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['name']);
+
+    $tacoManager = app(CreateTenantUser::class)(
+        $this->organizer, 'Tito', 'tito@x.test', 'Secreta-2026', Role::VendorManager, $this->tacos,
+    );
+    signInTo($this, $tacoManager, $this->organizer);
+
+    Livewire::test(CreateProduct::class)
+        ->fillForm([
+            'name' => 'Cuba Libre',
+            'category_id' => Category::query()->value('id'),
+            'price_cents' => 300,
+            'type' => ProductType::Simple->value,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    expect(Product::query()->withoutGlobalScopes()
+        ->where('name', 'Cuba Libre')
+        ->count())->toBe(2);
 });

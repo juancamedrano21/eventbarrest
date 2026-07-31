@@ -57,4 +57,16 @@ class InventoryException extends RuntimeException
     {
         return new self('Una compra necesita el costo unitario para recalcular el costo promedio del insumo.');
     }
+
+    public static function vendorMismatch(): self
+    {
+        return new self(
+            'El insumo y la unidad deben pertenecer al mismo comercio: cada comercio maneja su propio stock.'
+        );
+    }
+
+    public static function transferAcrossVendors(): self
+    {
+        return new self('Entre comercios no hay traslados: cada comercio mueve su propio stock.');
+    }
 }

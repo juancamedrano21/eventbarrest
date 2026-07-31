@@ -24,6 +24,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rules\Unique;
 use UnitEnum;
@@ -53,14 +54,31 @@ class CategoryResource extends Resource
         return Filament::auth()->user()?->can(Permission::CatalogManage->value) === true;
     }
 
-    public static function canCreate(): bool
+    /**
+     * Se sobreescriben las RESPUESTAS de autorización, no canCreate/canEdit:
+     * las acciones de modal (CreateAction/EditAction) consultan estas
+     * respuestas directamente, y canCreate/canEdit derivan de ellas. Un solo
+     * punto de decisión para páginas, botones y ejecución Livewire.
+     */
+    public static function getCreateAuthorizationResponse(): Response
     {
-        return static::canViewAny() && VendorPanel::writesAllowed();
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getCreateAuthorizationResponse()
+            : Response::deny();
     }
 
-    public static function canEdit(Model $record): bool
+    public static function getEditAuthorizationResponse(Model $record): Response
     {
-        return static::canViewAny() && VendorPanel::writesAllowed();
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getEditAuthorizationResponse($record)
+            : Response::deny();
+    }
+
+    public static function getDeleteAuthorizationResponse(Model $record): Response
+    {
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getDeleteAuthorizationResponse($record)
+            : Response::deny();
     }
 
     public static function form(Schema $schema): Schema

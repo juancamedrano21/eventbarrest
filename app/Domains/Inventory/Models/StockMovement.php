@@ -73,22 +73,29 @@ class StockMovement extends Model
                 return;
             }
 
-            // Sin scope a propósito: queremos saber de quién son las filas
-            // de verdad, no si podemos verlas.
-            $unitTenant = OperatingUnit::query()->withoutTenancy()
+            // Sin scopes a propósito (ni tenant ni vendor): queremos saber
+            // de quién son las filas de verdad, no si podemos verlas.
+            $unit = OperatingUnit::query()->withoutGlobalScopes()
                 ->whereKey($movement->operating_unit_id)
-                ->value('tenant_id');
+                ->first(['tenant_id', 'vendor_id']);
 
-            if ($unitTenant !== $movement->tenant_id) {
+            if ($unit === null || $unit->tenant_id !== $movement->tenant_id) {
                 throw InventoryException::unitOutsideTenant();
             }
 
-            $itemTenant = InventoryItem::query()->withoutTenancy()
+            $item = InventoryItem::query()->withoutGlobalScopes()
                 ->whereKey($movement->inventory_item_id)
-                ->value('tenant_id');
+                ->first(['tenant_id', 'vendor_id']);
 
-            if ($itemTenant !== $movement->tenant_id) {
+            if ($item === null || $item->tenant_id !== $movement->tenant_id) {
                 throw InventoryException::itemOutsideTenant();
+            }
+
+            // El stock pertenece al comercio a través de su unidad: un
+            // insumo solo se mueve en unidades de SU comercio. Ambos nulos
+            // es el mundo de negocios (sin comercios) y es válido.
+            if ($unit->getAttribute('vendor_id') !== $item->getAttribute('vendor_id')) {
+                throw InventoryException::vendorMismatch();
             }
         });
 

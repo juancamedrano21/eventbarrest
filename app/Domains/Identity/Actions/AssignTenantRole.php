@@ -45,6 +45,13 @@ class AssignTenantRole
                 throw LastOwnerException::cannotDemote($user->name);
             }
 
+            // Idempotente y con salida temprana: garantiza que el rol exista
+            // aunque la cuenta se haya aprovisionado antes de que ese rol
+            // naciera (backfills, imports, tinker) — syncRoles no lo crea.
+            if ($user->tenant !== null) {
+                app(ProvisionTenantRoles::class)($user->tenant);
+            }
+
             $user->syncRoles([$role->value]);
         } finally {
             $registrar->setPermissionsTeamId($previousTeam);

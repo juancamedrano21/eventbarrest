@@ -8,6 +8,7 @@ use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Inventory\Enums\StockMovementType;
 use App\Domains\Inventory\Models\StockMovement;
+use App\Domains\Operations\Models\OperatingUnit;
 use App\Filament\App\Resources\StockMovements\Pages\ListStockMovements;
 use App\Filament\App\Support\VendorPanel;
 use BackedEnum;
@@ -109,9 +110,13 @@ class StockMovementResource extends Resource
                 SelectFilter::make('type')
                     ->label('Tipo')
                     ->options(StockMovementType::class),
+                // Opciones acotadas, no la relación cruda: OperatingUnit no
+                // lleva VendorScope y listaría los puestos de otros comercios.
+                // (El de insumo sí puede usar la relación: InventoryItem
+                // lleva el scope de comercio en el propio modelo.)
                 SelectFilter::make('operating_unit_id')
                     ->label('Unidad')
-                    ->relationship('operatingUnit', 'name'),
+                    ->options(fn (): array => self::unitOptions()),
                 SelectFilter::make('inventory_item_id')
                     ->label('Insumo')
                     ->relationship('inventoryItem', 'name'),
@@ -119,6 +124,22 @@ class StockMovementResource extends Resource
             ->defaultSort('created_at', 'desc')
             ->emptyStateHeading('El libro está vacío')
             ->emptyStateDescription('Cada compra, ajuste, merma o traslado quedará registrado aquí, con quién y cuándo.');
+    }
+
+    /**
+     * Con comercio activo, solo sus unidades — el mismo criterio que las
+     * acciones de Existencias.
+     *
+     * @return array<int|string, string>
+     */
+    private static function unitOptions(): array
+    {
+        $vendors = app(VendorContext::class);
+
+        return OperatingUnit::query()
+            ->when($vendors->check(), fn ($query) => $query->where('vendor_id', $vendors->id()))
+            ->pluck('name', 'id')
+            ->all();
     }
 
     public static function getPages(): array

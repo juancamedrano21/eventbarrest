@@ -10,7 +10,6 @@ use App\Domains\Platform\Actions\CreateTenant;
 use App\Filament\App\Resources\Users\Pages\CreateUser;
 use App\Filament\App\Resources\Users\Pages\EditUser;
 use App\Models\User;
-use Filament\Facades\Filament;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Livewire;
 
@@ -18,9 +17,9 @@ beforeEach(function (): void {
     $this->tenant = app(CreateTenant::class)('Bar del Puerto');
     $this->owner = app(CreateTenantUser::class)($this->tenant, 'Ana', 'ana@bar.test', 'Secreta-2026', Role::Owner);
 
-    $this->actingAs($this->owner);
-    Filament::setCurrentPanel('app');
-    actAsTenantPermissions($this->tenant->id);
+    // El mismo camino que el middleware: con TenantContext fijado, para que
+    // el formulario decida sus campos con el contexto real del panel.
+    signInTo($this, $this->owner, $this->tenant);
 });
 
 it('creates a team member inside the owners tenant', function (): void {

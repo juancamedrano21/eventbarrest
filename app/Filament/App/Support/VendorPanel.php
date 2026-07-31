@@ -22,7 +22,16 @@ class VendorPanel
 {
     public static function writesAllowed(): bool
     {
-        return ! app(TenantContext::class)->current() instanceof OrganizerAccount
+        $tenant = app(TenantContext::class)->current();
+
+        // Sin contexto de cuenta no se escribe: igual de fail-closed que
+        // TenantScope. En el panel el middleware siempre lo fija, así que
+        // esto solo niega estados anómalos (jobs o código sin contexto).
+        if ($tenant === null) {
+            return false;
+        }
+
+        return ! $tenant instanceof OrganizerAccount
             || app(VendorContext::class)->check();
     }
 

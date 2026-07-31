@@ -28,6 +28,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
@@ -63,9 +64,15 @@ class StockLevelResource extends Resource
         return false;
     }
 
-    public static function canEdit(Model $record): bool
+    /**
+     * Respuesta de autorización, no canEdit: el EditAction del umbral la
+     * consulta directamente y el booleano deriva de ella.
+     */
+    public static function getEditAuthorizationResponse(Model $record): Response
     {
-        return static::canViewAny() && VendorPanel::writesAllowed();
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getEditAuthorizationResponse($record)
+            : Response::deny();
     }
 
     /**
@@ -130,9 +137,11 @@ class StockLevelResource extends Resource
                     ->color(fn (string $state): string => $state === 'OK' ? 'success' : 'danger'),
             ])
             ->filters([
+                // Opciones acotadas, no la relación cruda: OperatingUnit no
+                // lleva VendorScope y listaría los puestos de otros comercios.
                 SelectFilter::make('operating_unit_id')
                     ->label('Unidad')
-                    ->relationship('operatingUnit', 'name'),
+                    ->options(fn (): array => self::unitOptions()),
             ])
             ->headerActions([
                 Action::make('compra')

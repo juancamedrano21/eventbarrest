@@ -56,7 +56,7 @@ class RecipeItem extends Model
      */
     protected static function assertCoherent(RecipeItem $item): void
     {
-        $product = Product::query()->withoutTenancy()->find($item->product_id);
+        $product = Product::query()->withoutGlobalScopes()->find($item->product_id);
 
         if ($product === null || $product->tenant_id !== $item->tenant_id) {
             throw CatalogException::productOutsideTenant();
@@ -66,12 +66,18 @@ class RecipeItem extends Model
             throw CatalogException::recipeNeedsARecipeProduct();
         }
 
-        $ingredientTenant = InventoryItem::query()->withoutTenancy()
+        $ingredient = InventoryItem::query()->withoutGlobalScopes()
             ->whereKey($item->inventory_item_id)
-            ->value('tenant_id');
+            ->first(['tenant_id', 'vendor_id']);
 
-        if ($ingredientTenant !== $item->tenant_id) {
+        if ($ingredient === null || $ingredient->tenant_id !== $item->tenant_id) {
             throw CatalogException::ingredientOutsideTenant();
+        }
+
+        // Una receta no cruza comercios: el escandallo de un producto solo
+        // consume insumos de SU comercio (ambos nulos = cuenta de negocio).
+        if ($ingredient->getAttribute('vendor_id') !== $product->getAttribute('vendor_id')) {
+            throw CatalogException::ingredientOutsideVendor();
         }
     }
 

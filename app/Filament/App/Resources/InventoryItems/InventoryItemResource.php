@@ -24,6 +24,7 @@ use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rules\Unique;
 use UnitEnum;
@@ -54,14 +55,29 @@ class InventoryItemResource extends Resource
         return Filament::auth()->user()?->can(Permission::CatalogManage->value) === true;
     }
 
-    public static function canCreate(): bool
+    /**
+     * Respuestas de autorización, no canCreate/canEdit: los modales de este
+     * recurso consultan estas respuestas y los booleanos derivan de ellas.
+     */
+    public static function getCreateAuthorizationResponse(): Response
     {
-        return static::canViewAny() && VendorPanel::writesAllowed();
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getCreateAuthorizationResponse()
+            : Response::deny();
     }
 
-    public static function canEdit(Model $record): bool
+    public static function getEditAuthorizationResponse(Model $record): Response
     {
-        return static::canViewAny() && VendorPanel::writesAllowed();
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getEditAuthorizationResponse($record)
+            : Response::deny();
+    }
+
+    public static function getDeleteAuthorizationResponse(Model $record): Response
+    {
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getDeleteAuthorizationResponse($record)
+            : Response::deny();
     }
 
     public static function form(Schema $schema): Schema

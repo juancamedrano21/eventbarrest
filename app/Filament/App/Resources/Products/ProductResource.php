@@ -18,6 +18,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Model;
 use UnitEnum;
 
@@ -48,14 +49,30 @@ class ProductResource extends Resource
         return Filament::auth()->user()?->can(Permission::CatalogManage->value) === true;
     }
 
-    public static function canCreate(): bool
+    /**
+     * Respuestas de autorización, no canCreate/canEdit: el botón «Nuevo
+     * producto», el EditAction de la fila y las páginas consultan estas
+     * respuestas (los booleanos derivan de ellas) — una sola decisión.
+     */
+    public static function getCreateAuthorizationResponse(): Response
     {
-        return static::canViewAny() && VendorPanel::writesAllowed();
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getCreateAuthorizationResponse()
+            : Response::deny();
     }
 
-    public static function canEdit(Model $record): bool
+    public static function getEditAuthorizationResponse(Model $record): Response
     {
-        return static::canViewAny() && VendorPanel::writesAllowed();
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getEditAuthorizationResponse($record)
+            : Response::deny();
+    }
+
+    public static function getDeleteAuthorizationResponse(Model $record): Response
+    {
+        return static::canViewAny() && VendorPanel::writesAllowed()
+            ? parent::getDeleteAuthorizationResponse($record)
+            : Response::deny();
     }
 
     public static function form(Schema $schema): Schema

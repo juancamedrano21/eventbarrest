@@ -60,6 +60,8 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_platform_admin' => 'boolean',
+            'tenant_id' => 'integer',
+            'vendor_id' => 'integer',
         ];
     }
 
@@ -71,6 +73,12 @@ class User extends Authenticatable implements FilamentUser
         // también sin contexto de tenant (panel admin, comandos, jobs) y ahí
         // el scope de Vendor fallaría cerrado.
         static::saving(function (User $user): void {
+            // Solo cuando el save toca la pertenencia: el ciclo del remember
+            // token (login/logout) no re-valida un estado que no cambia.
+            if (! $user->isDirty(['vendor_id', 'tenant_id', 'is_platform_admin'])) {
+                return;
+            }
+
             if ($user->vendor_id === null) {
                 return;
             }

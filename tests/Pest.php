@@ -8,9 +8,8 @@ use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\Models\Vendor;
-use App\Domains\EventManagement\VendorContext;
 use App\Domains\Operations\Enums\OperatingUnitKind;
-use App\Domains\Tenancy\TenantContext;
+use App\Domains\Tenancy\ContextResolver;
 use Filament\Facades\Filament;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
@@ -70,21 +69,11 @@ function vendorIn(
 function signInTo(object $test, $user, $tenant): void
 {
     $test->actingAs($user);
-    app(TenantContext::class)->set($tenant);
-    actAsTenantPermissions($tenant->id);
 
-    // Espejo del middleware: el personal de un comercio opera siempre con
-    // su comercio activo; el resto ve el consolidado de la cuenta.
-    $vendors = app(VendorContext::class);
-    $vendors->clear();
-
-    if ($user->vendor_id !== null) {
-        $vendor = Vendor::query()->find($user->vendor_id);
-
-        if ($vendor !== null) {
-            $vendors->set($vendor);
-        }
-    }
+    // La MISMA pieza que usa el middleware: cuenta, equipo de permisos y
+    // comercio se fijan igual que en una petición real, sin duplicar lógica.
+    app(ContextResolver::class)->forUser($user);
+    app(PermissionRegistrar::class)->forgetCachedPermissions();
 
     Filament::setCurrentPanel('app');
 }

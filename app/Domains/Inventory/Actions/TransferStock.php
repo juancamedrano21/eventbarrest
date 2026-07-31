@@ -31,6 +31,12 @@ class TransferStock
             throw InventoryException::transferNeedsTwoUnits();
         }
 
+        // Cada comercio mueve su propio stock: entre comercios no hay
+        // traslados. (Ambos nulos = cuenta de negocio, sin comercios.)
+        if ($from->getAttribute('vendor_id') !== $to->getAttribute('vendor_id')) {
+            throw InventoryException::transferAcrossVendors();
+        }
+
         $reference = 'traslado-'.Str::lower((string) Str::ulid());
 
         // Las patas se aplican en orden de id de unidad: dos traslados en

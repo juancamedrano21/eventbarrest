@@ -84,21 +84,31 @@ class Product extends Model
                 return;
             }
 
-            $categoryTenant = Category::query()->withoutTenancy()
+            // Sin scopes (ni tenant ni vendor): el guard decide con la
+            // verdad de las filas, no con la vista del contexto activo.
+            $category = Category::query()->withoutGlobalScopes()
                 ->whereKey($product->category_id)
-                ->value('tenant_id');
+                ->first(['tenant_id', 'vendor_id']);
 
-            if ($categoryTenant !== $product->tenant_id) {
+            if ($category === null || $category->tenant_id !== $product->tenant_id) {
                 throw CatalogException::categoryOutsideTenant();
             }
 
-            if ($product->inventory_item_id !== null) {
-                $itemTenant = InventoryItem::query()->withoutTenancy()
-                    ->whereKey($product->inventory_item_id)
-                    ->value('tenant_id');
+            if ($category->getAttribute('vendor_id') !== $product->getAttribute('vendor_id')) {
+                throw CatalogException::categoryOutsideVendor();
+            }
 
-                if ($itemTenant !== $product->tenant_id) {
+            if ($product->inventory_item_id !== null) {
+                $item = InventoryItem::query()->withoutGlobalScopes()
+                    ->whereKey($product->inventory_item_id)
+                    ->first(['tenant_id', 'vendor_id']);
+
+                if ($item === null || $item->tenant_id !== $product->tenant_id) {
                     throw CatalogException::ingredientOutsideTenant();
+                }
+
+                if ($item->getAttribute('vendor_id') !== $product->getAttribute('vendor_id')) {
+                    throw CatalogException::ingredientOutsideVendor();
                 }
             }
         };

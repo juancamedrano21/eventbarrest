@@ -66,11 +66,14 @@ class EditUser extends EditRecord
         $role = $data['role'] ?? null;
         unset($data['role']);
 
-        $record->update($data);
-
+        // El rol primero: si sus guards lo rechazan (último dueño, rol de
+        // cuenta sobre personal de comercio), no queda una escritura parcial
+        // de nombre y correo ya aplicada.
         if ($role !== null && $record instanceof User) {
             app(AssignTenantRole::class)($record, RoleEnum::coerce($role));
         }
+
+        $record->update($data);
 
         return $record;
     }
