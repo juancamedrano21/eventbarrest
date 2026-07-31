@@ -7,6 +7,7 @@ namespace App\Filament\Admin\Resources\Tenants\RelationManagers;
 use App\Domains\Identity\Actions\AssignTenantRole;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role as RoleEnum;
+use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Platform\Models\Tenant;
 use App\Models\User;
 use Filament\Actions\Action;
@@ -57,8 +58,8 @@ class UsersRelationManager extends RelationManager
                     // Desde /admin solo se da de alta equipo de cuenta; el
                     // personal de los comercios lo asigna el organizador
                     // desde su propio panel.
-                    ->options(RoleEnum::options(RoleEnum::forAccountStaff()))
-                    ->default(RoleEnum::Owner)
+                    ->options(fn (): array => RoleTemplate::optionsForAccountStaff())
+                    ->default(RoleEnum::Owner->value)
                     ->required()
                     ->helperText('El primer usuario de un negocio debe ser Dueño.'),
             ]);
@@ -78,7 +79,9 @@ class UsersRelationManager extends RelationManager
                 TextColumn::make('roles.name')
                     ->label('Rol')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => RoleEnum::tryFrom($state)?->getLabel() ?? $state),
+                    ->formatStateUsing(fn (string $state): string => once(
+                        fn (): array => RoleTemplate::query()->pluck('label', 'name')->all()
+                    )[$state] ?? $state),
                 TextColumn::make('created_at')
                     ->label('Alta')
                     ->date()
@@ -97,7 +100,7 @@ class UsersRelationManager extends RelationManager
                             $data['name'],
                             $data['email'],
                             $data['password'],
-                            RoleEnum::coerce($data['role']),
+                            (string) $data['role'],
                         );
                     }),
             ])
@@ -109,13 +112,13 @@ class UsersRelationManager extends RelationManager
                         Select::make('role')
                             ->label('Rol')
                             ->options(fn (User $record): array => $record->worksForAVendor()
-                                ? RoleEnum::options(RoleEnum::forVendorStaff())
-                                : RoleEnum::options(RoleEnum::forAccountStaff()))
+                                ? RoleTemplate::optionsForVendorStaff()
+                                : RoleTemplate::optionsForAccountStaff())
                             ->required(),
                     ])
                     ->action(fn (User $record, array $data) => app(AssignTenantRole::class)(
                         $record,
-                        RoleEnum::coerce($data['role']),
+                        (string) $data['role'],
                     )),
             ]);
     }

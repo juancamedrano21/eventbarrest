@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\App\Resources\Users\Tables;
 
-use App\Domains\Identity\Enums\Role as RoleEnum;
+use App\Domains\Identity\Models\RoleTemplate;
 use App\Filament\App\Support\VendorPanel;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
@@ -30,7 +30,10 @@ class UsersTable
                 TextColumn::make('roles.name')
                     ->label('Rol')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => RoleEnum::tryFrom($state)?->getLabel() ?? $state),
+                    // once(): un solo pluck por petición, no uno por fila.
+                    ->formatStateUsing(fn (string $state): string => once(
+                        fn (): array => RoleTemplate::query()->pluck('label', 'name')->all()
+                    )[$state] ?? $state),
                 TextColumn::make('created_at')
                     ->label('Alta')
                     ->date()

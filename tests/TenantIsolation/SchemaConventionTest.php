@@ -33,6 +33,10 @@ $platformTables = [
     'model_has_permissions',
     'model_has_roles',
     'role_has_permissions',
+    // Catálogo de roles de la PLATAFORMA: lo administra el superadmin y se
+    // materializa por cuenta en las tablas de spatie; la plantilla no
+    // pertenece a ningún tenant y su name es único a nivel global adrede.
+    'role_templates',
 ];
 
 $businessTables = fn (): array => collect(Schema::getTableListing(schemaQualified: false))

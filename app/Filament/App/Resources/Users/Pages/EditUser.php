@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Filament\App\Resources\Users\Pages;
 
 use App\Domains\Identity\Actions\AssignTenantRole;
-use App\Domains\Identity\Enums\Role as RoleEnum;
 use App\Domains\Identity\Exceptions\LastOwnerException;
 use App\Domains\Identity\Queries\TenantOwners;
 use App\Filament\App\Resources\Users\UserResource;
@@ -70,7 +69,7 @@ class EditUser extends EditRecord
         // cuenta sobre personal de comercio), no queda una escritura parcial
         // de nombre y correo ya aplicada.
         if ($role !== null && $record instanceof User) {
-            app(AssignTenantRole::class)($record, RoleEnum::coerce($role));
+            app(AssignTenantRole::class)($record, (string) $role);
         }
 
         $record->update($data);

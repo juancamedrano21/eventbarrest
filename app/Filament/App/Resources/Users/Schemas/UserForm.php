@@ -6,7 +6,7 @@ namespace App\Filament\App\Resources\Users\Schemas;
 
 use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Domains\EventManagement\Models\Vendor;
-use App\Domains\Identity\Enums\Role as RoleEnum;
+use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Tenancy\TenantContext;
 use App\Models\User;
 use Filament\Forms\Components\Select;
@@ -55,18 +55,16 @@ class UserForm
                         .'Con comercio: opera únicamente dentro de ese comercio.'),
                 Select::make('role')
                     ->label('Rol')
+                    // Del catálogo vivo de la plataforma (plantillas), no del
+                    // enum: incluye los roles creados por el superadmin.
                     ->options(fn (mixed $get): array => filled($get('vendor_id'))
-                        ? RoleEnum::options(RoleEnum::forVendorStaff())
-                        : RoleEnum::options(RoleEnum::forAccountStaff()))
+                        ? RoleTemplate::optionsForVendorStaff()
+                        : RoleTemplate::optionsForAccountStaff())
                     ->required()
                     ->live()
-                    // El estado puede llegar como enum (default) o como string
-                    // (valor del select ya renderizado).
-                    ->helperText(fn (mixed $state): ?string => match (true) {
-                        $state instanceof RoleEnum => $state->description(),
-                        is_string($state) => RoleEnum::tryFrom($state)?->description(),
-                        default => null,
-                    }),
+                    ->helperText(fn (mixed $state): ?string => is_string($state) && $state !== ''
+                        ? RoleTemplate::descriptionFor($state)
+                        : null),
             ]);
     }
 }

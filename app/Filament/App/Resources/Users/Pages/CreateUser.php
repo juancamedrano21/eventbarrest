@@ -6,7 +6,6 @@ namespace App\Filament\App\Resources\Users\Pages;
 
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Identity\Actions\CreateTenantUser;
-use App\Domains\Identity\Enums\Role as RoleEnum;
 use App\Filament\App\Resources\Users\UserResource;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
@@ -37,7 +36,7 @@ class CreateUser extends CreateRecord
             $data['name'],
             $data['email'],
             $data['password'],
-            RoleEnum::coerce($data['role']),
+            (string) $data['role'],
             $vendorId === null ? null : Vendor::query()->findOrFail((int) $vendorId),
         );
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Business\Models\BusinessAccount;
 use App\Domains\EventManagement\Models\OrganizerAccount;
+use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Platform\Models\Tenant;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use Symfony\Component\Finder\Finder;
@@ -16,6 +17,9 @@ $platformModels = [
     Tenant::class,
     BusinessAccount::class,
     OrganizerAccount::class,
+    // Catálogo de roles de la plataforma: lo administra el superadmin y se
+    // materializa por cuenta vía spatie; la plantilla en sí no tiene tenant.
+    RoleTemplate::class,
 ];
 
 it('makes every domain model tenant-scoped', function () use ($platformModels): void {

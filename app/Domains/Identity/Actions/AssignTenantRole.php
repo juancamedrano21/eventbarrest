@@ -7,13 +7,14 @@ namespace App\Domains\Identity\Actions;
 use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Identity\Enums\Role as RoleEnum;
 use App\Domains\Identity\Exceptions\LastOwnerException;
+use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Identity\Queries\TenantOwners;
 use App\Models\User;
 use Spatie\Permission\PermissionRegistrar;
 
 class AssignTenantRole
 {
-    public function __invoke(User $user, RoleEnum $role): User
+    public function __invoke(User $user, RoleEnum|string $role): User
     {
         $tenantId = $user->tenant_id;
 
@@ -21,14 +22,16 @@ class AssignTenantRole
             return $user;
         }
 
+        $template = RoleTemplate::resolveOrFail($role instanceof RoleEnum ? $role->value : $role);
+
         // Mismas fronteras que en el alta: el personal de un comercio no
         // asciende a un rol de cuenta cambiándole el rol después.
-        if ($user->vendor_id !== null && ! $role->isForVendorStaff()) {
-            throw VendorException::roleNotForVendorStaff($role->value);
+        if ($user->vendor_id !== null && ! $template->kind->assignableToVendorStaff()) {
+            throw VendorException::roleNotForVendorStaff($template->name);
         }
 
-        if ($user->vendor_id === null && $role === RoleEnum::VendorManager) {
-            throw VendorException::roleOnlyForVendorStaff($role->value);
+        if ($user->vendor_id === null && ! $template->kind->assignableToAccountStaff()) {
+            throw VendorException::roleOnlyForVendorStaff($template->name);
         }
 
         $registrar = app(PermissionRegistrar::class);
@@ -41,7 +44,7 @@ class AssignTenantRole
             $registrar->setPermissionsTeamId($tenantId);
 
             // Una cuenta sin dueño se queda sin nadie que pueda administrarla.
-            if ($role !== RoleEnum::Owner && app(TenantOwners::class)->isLastOwner($user)) {
+            if ($template->name !== RoleEnum::Owner->value && app(TenantOwners::class)->isLastOwner($user)) {
                 throw LastOwnerException::cannotDemote($user->name);
             }
 
@@ -52,7 +55,7 @@ class AssignTenantRole
                 app(ProvisionTenantRoles::class)($user->tenant);
             }
 
-            $user->syncRoles([$role->value]);
+            $user->syncRoles([$template->name]);
         } finally {
             $registrar->setPermissionsTeamId($previousTeam);
         }

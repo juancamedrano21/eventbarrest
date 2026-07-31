@@ -57,44 +57,10 @@ enum Role: string implements HasLabel
         };
     }
 
-    /**
-     * Roles del equipo de la cuenta. El encargado de comercio no está aquí:
-     * ese rol solo existe adscrito a un comercio.
-     *
-     * @return array<int, self>
-     */
-    public static function forAccountStaff(): array
-    {
-        return [self::Owner, self::Admin, self::EventManager, self::UnitManager, self::Warehouse, self::Cashier];
-    }
-
-    /**
-     * Roles que puede tener el personal de un comercio del evento. Los roles
-     * de cuenta (dueño, administrador, gerente de eventos) se quedan en la
-     * cuenta: un comercio nunca administra el evento ni el equipo.
-     *
-     * @return array<int, self>
-     */
-    public static function forVendorStaff(): array
-    {
-        return [self::VendorManager, self::Warehouse, self::Cashier];
-    }
-
-    public function isForVendorStaff(): bool
-    {
-        return in_array($this, self::forVendorStaff(), true);
-    }
-
-    /**
-     * @param  array<int, self>  $roles
-     * @return array<string, string>
-     */
-    public static function options(array $roles): array
-    {
-        return collect($roles)
-            ->mapWithKeys(fn (self $role): array => [$role->value => $role->getLabel()])
-            ->all();
-    }
+    // Quién puede tener cada rol (cuenta o comercio) ya no vive aquí: lo
+    // decide el kind de su plantilla (RoleTemplate), también para los roles
+    // que cree el superadmin. Este enum queda como identidad de los roles de
+    // sistema y fuente de sus valores por defecto.
 
     /**
      * @return array<int, string>

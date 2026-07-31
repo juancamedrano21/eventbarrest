@@ -7,6 +7,7 @@ namespace App\Domains\Identity\Actions;
 use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Identity\Enums\Role as RoleEnum;
+use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Platform\Models\Tenant;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -19,6 +20,8 @@ use Spatie\Permission\PermissionRegistrar;
  * La pertenencia (tenant_id, vendor_id) se fija aquí y nunca por mass
  * assignment, y el rol se asigna con el equipo de spatie apuntando al tenant
  * correcto, de modo que un rol jamás se concede en la cuenta equivocada.
+ * El rol puede ser uno del código (enum) o uno creado por el superadmin:
+ * la frontera de a quién se asigna la decide su plantilla (kind).
  */
 class CreateTenantUser
 {
@@ -27,25 +30,27 @@ class CreateTenantUser
         string $name,
         string $email,
         string $password,
-        RoleEnum $role,
+        RoleEnum|string $role,
         ?Vendor $vendor = null,
     ): User {
+        $template = RoleTemplate::resolveOrFail($role instanceof RoleEnum ? $role->value : $role);
+
         if ($vendor !== null && $vendor->tenant_id !== $tenant->id) {
             throw VendorException::userOutsideTenant();
         }
 
         // El personal de un comercio tiene roles de comercio; los roles de
         // cuenta (dueño, administrador, gerente de eventos) no bajan ahí — y
-        // el encargado de comercio no existe suelto en la cuenta.
-        if ($vendor !== null && ! $role->isForVendorStaff()) {
-            throw VendorException::roleNotForVendorStaff($role->value);
+        // los roles de comercio no existen sueltos en la cuenta.
+        if ($vendor !== null && ! $template->kind->assignableToVendorStaff()) {
+            throw VendorException::roleNotForVendorStaff($template->name);
         }
 
-        if ($vendor === null && $role === RoleEnum::VendorManager) {
-            throw VendorException::roleOnlyForVendorStaff($role->value);
+        if ($vendor === null && ! $template->kind->assignableToAccountStaff()) {
+            throw VendorException::roleOnlyForVendorStaff($template->name);
         }
 
-        return DB::transaction(function () use ($tenant, $name, $email, $password, $role, $vendor): User {
+        return DB::transaction(function () use ($tenant, $name, $email, $password, $template, $vendor): User {
             app(ProvisionTenantRoles::class)($tenant);
 
             $user = new User;
@@ -64,7 +69,7 @@ class CreateTenantUser
 
             try {
                 $registrar->setPermissionsTeamId($tenant->id);
-                $user->syncRoles([$role->value]);
+                $user->syncRoles([$template->name]);
             } finally {
                 $registrar->setPermissionsTeamId($previousTeam);
             }
