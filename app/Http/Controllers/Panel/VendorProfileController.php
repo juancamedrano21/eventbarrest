@@ -74,9 +74,12 @@ class VendorProfileController extends Controller
                 ->with(['operatingUnit', 'inventoryItem'])
                 ->orderBy('inventory_item_id')
                 ->get(),
-            'vendorCategories' => app(VendorContext::class)->runAs(
+            'menuCategories' => app(VendorContext::class)->runAs(
                 $record,
-                fn () => Category::query()->orderBy('name')->pluck('name', 'id'),
+                fn () => Category::query()
+                    ->with(['products' => fn ($q) => $q->orderBy('name')])
+                    ->orderBy('name')
+                    ->get(),
             ),
             'vendorItems' => app(VendorContext::class)->runAs(
                 $record,

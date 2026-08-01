@@ -175,22 +175,36 @@ it('saves the configuration: logo, business type and food type', function (): vo
 // El dueño de la cuenta OPERA dentro del comercio (decisión 2026-08-01):
 // catálogo e inventario desde el perfil, siempre como el comercio.
 
-it('lets the owner create a product for the vendor with a new category', function (): void {
+it('builds the menu: category classified as Bebidas and its product', function (): void {
+    // Alimentos = cocina, Bebidas = barra: la clasificación ES el despacho.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/categorias", [
+            'name' => 'Tragos', 'tipo' => 'bebidas',
+        ])
+        ->assertRedirect();
+
+    $categoria = Category::query()->withoutGlobalScopes()->where('name', 'Tragos')->sole();
+    expect($categoria->vendor_id)->toBe($this->vendor->id)
+        ->and($categoria->dispatch)->toBe(DispatchArea::Bar);
+
     $this->actingAs($this->owner)
         ->post("/panel/comercios/{$this->vendor->id}/productos", [
             'name' => 'Cuba Libre',
             'price' => '450.50',
-            'new_category' => 'Tragos',
+            'category_id' => $categoria->id,
         ])
         ->assertRedirect();
 
-    $producto = Product::query()->withoutGlobalScopes()
-        ->where('name', 'Cuba Libre')->sole();
-
+    $producto = Product::query()->withoutGlobalScopes()->where('name', 'Cuba Libre')->sole();
     expect($producto->vendor_id)->toBe($this->vendor->id)
-        ->and($producto->price_cents)->toBe(45050)
-        ->and(Category::query()->withoutGlobalScopes()
-            ->where('name', 'Tragos')->value('vendor_id'))->toBe($this->vendor->id);
+        ->and($producto->price_cents)->toBe(45050);
+
+    // Y el menú lo muestra agrupado con su clasificación.
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}")
+        ->assertOk()
+        ->assertSee('Bebidas')
+        ->assertSee('Cuba Libre');
 });
 
 it('lets the owner reprice and deactivate a vendor product, never a foreign one', function (): void {
@@ -261,6 +275,6 @@ it('still keeps vendor staff away from the owner operations', function (): void 
     );
 
     $this->actingAs($staff)
-        ->post("/panel/comercios/{$this->vendor->id}/productos", ['name' => 'X', 'price' => '1', 'new_category' => 'Y'])
+        ->post("/panel/comercios/{$this->vendor->id}/productos", ['name' => 'X', 'price' => '1', 'category_id' => 1])
         ->assertForbidden();
 });
