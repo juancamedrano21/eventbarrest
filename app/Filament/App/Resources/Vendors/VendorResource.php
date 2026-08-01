@@ -11,10 +11,16 @@ use App\Domains\Identity\Enums\Permission;
 use App\Domains\Platform\Rules\ValidRnc;
 use App\Domains\Tenancy\TenantContext;
 use App\Filament\App\Resources\Vendors\Pages\ListVendors;
+use App\Filament\App\Resources\Vendors\Pages\ViewVendor;
+use App\Filament\App\Resources\Vendors\RelationManagers\EventsRelationManager;
+use App\Filament\App\Resources\Vendors\RelationManagers\OutletsRelationManager;
+use App\Filament\App\Resources\Vendors\RelationManagers\ProductsRelationManager;
+use App\Filament\App\Resources\Vendors\RelationManagers\UsersRelationManager;
 use App\Models\User;
 use BackedEnum;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -143,6 +149,7 @@ class VendorResource extends Resource
                 CreateAction::make()->label('Nuevo negocio'),
             ])
             ->recordActions([
+                ViewAction::make()->label('Entrar'),
                 EditAction::make(),
             ])
             ->defaultSort('name')
@@ -150,10 +157,25 @@ class VendorResource extends Resource
             ->emptyStateDescription('Da de alta los bares y restaurantes que participan en tus eventos.');
     }
 
+    /**
+     * El perfil del comercio: su equipo, sus eventos, sus puestos y su
+     * catálogo, todo desde una sola pantalla.
+     */
+    public static function getRelations(): array
+    {
+        return [
+            UsersRelationManager::class,
+            EventsRelationManager::class,
+            OutletsRelationManager::class,
+            ProductsRelationManager::class,
+        ];
+    }
+
     public static function getPages(): array
     {
         return [
             'index' => ListVendors::route('/'),
+            'view' => ViewVendor::route('/{record}'),
         ];
     }
 }
