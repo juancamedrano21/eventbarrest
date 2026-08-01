@@ -18,7 +18,9 @@ use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
+use App\Domains\Sales\Actions\VoidOrder;
 use App\Domains\Sales\Enums\PaymentMethod;
+use App\Domains\Sales\Models\CashSession;
 use App\Domains\Tenancy\TenantContext;
 
 /**
@@ -69,9 +71,9 @@ it('shows the full sale detail with the frozen fiscal breakdown and commission',
         ->assertSee('Agua')
         ->assertSee('Exenta')                  // la línea del agua no grava
         ->assertSee('152.54')                  // ITBIS solo de lo gravado
-        ->assertSee('Propina legal')
-        ->assertSee('94.75')
-        ->assertSee('1,194.75')                // total
+        // En orden: la propina ANTES del total, para que «1,194.75» no
+        // salve por subcadena a un «94.75» desaparecido.
+        ->assertSeeInOrder(['Propina legal', '94.75', 'Total', '1,194.75'])
         ->assertSee('Efectivo')
         ->assertSee('5.25')                    // vuelto de 1,200.00
         ->assertSee('Tu comisión (10 %)')
@@ -83,7 +85,37 @@ it('links the sales tab to each sale detail', function (): void {
     $this->actingAs($this->owner)
         ->get("/panel/comercios/{$this->vendor->id}")
         ->assertOk()
-        ->assertSee("ventas/{$this->sale->id}");
+        // La ruta completa, anclada al comercio: un enlace roto no se salva
+        // con el id suelto en cualquier otra parte del HTML.
+        ->assertSee("/panel/comercios/{$this->vendor->id}/ventas/{$this->sale->id}");
+});
+
+it('shows an open order as unpaid, and a voided one with its reason', function (): void {
+    [$abierta, $anulada] = app(TenantContext::class)->runAs(
+        $this->organizer,
+        fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+            $caja = CashSession::query()->sole();
+            $taco = Product::query()->where('name', 'Taco')->sole();
+
+            $abierta = app(PlaceOrder::class)($caja, [['product_id' => $taco->id, 'quantity' => 1]], 'venta-abierta-001');
+            $anulada = app(PlaceOrder::class)($caja, [['product_id' => $taco->id, 'quantity' => 2]], 'venta-anulada-001');
+            app(VoidOrder::class)($anulada, 'Cliente se fue');
+
+            return [$abierta, $anulada];
+        }),
+    );
+
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}/ventas/{$abierta->id}")
+        ->assertOk()
+        ->assertSee('Sin cobro todavía')
+        ->assertSee('Abierta en el POS');
+
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}/ventas/{$anulada->id}")
+        ->assertOk()
+        ->assertSee('Anulada')
+        ->assertSee('Cliente se fue');
 });
 
 it('hides sales from other vendors and other accounts', function (): void {

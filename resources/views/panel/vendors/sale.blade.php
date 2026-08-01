@@ -201,6 +201,9 @@
                                     <p class="text-xs text-gray-500">ITBIS de la línea</p>
                                     @if ($linea->itbis_cents > 0)
                                         <p class="text-sm text-gray-800">RD$ {{ number_format($linea->itbis_cents / 100, 2) }}</p>
+                                    @elseif ($linea->total_cents === 0)
+                                        {{-- Una cortesía gravada también da 0: no es una exención. --}}
+                                        <p class="text-sm text-gray-800">RD$ 0.00</p>
                                     @else
                                         <p class="text-sm font-medium text-violet-700">Exenta</p>
                                     @endif

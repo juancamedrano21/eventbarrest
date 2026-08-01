@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Carbon;
 
 /**
  * Una venta. Los totales viven en centavos y el desglose de ITBIS es
@@ -32,6 +33,7 @@ use Illuminate\Database\Query\Builder;
  * @property int $id
  * @property int $operating_unit_id
  * @property int $cash_session_id
+ * @property int|null $user_id
  * @property string $client_ref
  * @property OrderStatus $status
  * @property int $subtotal_cents
@@ -39,6 +41,9 @@ use Illuminate\Database\Query\Builder;
  * @property int $tip_cents
  * @property int $total_cents
  * @property int|null $commission_bps
+ * @property Carbon|null $paid_at
+ * @property Carbon|null $voided_at
+ * @property string|null $void_reason
  * @property-read Collection<int, OrderLine> $lines
  * @property-read Collection<int, Payment> $payments
  */
