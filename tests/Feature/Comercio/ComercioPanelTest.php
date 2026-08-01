@@ -22,6 +22,7 @@ use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
 use App\Domains\Sales\Enums\PaymentMethod;
+use App\Domains\Sales\Models\Order;
 use App\Domains\Tenancy\TenantContext;
 
 /**
@@ -161,4 +162,53 @@ it('shows its own sale detail and 404s a foreign one', function (): void {
     $this->actingAs($this->encargada)
         ->get("/comercio/ventas/{$ajena->id}")
         ->assertNotFound();
+});
+
+it('lets warehouse manage inventory but never see the money', function (): void {
+    app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function (): void {
+        $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+        $taco = Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 25000]);
+        $caja = app(OpenCashSession::class)($this->puesto, null, 0);
+        $orden = app(PlaceOrder::class)($caja, [['product_id' => $taco->id, 'quantity' => 2]], 'almacen-001');
+        app(PayOrder::class)($orden, PaymentMethod::Cash, 50000);
+    }));
+
+    $almacen = app(CreateTenantUser::class)(
+        $this->organizer, 'Wil', 'wil@x.test', 'Secreta-2026', Role::Warehouse, $this->vendor,
+    );
+
+    // Entra (gestiona inventario), pero el dinero no existe para su rol:
+    // ni KPIs, ni pestaña Ventas, ni acciones de catálogo.
+    $this->actingAs($almacen)
+        ->get('/comercio')
+        ->assertOk()
+        ->assertSee('Registrar compra')
+        ->assertDontSee('Ventas de hoy')
+        ->assertDontSee('500.00')
+        ->assertDontSee('Ver detalle')
+        ->assertDontSee('Nuevo producto');
+
+    // Y el alta de insumos es inventario, no carta: Almacén puede.
+    $this->actingAs($almacen)
+        ->post('/comercio/insumos', ['name' => 'Cajas de tomate', 'base_unit' => 'unidad'])
+        ->assertRedirect();
+
+    expect(InventoryItem::query()->withoutGlobalScopes()->where('name', 'Cajas de tomate')->exists())->toBeTrue();
+
+    // El detalle de la venta: 403, coherente con lo que el home le oculta.
+    $venta = Order::query()->withoutGlobalScopes()->where('client_ref', 'almacen-001')->sole();
+    $this->actingAs($almacen)->get("/comercio/ventas/{$venta->id}")->assertForbidden();
+});
+
+it('lets staff of a draft vendor in: only suspension cuts access', function (): void {
+    app(TenantContext::class)->runAs(
+        $this->organizer,
+        fn () => $this->vendor->update(['status' => VendorStatus::Draft]),
+    );
+
+    $this->actingAs($this->encargada)->get('/comercio')->assertOk();
+});
+
+it('bounces vendor staff from the old Filament dashboard to their door', function (): void {
+    $this->actingAs($this->encargada)->get('/app')->assertRedirect('/comercio');
 });

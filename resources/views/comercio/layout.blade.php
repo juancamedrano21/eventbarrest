@@ -19,7 +19,9 @@
                 <p class="truncate text-xs text-gray-500">{{ auth()->user()?->tenant?->name }}</p>
             </div>
             <div class="ml-auto flex items-center gap-2">
-                <a href="/pos" target="_blank" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">POS</a>
+                @if (auth()->user()?->canOperateThePos())
+                    <a href="/pos" target="_blank" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">POS</a>
+                @endif
                 <span class="hidden text-sm text-gray-500 sm:block">{{ auth()->user()?->name }}</span>
                 <form method="POST" action="{{ route('filament.app.auth.logout') }}">
                     @csrf

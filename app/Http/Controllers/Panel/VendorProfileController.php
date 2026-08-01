@@ -48,10 +48,11 @@ class VendorProfileController extends Controller
             ->select('id');
 
         return view('panel.vendors.show', [
+            // El día del NEGOCIO (RD), no el de UTC — igual que el dashboard.
             'salesToday' => (int) Order::query()
                 ->where('vendor_id', $record->id)
                 ->where('status', OrderStatus::Paid->value)
-                ->whereDate('paid_at', today())
+                ->where('paid_at', '>=', today(config('app.business_timezone'))->utc())
                 ->sum('total_cents'),
             'salesTotal' => (int) Order::query()
                 ->where('vendor_id', $record->id)

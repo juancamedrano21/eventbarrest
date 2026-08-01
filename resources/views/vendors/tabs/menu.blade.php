@@ -1,19 +1,27 @@
 {{-- Parcial compartido entre /panel (organizador) y /comercio (encargado):
-     las acciones llegan en $urls, cada puerta pone las suyas. --}}
+     las acciones llegan en $urls, cada puerta pone las suyas. $puede acota
+     por capacidades; sin él, todo permitido (el organizador ya autorizó). --}}
+    {{-- OJO: bloque @php/@endphp, nunca @php(...) inline — este archivo tiene
+         más bloques @php y el inline se emparejaría con el primer @endphp. --}}
+    @php
+        $puedeCatalogo = $puede['catalogo'] ?? true;
+    @endphp
     {{-- Tab: Menú --}}
     <div id="tab-menu" class="hidden" role="tabpanel" aria-labelledby="tab-menu-item">
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p class="text-sm text-gray-500">El menú del comercio, clasificado en <span class="font-medium text-gray-700">Alimentos</span> (salen de cocina) y <span class="font-medium text-gray-700">Bebidas</span> (salen de barra).</p>
-            <div class="flex gap-2">
-                <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-categoria" data-hs-overlay="#modal-categoria">
-                    Nueva categoría
-                </button>
-                <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
-                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-producto" data-hs-overlay="#modal-producto">
-                    Nuevo producto
-                </button>
-            </div>
+            @if ($puedeCatalogo)
+                <div class="flex gap-2">
+                    <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                        aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-categoria" data-hs-overlay="#modal-categoria">
+                        Nueva categoría
+                    </button>
+                    <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+                        aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-producto" data-hs-overlay="#modal-producto">
+                        Nuevo producto
+                    </button>
+                </div>
+            @endif
         </div>
 
         @forelse ($menuCategories as $categoria)
@@ -28,8 +36,8 @@
                 <ul class="divide-y divide-gray-200">
                     @forelse ($categoria->products as $product)
                         <li>
-                            <button type="button" class="flex w-full items-center gap-4 px-5 py-3.5 text-left text-sm transition hover:bg-gray-50"
-                                aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-item-{{ $product->id }}" data-hs-overlay="#modal-item-{{ $product->id }}">
+                            <button type="button" class="flex w-full items-center gap-4 px-5 py-3.5 text-left text-sm transition {{ $puedeCatalogo ? 'hover:bg-gray-50' : 'cursor-default' }}"
+                                @if ($puedeCatalogo) aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-item-{{ $product->id }}" data-hs-overlay="#modal-item-{{ $product->id }}" @endif>
                                 <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br {{ $product->active ? 'from-sky-100 to-sky-200 text-sky-700' : 'from-gray-100 to-gray-200 text-gray-400' }} text-base font-semibold">
                                     {{ Str::upper(Str::substr($product->name, 0, 1)) }}
                                 </span>
@@ -55,9 +63,13 @@
                                 </span>
                                 <span class="shrink-0 text-right">
                                     <span class="block font-medium text-gray-800">RD$ {{ number_format($product->price_cents / 100, 2) }}</span>
-                                    <span class="block text-[11px] text-gray-400">Editar</span>
+                                    @if ($puedeCatalogo)
+                                        <span class="block text-[11px] text-gray-400">Editar</span>
+                                    @endif
                                 </span>
-                                <svg class="size-4 shrink-0 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                @if ($puedeCatalogo)
+                                    <svg class="size-4 shrink-0 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                @endif
                             </button>
                         </li>
                     @empty
@@ -72,6 +84,7 @@
         @endforelse
 
         {{-- Modal premium por ítem: precio y todas las configuraciones --}}
+        @if ($puedeCatalogo)
         @foreach ($menuCategories as $categoria)
             @foreach ($categoria->products as $product)
                 <div id="modal-item-{{ $product->id }}" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1" aria-labelledby="modal-item-{{ $product->id }}-label">
@@ -229,6 +242,7 @@
                     }, 150);
                 });
             </script>
+        @endif
         @endif
     </div>
 

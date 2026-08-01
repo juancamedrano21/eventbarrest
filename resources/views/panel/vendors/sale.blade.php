@@ -1,4 +1,4 @@
-@extends($panelLayout)
+@extends($layoutVenta ?? $panelLayout)
 
 @section('title', 'Detalle de la venta — '.$vendor->name)
 

@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Comercio;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\VendorContext;
+use App\Domains\Identity\Enums\Permission;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Sales\Enums\OrderStatus;
@@ -28,6 +29,16 @@ class HomeController extends Controller
     public function __invoke(Request $request): View
     {
         $record = $this->comercioDe($request);
+        $user = $request->user();
+
+        // El dinero es de quien tiene reportes de su unidad — la misma
+        // puerta que protege el detalle de la venta. Almacén compra y
+        // recibe; no ve ventas.
+        $puede = [
+            'catalogo' => (bool) $user?->can(Permission::CatalogManage->value),
+            'inventario' => (bool) $user?->can(Permission::InventoryManage->value),
+            'ventas' => (bool) $user?->can(Permission::ReportsViewUnit->value),
+        ];
 
         $paid = fn () => Order::query()
             ->where('vendor_id', $record->id)
@@ -37,14 +48,17 @@ class HomeController extends Controller
 
         return view('comercio.home', [
             'vendor' => $record,
-            'salesToday' => (int) $paid()->where('paid_at', '>=', $inicioHoy)->sum('total_cents'),
-            'salesTotal' => (int) $paid()->sum('total_cents'),
-            'recentOrders' => Order::query()
-                ->where('vendor_id', $record->id)
-                ->with('operatingUnit')
-                ->orderByDesc('id')
-                ->limit(15)
-                ->get(),
+            'puede' => $puede,
+            'salesToday' => $puede['ventas'] ? (int) $paid()->where('paid_at', '>=', $inicioHoy)->sum('total_cents') : 0,
+            'salesTotal' => $puede['ventas'] ? (int) $paid()->sum('total_cents') : 0,
+            'recentOrders' => $puede['ventas']
+                ? Order::query()
+                    ->where('vendor_id', $record->id)
+                    ->with('operatingUnit')
+                    ->orderByDesc('id')
+                    ->limit(15)
+                    ->get()
+                : collect(),
             'stockLevels' => StockLevel::query()
                 ->whereHas('operatingUnit', fn ($q) => $q->where('vendor_id', $record->id))
                 ->with(['operatingUnit', 'inventoryItem'])

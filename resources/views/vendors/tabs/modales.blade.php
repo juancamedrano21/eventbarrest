@@ -1,5 +1,7 @@
 {{-- Parcial compartido entre /panel (organizador) y /comercio (encargado):
-     las acciones llegan en $urls, cada puerta pone las suyas. --}}
+     las acciones llegan en $urls, cada puerta pone las suyas. $puede acota
+     por capacidades; sin él, todo permitido (el organizador ya autorizó). --}}
+@if ($puede['catalogo'] ?? true)
 {{-- Modal: nueva categoría --}}
     <div id="modal-categoria" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
@@ -62,6 +64,9 @@
         </div>
     </div>
 
+@endif
+
+@if ($puede['inventario'] ?? true)
     {{-- Modal: nuevo insumo --}}
     <div id="modal-insumo" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
@@ -96,7 +101,7 @@
                         @forelse ($outlets as $outlet)
                             <option value="{{ $outlet->id }}">{{ $outlet->name }} — {{ $outlet->event?->name }}</option>
                         @empty
-                            <option value="" disabled>Primero crea un puesto</option>
+                            <option value="" disabled>Sin puestos: el organizador del evento debe crearlos</option>
                         @endforelse
                     </select>
                     <select name="inventory_item_id" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
@@ -118,3 +123,4 @@
         </div>
     </div>
 
+@endif

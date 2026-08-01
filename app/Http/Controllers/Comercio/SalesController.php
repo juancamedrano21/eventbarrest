@@ -34,6 +34,8 @@ class SalesController extends Controller
             'payment' => $sale->payments->first(),
             'tz' => (string) config('app.business_timezone'),
             'volver' => route('comercio.home'),
+            // El chrome de SU puerta, no el del organizador.
+            'layoutVenta' => 'comercio.layout',
         ]);
     }
 }

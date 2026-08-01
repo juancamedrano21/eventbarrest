@@ -22,7 +22,9 @@ class InventoryController extends Controller
 
     public function storeItem(Request $request): RedirectResponse
     {
-        $this->createItem($request, $this->comercioDe($request, Permission::CatalogManage));
+        // El alta de insumos es inventario, no carta: así Almacén puede dar
+        // de alta lo que compra (misma regla en las dos puertas).
+        $this->createItem($request, $this->comercioDe($request, Permission::InventoryManage));
 
         return back()->with('status', 'Insumo creado.');
     }

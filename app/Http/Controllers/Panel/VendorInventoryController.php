@@ -24,7 +24,9 @@ class VendorInventoryController extends Controller
 
     public function storeItem(Request $request, int $vendor): RedirectResponse
     {
-        $this->authorizeOrganizer($request, Permission::CatalogManage);
+        // El alta de insumos es inventario, no carta: así Almacén puede dar
+        // de alta lo que compra (misma regla en las dos puertas).
+        $this->authorizeOrganizer($request, Permission::InventoryManage);
 
         $this->createItem($request, Vendor::query()->findOrFail($vendor));
 

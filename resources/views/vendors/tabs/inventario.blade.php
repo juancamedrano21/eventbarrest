@@ -23,15 +23,17 @@
                 </tbody>
             </table>
         </div>
-        <div class="mt-4 flex gap-2">
-            <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
-                aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-compra" data-hs-overlay="#modal-compra">
-                Registrar compra
-            </button>
-            <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-                aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-insumo" data-hs-overlay="#modal-insumo">
-                Nuevo insumo
-            </button>
-        </div>
+        @if ($puede['inventario'] ?? true)
+            <div class="mt-4 flex gap-2">
+                <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-compra" data-hs-overlay="#modal-compra">
+                    Registrar compra
+                </button>
+                <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-insumo" data-hs-overlay="#modal-insumo">
+                    Nuevo insumo
+                </button>
+            </div>
+        @endif
     </div>
 
