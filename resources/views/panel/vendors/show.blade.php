@@ -98,20 +98,36 @@
 
         {{-- Catálogo (solo lectura) --}}
         <section class="rounded-xl border border-gray-200 bg-white shadow-2xs">
-            <header class="border-b border-gray-200 px-5 py-4">
-                <h2 class="font-medium text-gray-800">Catálogo <span class="ml-1 text-xs font-normal text-gray-500">lo administra el comercio</span></h2>
+            <header class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                <h2 class="font-medium text-gray-800">Catálogo</h2>
+                <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-producto" data-hs-overlay="#modal-producto">
+                    Nuevo producto
+                </button>
             </header>
             <ul class="divide-y divide-gray-200">
                 @forelse ($products as $product)
-                    <li class="flex items-center justify-between px-5 py-3 text-sm">
-                        <div>
-                            <p class="text-gray-800">{{ $product->name }}</p>
+                    <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                        <div class="min-w-0">
+                            <p class="truncate text-gray-800 {{ $product->active ? '' : 'line-through opacity-60' }}">{{ $product->name }}</p>
                             <p class="text-xs text-gray-500">{{ $product->category?->name }}</p>
                         </div>
-                        <span class="text-gray-600">RD$ {{ number_format($product->price_cents / 100, 2) }}</span>
+                        <form method="POST" action="{{ route('panel.vendors.products.update', [$vendor, $product]) }}" class="flex shrink-0 items-center gap-2">
+                            @csrf
+                            <div class="flex items-center rounded-lg border border-gray-200">
+                                <span class="px-2 text-xs text-gray-500">RD$</span>
+                                <input name="price" value="{{ number_format($product->price_cents / 100, 2, '.', '') }}"
+                                    class="w-20 border-0 bg-transparent py-1.5 pe-2 text-right text-sm text-gray-800 focus:ring-0">
+                            </div>
+                            <button type="submit" class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50">Guardar</button>
+                            <button type="submit" name="active" value="{{ $product->active ? 0 : 1 }}"
+                                class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs {{ $product->active ? 'text-amber-700' : 'text-teal-700' }} hover:bg-gray-50">
+                                {{ $product->active ? 'Desactivar' : 'Activar' }}
+                            </button>
+                        </form>
                     </li>
                 @empty
-                    <li class="px-5 py-6 text-sm text-gray-500">Su encargado aún no monta el catálogo.</li>
+                    <li class="px-5 py-6 text-sm text-gray-500">Sin catálogo: créalo tú o su encargado.</li>
                 @endforelse
             </ul>
         </section>
@@ -200,7 +216,16 @@
                 </tbody>
             </table>
         </div>
-        <p class="mt-3 text-xs text-gray-500">El inventario lo opera el comercio; aquí lo ves en tiempo real.</p>
+        <div class="mt-4 flex gap-2">
+            <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+                aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-compra" data-hs-overlay="#modal-compra">
+                Registrar compra
+            </button>
+            <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-insumo" data-hs-overlay="#modal-insumo">
+                Nuevo insumo
+            </button>
+        </div>
     </div>
 
     {{-- Tab: Usuarios --}}

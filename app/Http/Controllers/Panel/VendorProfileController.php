@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Panel;
 
+use App\Domains\Catalog\Models\Category;
 use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Models\Event;
@@ -13,6 +14,7 @@ use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Models\RoleTemplate;
+use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Platform\Models\FoodType;
@@ -72,6 +74,14 @@ class VendorProfileController extends Controller
                 ->with(['operatingUnit', 'inventoryItem'])
                 ->orderBy('inventory_item_id')
                 ->get(),
+            'vendorCategories' => app(VendorContext::class)->runAs(
+                $record,
+                fn () => Category::query()->orderBy('name')->pluck('name', 'id'),
+            ),
+            'vendorItems' => app(VendorContext::class)->runAs(
+                $record,
+                fn () => InventoryItem::query()->orderBy('name')->pluck('name', 'id'),
+            ),
             'vendorTypes' => VendorType::query()->orderBy('name')->pluck('name', 'id'),
             'foodTypes' => FoodType::query()->orderBy('name')->pluck('name', 'id'),
             'vendor' => $record,

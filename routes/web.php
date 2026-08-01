@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Panel\DashboardController;
 use App\Http\Controllers\Panel\EventsController;
+use App\Http\Controllers\Panel\VendorCatalogController;
+use App\Http\Controllers\Panel\VendorInventoryController;
 use App\Http\Controllers\Panel\VendorProfileController;
 use App\Http\Controllers\Panel\VendorsController;
 use Illuminate\Support\Facades\Route;
@@ -32,4 +34,8 @@ Route::middleware(['auth'])->prefix('panel')->name('panel.')->group(function ():
     Route::post('/comercios/{vendor}/usuarios', [VendorProfileController::class, 'storeUser'])->name('vendors.users.store');
     Route::post('/comercios/{vendor}/invitar', [VendorProfileController::class, 'invite'])->name('vendors.invite');
     Route::post('/comercios/{vendor}/puestos', [VendorProfileController::class, 'storeOutlet'])->name('vendors.outlets.store');
+    Route::post('/comercios/{vendor}/productos', [VendorCatalogController::class, 'storeProduct'])->name('vendors.products.store');
+    Route::post('/comercios/{vendor}/productos/{product}', [VendorCatalogController::class, 'updateProduct'])->name('vendors.products.update');
+    Route::post('/comercios/{vendor}/insumos', [VendorInventoryController::class, 'storeItem'])->name('vendors.items.store');
+    Route::post('/comercios/{vendor}/compras', [VendorInventoryController::class, 'storePurchase'])->name('vendors.purchases.store');
 });

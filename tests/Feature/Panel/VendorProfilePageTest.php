@@ -13,6 +13,8 @@ use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
+use App\Domains\Inventory\Models\InventoryItem;
+use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantType;
@@ -168,4 +170,97 @@ it('saves the configuration: logo, business type and food type', function (): vo
             ->and($fresh->logo_path)->not->toBeNull();
         Storage::disk('public')->assertExists($fresh->logo_path);
     });
+});
+
+// El dueño de la cuenta OPERA dentro del comercio (decisión 2026-08-01):
+// catálogo e inventario desde el perfil, siempre como el comercio.
+
+it('lets the owner create a product for the vendor with a new category', function (): void {
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos", [
+            'name' => 'Cuba Libre',
+            'price' => '450.50',
+            'new_category' => 'Tragos',
+        ])
+        ->assertRedirect();
+
+    $producto = Product::query()->withoutGlobalScopes()
+        ->where('name', 'Cuba Libre')->sole();
+
+    expect($producto->vendor_id)->toBe($this->vendor->id)
+        ->and($producto->price_cents)->toBe(45050)
+        ->and(Category::query()->withoutGlobalScopes()
+            ->where('name', 'Tragos')->value('vendor_id'))->toBe($this->vendor->id);
+});
+
+it('lets the owner reprice and deactivate a vendor product, never a foreign one', function (): void {
+    $producto = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+        $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+
+        return Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 20000]);
+    }));
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$producto->id}", [
+            'price' => '275', 'active' => 0,
+        ])
+        ->assertRedirect();
+
+    $fresh = Product::query()->withoutGlobalScopes()->findOrFail($producto->id);
+    expect($fresh->price_cents)->toBe(27500)->and($fresh->active)->toBeFalse();
+
+    // Un producto de OTRO comercio: para este perfil no existe.
+    $ajeno = app(TenantContext::class)->runAs($this->organizer, function () {
+        $otro = app(CreateVendor::class)('Otro Comercio');
+
+        return app(VendorContext::class)->runAs($otro, function () {
+            $cat = Category::create(['name' => 'X', 'dispatch' => DispatchArea::Bar]);
+
+            return Product::create(['category_id' => $cat->id, 'name' => 'Ajeno', 'type' => ProductType::Simple, 'price_cents' => 100]);
+        });
+    });
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$ajeno->id}", ['price' => '1'])
+        ->assertNotFound();
+});
+
+it('lets the owner stock the vendor through the ledger', function (): void {
+    app(TenantContext::class)->runAs($this->organizer, function (): void {
+        app(InviteVendorToEvent::class)($this->event, $this->vendor);
+        $this->puesto = outletFor($this->event, 'Puesto', OperatingUnitKind::Kitchen, $this->vendor);
+    });
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/insumos", [
+            'name' => 'Carne', 'base_unit' => 'g', 'cost' => '0.45',
+        ])
+        ->assertRedirect();
+
+    $insumo = InventoryItem::query()->withoutGlobalScopes()->where('name', 'Carne')->sole();
+    expect($insumo->vendor_id)->toBe($this->vendor->id);
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/compras", [
+            'operating_unit_id' => $this->puesto->id,
+            'inventory_item_id' => $insumo->id,
+            'quantity' => '5000',
+            'unit_cost' => '0.45',
+        ])
+        ->assertRedirect();
+
+    $nivel = StockLevel::query()->withoutGlobalScopes()
+        ->where('operating_unit_id', $this->puesto->id)
+        ->where('inventory_item_id', $insumo->id)->sole();
+    expect((float) $nivel->quantity)->toBe(5000.0);
+});
+
+it('still keeps vendor staff away from the owner operations', function (): void {
+    $staff = app(CreateTenantUser::class)(
+        $this->organizer, 'Caro', 'caro2@x.test', 'Secreta-2026', Role::VendorManager, $this->vendor,
+    );
+
+    $this->actingAs($staff)
+        ->post("/panel/comercios/{$this->vendor->id}/productos", ['name' => 'X', 'price' => '1', 'new_category' => 'Y'])
+        ->assertForbidden();
 });
