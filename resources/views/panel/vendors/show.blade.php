@@ -13,10 +13,16 @@
                 <span>Contacto: {{ $vendor->contact_name ?? '—' }} {{ $vendor->contact_phone ? '· '.$vendor->contact_phone : '' }}</span>
             </div>
         </div>
-        <span class="rounded-full px-3 py-1 text-xs font-medium
-            {{ $vendor->status->value === 'active' ? 'bg-teal-950 text-teal-300 border border-teal-900' : 'bg-amber-950 text-amber-300 border border-amber-900' }}">
-            {{ $vendor->status->getLabel() }}
-        </span>
+        <div class="flex items-center gap-3">
+            <span class="rounded-full px-3 py-1 text-xs font-medium
+                {{ $vendor->status->value === 'active' ? 'bg-teal-950 text-teal-300 border border-teal-900' : 'bg-amber-950 text-amber-300 border border-amber-900' }}">
+                {{ $vendor->status->getLabel() }}
+            </span>
+            <button type="button" class="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300 hover:text-white"
+                aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-editar" data-hs-overlay="#modal-editar">
+                Editar datos
+            </button>
+        </div>
     </div>
 
     <div class="grid gap-6 lg:grid-cols-2">
@@ -115,6 +121,32 @@
                 @endforelse
             </ul>
         </section>
+    </div>
+
+    {{-- Modal: editar datos --}}
+    <div id="modal-editar" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+        <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
+            <form method="POST" action="{{ route('panel.vendors.update', $vendor) }}" class="rounded-xl border border-neutral-700 bg-neutral-900 p-5 shadow-xl">
+                @csrf
+                <h3 class="mb-4 font-medium text-white">Editar {{ $vendor->name }}</h3>
+                <div class="space-y-3">
+                    <input name="name" value="{{ old('name', $vendor->name) }}" required class="w-full rounded-lg border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200">
+                    <input name="rnc" value="{{ old('rnc', $vendor->rnc) }}" placeholder="RNC / Cédula" class="w-full rounded-lg border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-500">
+                    <input name="contact_name" value="{{ old('contact_name', $vendor->contact_name) }}" placeholder="Persona de contacto" class="w-full rounded-lg border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-500">
+                    <input name="contact_phone" value="{{ old('contact_phone', $vendor->contact_phone) }}" placeholder="Teléfono" class="w-full rounded-lg border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200 placeholder-neutral-500">
+                    <select name="status" class="w-full rounded-lg border-neutral-700 bg-neutral-800 px-3 py-2 text-sm text-neutral-200">
+                        @foreach (['draft' => 'En alta', 'active' => 'Activo', 'suspended' => 'Suspendido'] as $value => $label)
+                            <option value="{{ $value }}" @selected(old('status', $vendor->status->value) === $value)>{{ $label }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-xs text-neutral-500">Suspender corta el acceso de todo su personal, incluido el POS.</p>
+                </div>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" class="rounded-lg border border-neutral-700 px-3 py-1.5 text-sm text-neutral-300" data-hs-overlay="#modal-editar">Cancelar</button>
+                    <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Guardar</button>
+                </div>
+            </form>
+        </div>
     </div>
 
     {{-- Modal: nuevo usuario --}}

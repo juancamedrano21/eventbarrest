@@ -11,6 +11,10 @@
         <div class="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
             <a href="/panel" class="text-sm font-semibold tracking-wide text-white">EventBarRest</a>
             <span class="rounded-full border border-sky-900 bg-sky-950 px-2 py-0.5 text-xs text-sky-300">panel nuevo</span>
+            <nav class="flex items-center gap-4 text-sm text-neutral-400">
+                <a href="{{ route('panel.vendors.index') }}" class="hover:text-white">Negocios</a>
+                <a href="{{ route('panel.events.index') }}" class="hover:text-white">Eventos</a>
+            </nav>
             <nav class="ml-auto flex items-center gap-3 text-sm text-neutral-400">
                 <a href="/app" class="hover:text-white">Panel clásico</a>
                 <span class="text-neutral-700">·</span>

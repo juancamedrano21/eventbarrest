@@ -8,7 +8,6 @@ use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
-use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
@@ -16,7 +15,7 @@ use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Http\Controllers\Controller;
-use App\Models\User;
+use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -28,6 +27,8 @@ use Illuminate\View\View;
  */
 class VendorProfileController extends Controller
 {
+    use AuthorizesOrganizerPanel;
+
     public function show(Request $request, int $vendor): View
     {
         $this->authorizeOrganizer($request, Permission::VendorsManage);
@@ -123,22 +124,5 @@ class VendorProfileController extends Controller
         );
 
         return back()->with('status', 'Puesto creado.');
-    }
-
-    /**
-     * La misma frontera que el panel Filament: equipo de la CUENTA
-     * organizadora con el permiso del caso — jamás personal de comercio.
-     */
-    private function authorizeOrganizer(Request $request, Permission $permission): void
-    {
-        $user = $request->user();
-
-        abort_unless(
-            $user instanceof User
-            && ! $user->worksForAVendor()
-            && $user->tenant instanceof OrganizerAccount
-            && $user->can($permission->value),
-            403,
-        );
     }
 }
