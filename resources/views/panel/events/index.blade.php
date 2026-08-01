@@ -1,4 +1,4 @@
-@extends('panel.layout')
+@extends($panelLayout)
 
 @section('title', 'Eventos')
 
