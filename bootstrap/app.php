@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Tenancy\Middleware\SetTenantContext;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -31,6 +32,16 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Las reglas del dominio de ventas son errores operables del POS,
+        // no fallos del servidor: 422 con el mensaje en español.
+        $exceptions->render(function (SalesException $e, Request $request) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+
+            return null;
+        });
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );

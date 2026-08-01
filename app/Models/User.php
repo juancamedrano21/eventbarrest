@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
 /**
@@ -49,7 +50,7 @@ use Spatie\Permission\Traits\HasRoles;
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
-    use HasFactory, HasRoles, Notifiable;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     /**
      * @return array<string, string>
@@ -135,6 +136,25 @@ class User extends Authenticatable implements FilamentUser
 
         return $permissions->isNotEmpty()
             && $permissions->diff(Permission::posOnly())->isEmpty();
+    }
+
+    /**
+     * ¿Puede trabajar en el punto de venta? Cuenta y comercio activos, y
+     * capacidad de vender o de manejar caja. Es la puerta del login del POS.
+     */
+    public function canOperateThePos(): bool
+    {
+        if ($this->is_platform_admin
+            || $this->tenant === null
+            || $this->tenant->status === TenantStatus::Suspended
+            || $this->vendorIsSuspended()) {
+            return false;
+        }
+
+        $permissions = app(UserPermissions::class)->namesFor($this);
+
+        return $permissions->contains(Permission::SalesOperate->value)
+            || $permissions->contains(Permission::CashSessionManage->value);
     }
 
     public function isPlatformStaff(): bool
