@@ -196,24 +196,36 @@
                             </div>
 
                             {{-- Configuración --}}
+                            @php
+                                // Si ESTE modal falló la validación, reabre con lo
+                                // tecleado; los demás muestran su estado real.
+                                $conError = $errors->any() && old('_modal') === 'modal-item-'.$product->id;
+                            @endphp
                             <form method="POST" action="{{ route('panel.vendors.products.update', [$vendor, $product]) }}">
                                 @csrf
+                                <input type="hidden" name="_modal" value="modal-item-{{ $product->id }}">
                                 <div class="space-y-4 px-5 py-5">
                                     <div>
                                         <label class="mb-1.5 block text-xs font-medium text-gray-700">Nombre</label>
-                                        <input name="name" value="{{ $product->name }}" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                                        <input name="name" value="{{ $conError ? old('name') : $product->name }}" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 {{ $conError && $errors->has('name') ? 'border-red-300' : '' }}">
+                                        @if ($conError)
+                                            @error('name')<p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>@enderror
+                                        @endif
                                     </div>
 
                                     <div class="grid grid-cols-2 gap-3">
                                         <div>
                                             <label class="mb-1.5 block text-xs font-medium text-gray-700">Precio (RD$)</label>
-                                            <input name="price" type="text" inputmode="decimal" value="{{ number_format($product->price_cents / 100, 2, '.', '') }}" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                                            <input name="price" type="text" inputmode="decimal" value="{{ $conError ? old('price') : number_format($product->price_cents / 100, 2, '.', '') }}" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                                            @if ($conError)
+                                                @error('price')<p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>@enderror
+                                            @endif
                                         </div>
                                         <div>
                                             <label class="mb-1.5 block text-xs font-medium text-gray-700">Categoría</label>
                                             <select name="category_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
                                                 @foreach ($menuCategories as $opcion)
-                                                    <option value="{{ $opcion->id }}" @selected($opcion->id === $product->category_id)>{{ $opcion->name }} — {{ $opcion->dispatch->value === 'kitchen' ? 'Alimentos' : 'Bebidas' }}</option>
+                                                    <option value="{{ $opcion->id }}" @selected($conError ? (string) old('category_id') === (string) $opcion->id : $opcion->id === $product->category_id)>{{ $opcion->name }} — {{ $opcion->dispatch->value === 'kitchen' ? 'Alimentos' : 'Bebidas' }}</option>
                                                 @endforeach
                                             </select>
                                         </div>
@@ -223,15 +235,15 @@
                                         <div>
                                             <label class="mb-1.5 block text-xs font-medium text-gray-700">Estado</label>
                                             <select name="active" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
-                                                <option value="1" @selected($product->active)>En venta</option>
-                                                <option value="0" @selected(! $product->active)>Pausado — no aparece en el POS</option>
+                                                <option value="1" @selected($conError ? old('active') === '1' : $product->active)>En venta</option>
+                                                <option value="0" @selected($conError ? old('active') === '0' : ! $product->active)>Pausado — no aparece en el POS</option>
                                             </select>
                                         </div>
                                         <div>
                                             <label class="mb-1.5 block text-xs font-medium text-gray-700">ITBIS</label>
                                             <select name="itbis_exempt" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
-                                                <option value="0" @selected(! $product->itbis_exempt)>Grava — 18 % incluido en el precio</option>
-                                                <option value="1" @selected($product->itbis_exempt)>Exento — no desglosa impuesto</option>
+                                                <option value="0" @selected($conError ? old('itbis_exempt') === '0' : ! $product->itbis_exempt)>Grava — 18 % incluido en el precio</option>
+                                                <option value="1" @selected($conError ? old('itbis_exempt') === '1' : $product->itbis_exempt)>Exento — no desglosa impuesto</option>
                                             </select>
                                         </div>
                                     </div>
@@ -242,7 +254,7 @@
                                             <select name="inventory_item_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
                                                 <option value="">Sin insumo — no descuenta inventario</option>
                                                 @foreach ($vendorItems as $id => $name)
-                                                    <option value="{{ $id }}" @selected($id === $product->inventory_item_id)>{{ $name }}</option>
+                                                    <option value="{{ $id }}" @selected($conError ? (string) old('inventory_item_id') === (string) $id : $id === $product->inventory_item_id)>{{ $name }}</option>
                                                 @endforeach
                                             </select>
                                             <p class="mt-1.5 text-xs text-gray-500">Vende 1, descuenta 1 (ej. una cerveza descuenta su botella).</p>
@@ -298,6 +310,26 @@
                 </div>
             @endforeach
         @endforeach
+
+        @php
+            // Solo un id con la forma esperada reabre: nada del old() viaja
+            // crudo a un selector.
+            $modalConError = $errors->any() && preg_match('/^modal-item-\d+$/', (string) old('_modal')) === 1
+                ? old('_modal')
+                : null;
+        @endphp
+        @if ($modalConError !== null)
+            <script>
+                // La validación devolvió al perfil: reabre el modal del ítem
+                // que falló, con lo tecleado y el error a la vista.
+                window.addEventListener('load', function () {
+                    setTimeout(function () {
+                        var modal = document.querySelector(@js('#'.$modalConError));
+                        if (window.HSOverlay && modal) { window.HSOverlay.open(modal); }
+                    }, 150);
+                });
+            </script>
+        @endif
     </div>
 
     {{-- Tab: Ventas --}}
@@ -575,8 +607,8 @@
                         <option value="receta">Con receta — descuenta varios ingredientes (el escandallo se arma después)</option>
                     </select>
                     <select name="itbis" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
-                        <option value="gravado">Grava ITBIS — el 18 % va incluido en el precio</option>
-                        <option value="exento">Exento de ITBIS — agua embotellada, alimentos no gravados</option>
+                        <option value="gravado">Grava — el 18 % va incluido en el precio</option>
+                        <option value="exento">Exento — agua embotellada, alimentos no gravados</option>
                     </select>
                     <select name="inventory_item_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
                         <option value="">Sin insumo vinculado (solo para Simple)</option>

@@ -434,3 +434,69 @@ it('refuses a duplicate product name within the vendor', function (): void {
 
     expect(Product::query()->withoutGlobalScopes()->findOrFail($dos->id)->name)->toBe('Quesadilla');
 });
+
+it('404s foreign categories and items from the modal and shields recipes from direct links', function (): void {
+    [$simple, $receta, $ronPropio] = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+        $cat = Category::create(['name' => 'Cócteles', 'dispatch' => DispatchArea::Bar]);
+        $ron = InventoryItem::create(['name' => 'Ron blanco', 'base_unit' => MeasurementUnit::Milliliter, 'cost_cents' => 0]);
+
+        return [
+            Product::create(['category_id' => $cat->id, 'name' => 'Cuba', 'type' => ProductType::Simple, 'price_cents' => 30000]),
+            Product::create(['category_id' => $cat->id, 'name' => 'Mojito', 'type' => ProductType::Recipe, 'price_cents' => 40000]),
+            $ron,
+        ];
+    }));
+
+    [$catAjena, $itemAjeno] = app(TenantContext::class)->runAs($this->organizer, function () {
+        $otro = app(CreateVendor::class)('Otro Comercio');
+
+        return app(VendorContext::class)->runAs($otro, fn () => [
+            Category::create(['name' => 'Ajena', 'dispatch' => DispatchArea::Bar]),
+            InventoryItem::create(['name' => 'Ajeno', 'base_unit' => MeasurementUnit::Unit, 'cost_cents' => 0]),
+        ]);
+    });
+
+    // Categoría e insumo de OTRO comercio: para este modal no existen.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$simple->id}", ['category_id' => $catAjena->id])
+        ->assertNotFound();
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$simple->id}", ['inventory_item_id' => $itemAjeno->id])
+        ->assertNotFound();
+
+    // Una receta descuenta por su escandallo: el vínculo directo se ignora.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$receta->id}", ['inventory_item_id' => $ronPropio->id])
+        ->assertRedirect();
+
+    expect(Product::query()->withoutGlobalScopes()->findOrFail($receta->id)->inventory_item_id)->toBeNull();
+
+    // Y su modal ni ofrece el select de insumo, pero sí el escandallo.
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}")
+        ->assertOk()
+        ->assertSee('Receta (escandallo)');
+});
+
+it('reopens the failed modal with the typed values and the error in sight', function (): void {
+    [, $dos] = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+        $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+
+        return [
+            Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 10000]),
+            Product::create(['category_id' => $cat->id, 'name' => 'Quesadilla', 'type' => ProductType::Simple, 'price_cents' => 12000]),
+        ];
+    }));
+
+    $this->actingAs($this->owner)
+        ->from("/panel/comercios/{$this->vendor->id}")
+        ->followingRedirects()
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$dos->id}", [
+            'name' => 'Taco', 'price' => '120', '_modal' => "modal-item-{$dos->id}",
+        ])
+        ->assertOk()
+        ->assertSee('Ya existe un producto con ese nombre en este comercio.')
+        ->assertSee('HSOverlay.open', false)
+        ->assertSee("modal-item-{$dos->id}");
+});

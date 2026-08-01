@@ -20,6 +20,13 @@ class CatalogException extends RuntimeException
         return new self('El insumo indicado no pertenece a esta cuenta.');
     }
 
+    public static function recipesConsumeThroughTheirRecipe(): self
+    {
+        return new self(
+            'Un producto con receta descuenta inventario por su escandallo: no puede tener un insumo vinculado directo.'
+        );
+    }
+
     public static function typeIsImmutable(): self
     {
         return new self(

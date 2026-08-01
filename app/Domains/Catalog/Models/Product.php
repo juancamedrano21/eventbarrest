@@ -122,6 +122,21 @@ class Product extends Model
                 $assert($product);
             }
         });
+
+        // Una receta descuenta por su escandallo, jamás por vínculo directo:
+        // el controlador ya lo filtra, esto para seeders e imports futuros.
+        $soloSimplesVinculan = function (Product $product): void {
+            if ($product->type === ProductType::Recipe && $product->inventory_item_id !== null) {
+                throw CatalogException::recipesConsumeThroughTheirRecipe();
+            }
+        };
+
+        static::creating($soloSimplesVinculan);
+        static::updating(function (Product $product) use ($soloSimplesVinculan): void {
+            if ($product->isDirty('inventory_item_id')) {
+                $soloSimplesVinculan($product);
+            }
+        });
     }
 
     /**
