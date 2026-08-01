@@ -18,15 +18,20 @@ export function hasToken() {
 }
 
 async function request(method, path, body = null) {
-    const response = await fetch(BASE + path, {
+    let response;
+    try {
+        response = await fetch(BASE + path, {
         method,
         headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: body ? JSON.stringify(body) : null,
-    });
+            body: body ? JSON.stringify(body) : null,
+        });
+    } catch {
+        throw { status: 0, code: 'sin_red', message: 'Sin conexion: verifica la senal e intenta de nuevo.' };
+    }
 
     const data = await response.json().catch(() => ({}));
 

@@ -1,13 +1,32 @@
-// App shell offline: cache-first para los assets compilados y la pantalla
-// del POS. Los DATOS nunca pasan por aqui: viven en Dexie y en la API.
-const SHELL = 'pos-shell-v1';
+// App shell offline: el cascaron y los assets con hash se precachean al
+// instalar; solo se cachean respuestas OK. Los DATOS nunca pasan por aqui:
+// viven en Dexie y en la API.
+const SHELL = 'pos-shell-v2';
 
 self.addEventListener('install', (event) => {
-    self.skipWaiting();
+    event.waitUntil((async () => {
+        const cache = await caches.open(SHELL);
+        try {
+            await cache.add('/pos');
+            const manifest = await (await fetch('/build/manifest.json')).json();
+            const assets = Object.values(manifest)
+                .flatMap((entry) => [entry.file, ...(entry.css ?? [])])
+                .map((file) => `/build/${file}`);
+            await cache.addAll([...new Set(assets)]);
+        } catch {
+            // Sin red en la instalacion: se cachea sobre la marcha al navegar.
+        }
+        self.skipWaiting();
+    })());
 });
 
 self.addEventListener('activate', (event) => {
-    event.waitUntil(self.clients.claim());
+    event.waitUntil((async () => {
+        for (const key of await caches.keys()) {
+            if (key !== SHELL) await caches.delete(key);
+        }
+        await self.clients.claim();
+    })());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -17,13 +36,15 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Navegacion al POS: red primero, cache como respaldo offline.
-    if (event.request.mode === 'navigate' && url.pathname.startsWith('/pos')) {
+    // Navegacion al POS (ruta exacta): red primero, cache como respaldo.
+    if (event.request.mode === 'navigate' && url.pathname === '/pos') {
         event.respondWith(
             fetch(event.request)
                 .then((response) => {
-                    const copy = response.clone();
-                    caches.open(SHELL).then((cache) => cache.put('/pos', copy));
+                    if (response.ok) {
+                        const copy = response.clone();
+                        caches.open(SHELL).then((cache) => cache.put('/pos', copy));
+                    }
                     return response;
                 })
                 .catch(() => caches.match('/pos'))
@@ -37,8 +58,10 @@ self.addEventListener('fetch', (event) => {
         || url.pathname === '/pos-icon.svg') {
         event.respondWith(
             caches.match(event.request).then((hit) => hit || fetch(event.request).then((response) => {
-                const copy = response.clone();
-                caches.open(SHELL).then((cache) => cache.put(event.request, copy));
+                if (response.ok) {
+                    const copy = response.clone();
+                    caches.open(SHELL).then((cache) => cache.put(event.request, copy));
+                }
                 return response;
             }))
         );

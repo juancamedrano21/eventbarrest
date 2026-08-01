@@ -14,11 +14,15 @@ if (hasToken()) {
     pos.arrive();
 }
 
+// Volver la senal revalida el estado (la caja pudo cerrar desde el panel)
+// y luego vacia la bandeja. El intervalo solo trabaja con sesion iniciada.
 window.addEventListener('online', () => {
     pos.online = true;
-    pos.syncOutbox();
+    if (hasToken()) pos.arrive();
 });
 window.addEventListener('offline', () => {
     pos.online = false;
 });
-setInterval(() => pos.syncOutbox(), 15000);
+setInterval(() => {
+    if (hasToken()) pos.syncOutbox();
+}, 15000);

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue';
 import { usePos } from '../store';
-import { money } from '../money';
+import { money, toCents } from '../money';
 
 const pos = usePos();
 const category = ref(null);
@@ -14,19 +14,34 @@ const counted = ref('');
 const visibleProducts = computed(() =>
     pos.products.filter((product) => category.value === null || product.category_id === category.value));
 
-const tenderedCents = computed(() => Math.round(Number(tendered.value || 0) * 100));
+const submitting = ref(false);
+const tenderedCents = computed(() => toCents(tendered.value));
 const change = computed(() => tenderedCents.value - pos.totals.total);
 const canCharge = computed(() => method.value === 'cash'
     ? tenderedCents.value >= pos.totals.total
     : true);
 
-async function confirm() {
-    // Tarjeta y transferencia van por el monto exacto; el vuelto es cosa
-    // del efectivo. El cobro queda local y sincroniza solo.
-    await pos.charge(method.value, method.value === 'cash' ? tenderedCents.value : pos.totals.total);
-    paying.value = false;
-    tendered.value = '';
+function openPayment() {
+    // El modal abre limpio: nada del cobro anterior se hereda.
     method.value = 'cash';
+    tendered.value = '';
+    paying.value = true;
+}
+
+async function confirm() {
+    // Un solo cobro por tap: el guard mata el doble toque, que crearia una
+    // venta DUPLICADA real (dos referencias distintas que la idempotencia
+    // del servidor no puede unir).
+    if (submitting.value) return;
+    submitting.value = true;
+    try {
+        // Tarjeta y transferencia van por el monto exacto; el vuelto es
+        // cosa del efectivo. El cobro queda local y sincroniza solo.
+        await pos.charge(method.value, method.value === 'cash' ? tenderedCents.value : pos.totals.total);
+        paying.value = false;
+    } finally {
+        submitting.value = false;
+    }
 }
 </script>
 
@@ -63,7 +78,7 @@ async function confirm() {
                 <strong>Total: {{ money(pos.totals.total) }}</strong>
             </div>
 
-            <button class="primary" :disabled="pos.cart.length === 0" @click="paying = true">Cobrar</button>
+            <button class="primary" :disabled="pos.cart.length === 0 || pos.closingTill" @click="openPayment()">Cobrar</button>
             <button class="ghost-wide" @click="counting = true">Cerrar caja</button>
         </aside>
 
@@ -78,10 +93,13 @@ async function confirm() {
                     </select>
                 </label>
                 <label v-if="method === 'cash'" class="field"><span>Recibido (RD$)</span>
-                    <input v-model="tendered" type="number" min="0" step="0.01" inputmode="decimal">
+                    <input v-model="tendered" type="text" inputmode="decimal">
                 </label>
-                <p v-if="method === 'cash' && change >= 0" class="change">Vuelto: {{ money(change) }}</p>
-                <button class="primary" :disabled="!canCharge" @click="confirm()">Confirmar cobro</button>
+                <p v-if="method === 'cash' && tendered !== '' && change >= 0" class="change">Vuelto: {{ money(change) }}</p>
+                <p v-else-if="method === 'cash' && tendered !== ''" class="short">Faltan {{ money(-change) }}</p>
+                <button class="primary" :disabled="!canCharge || submitting" @click="confirm()">
+                    {{ submitting ? 'Cobrando...' : 'Confirmar cobro' }}
+                </button>
             </div>
         </div>
 
@@ -89,10 +107,11 @@ async function confirm() {
             <div class="sheet">
                 <h2>Cerrar caja</h2>
                 <label class="field"><span>Efectivo contado (RD$)</span>
-                    <input v-model="counted" type="number" min="0" step="0.01" inputmode="decimal">
+                    <input v-model="counted" type="text" inputmode="decimal">
                 </label>
-                <button class="primary" :disabled="pos.busy"
-                    @click="pos.closeTill(Math.round(Number(counted || 0) * 100)); counting = false">
+                <p class="review-note">Se cierra contra {{ money(toCents(counted)) }}. Irreversible desde el POS.</p>
+                <button class="primary" :disabled="pos.busy || counted === ''"
+                    @click="pos.closeTill(toCents(counted)); counting = false">
                     Cerrar contra lo contado
                 </button>
             </div>
@@ -120,6 +139,8 @@ async function confirm() {
 .modal { position: fixed; inset: 0; background: rgb(0 0 0 / .6); display: grid; place-items: center; }
 .sheet { background: #1e293b; border-radius: 1rem; padding: 1.2rem; width: min(420px, 92vw); }
 .change { color: #86efac; margin-bottom: .8rem; }
+.short { color: #f87171; margin-bottom: .8rem; }
+.review-note { color: #94a3b8; font-size: .85rem; margin-bottom: .8rem; }
 @media (max-width: 720px) {
     .sale { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
     .cart { grid-row: auto; grid-column: 1; }

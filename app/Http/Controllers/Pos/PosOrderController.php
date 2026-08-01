@@ -15,6 +15,7 @@ use App\Domains\Sales\Models\Order;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 /**
  * El endpoint de sincronización del POS offline: recibe una venta terminada
@@ -41,35 +42,44 @@ class PosOrderController extends Controller
 
         $session = CashSession::query()->findOrFail($data['cash_session_id']);
 
-        $order = app(PlaceOrder::class)(
-            $session,
-            $data['lines'],
-            $data['client_ref'],
-            $request->user(),
-            (bool) ($data['with_tip'] ?? false),
-        );
+        // Alta y cobro en UNA transacción: si el cobro falla, la orden no
+        // queda Open huérfana bloqueando el cierre de caja — el reintento
+        // parte de cero (el lookup idempotente tolera el rollback).
+        $created = false;
 
-        // La señal de alta se captura AQUÍ: el cobro relee con lock y
-        // devuelve otra instancia hidratada de la base.
-        $created = $order->wasRecentlyCreated;
+        $order = DB::transaction(function () use ($session, $data, $request, &$created): Order {
+            $order = app(PlaceOrder::class)(
+                $session,
+                $data['lines'],
+                $data['client_ref'],
+                $request->user(),
+                (bool) ($data['with_tip'] ?? false),
+            );
 
-        if ($order->status === OrderStatus::Open) {
-            try {
-                $order = app(PayOrder::class)(
-                    $order,
-                    PaymentMethod::from($data['payment']['method']),
-                    (int) $data['payment']['tendered_cents'],
-                );
-            } catch (SalesException $exception) {
-                // Carrera del reenvío: si otro request la cobró primero, la
-                // respuesta correcta es el estado real, no un error.
-                $order = Order::query()->findOrFail($order->id);
+            // La señal de alta se captura AQUÍ: el cobro relee con lock y
+            // devuelve otra instancia hidratada de la base.
+            $created = $order->wasRecentlyCreated;
 
-                if ($order->status !== OrderStatus::Paid) {
-                    throw $exception;
+            if ($order->status === OrderStatus::Open) {
+                try {
+                    $order = app(PayOrder::class)(
+                        $order,
+                        PaymentMethod::from($data['payment']['method']),
+                        (int) $data['payment']['tendered_cents'],
+                    );
+                } catch (SalesException $exception) {
+                    // Carrera del reenvío: si otro request la cobró primero,
+                    // la respuesta correcta es el estado real, no un error.
+                    $order = Order::query()->findOrFail($order->id);
+
+                    if ($order->status !== OrderStatus::Paid) {
+                        throw $exception;
+                    }
                 }
             }
-        }
+
+            return $order;
+        });
 
         // Una venta anulada no se «re-cobra» con la misma referencia: el
         // POS debe renumerar y reenviar. Contrato explícito, no un 200 mudo.

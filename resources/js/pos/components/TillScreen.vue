@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue';
 import { usePos } from '../store';
-import { money } from '../money';
+import { money, toCents } from '../money';
 
 const pos = usePos();
 const unitId = ref(null);
@@ -27,10 +27,10 @@ const opening = ref('');
                 </select>
             </label>
             <label class="field"><span>Fondo inicial (RD$)</span>
-                <input v-model="opening" type="number" min="0" step="0.01" inputmode="decimal">
+                <input v-model="opening" type="text" inputmode="decimal">
             </label>
             <button class="primary" :disabled="pos.busy || !unitId"
-                @click="pos.openTill(unitId, Math.round(Number(opening || 0) * 100))">
+                @click="pos.openTill(unitId, toCents(opening))">
                 Abrir caja
             </button>
         </template>

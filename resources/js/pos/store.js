@@ -3,9 +3,9 @@ import { api, setToken, hasToken } from './api';
 import { db, kvGet, kvSet } from './db';
 
 // El precio ya incluye el ITBIS; el desglose y la propina espejan el calculo
-// del servidor, que es la fuente de la verdad al sincronizar.
+// del servidor (redondeo POR LINEA incluido): el servidor manda al sincronizar.
 function totals(cart, withTip) {
-    const subtotal = cart.reduce((sum, line) => sum + line.price_cents * line.quantity, 0);
+    const subtotal = cart.reduce((sum, line) => sum + Math.round(line.price_cents * line.quantity), 0);
     const itbis = Math.round((subtotal * 18) / 118);
     const tip = withTip ? Math.round((subtotal - itbis) * 0.1) : 0;
     return { subtotal, itbis, tip, total: subtotal + tip };
@@ -22,10 +22,15 @@ export const usePos = defineStore('pos', {
         cart: [],
         withTip: false,
         pending: 0,
+        errored: 0,
+        reviewing: false,
+        reviewRows: [],
         online: navigator.onLine,
         closing: null,
+        closingTill: false,
         error: null,
         busy: false,
+        syncing: null,
     }),
 
     getters: {
@@ -41,12 +46,21 @@ export const usePos = defineStore('pos', {
             }
         },
 
+        async recount() {
+            // 'sin_caja' cuenta como pendiente: espera una caja nueva.
+            this.pending = await db.outbox.where('status').anyOf('pendiente', 'sin_caja').count();
+            this.errored = await db.outbox.where('status').equals('error').count();
+        },
+
         async login(email, password) {
             this.busy = true;
             this.error = null;
             try {
-                const device = await kvGet('device', `pos-${crypto.randomUUID().slice(0, 8)}`);
-                await kvSet('device', device);
+                let device = await kvGet('device');
+                if (!device) {
+                    device = `pos-${crypto.randomUUID().slice(0, 8)}`;
+                    await kvSet('device', device);
+                }
                 const data = await api.login(email, password, device);
                 setToken(data.token);
                 this.user = data.user;
@@ -58,29 +72,44 @@ export const usePos = defineStore('pos', {
             }
         },
 
-        // Al entrar (login o recarga): estado del servidor si hay senal,
-        // lo cacheado si no. Vender nunca depende de la red.
+        // Al entrar (login, recarga o vuelta de senal): estado del servidor si
+        // hay red, lo cacheado si no. Vender nunca depende de la red.
         async arrive() {
             try {
                 const boot = await api.bootstrap();
                 const catalog = await api.catalog();
                 this.units = boot.units;
-                this.session = boot.open_sessions[0] ?? null;
                 this.categories = catalog.categories;
                 this.products = catalog.products;
+                const saved = await kvGet('my_session_id');
+                const sessions = boot.open_sessions ?? [];
+                this.session = sessions.find((s) => s.id === saved)
+                    ?? (sessions.length === 1 ? sessions[0] : null);
                 await kvSet('cache', { units: boot.units, session: this.session, catalog });
             } catch (error) {
-                if (error?.status === 401 || error?.status === 403) return this.fail(error);
+                if (error?.status === 401 || error?.status === 403) {
+                    return this.fail(error);
+                }
                 const cache = await kvGet('cache');
-                if (cache) {
-                    this.units = cache.units;
-                    this.session = cache.session;
+                if (cache?.units) this.units = cache.units;
+                if (cache?.catalog) {
                     this.categories = cache.catalog.categories;
                     this.products = cache.catalog.products;
                 }
+                if (cache?.session) this.session = cache.session;
+                if (!cache) {
+                    this.error = 'Sin conexion y sin datos guardados: conecta el dispositivo e intenta de nuevo.';
+                }
+            } finally {
+                const draft = await kvGet('draft');
+                if (draft && this.cart.length === 0) {
+                    this.cart = draft.cart;
+                    this.withTip = draft.withTip;
+                }
+                await this.recount();
+                this.screen = this.session ? 'sale' : 'till';
+                this.syncOutbox();
             }
-            this.pending = await db.outbox.where('status').equals('pendiente').count();
-            this.screen = this.session ? 'sale' : 'till';
         },
 
         async openTill(unitId, openingCents) {
@@ -88,13 +117,30 @@ export const usePos = defineStore('pos', {
             this.error = null;
             try {
                 this.session = await api.openSession(unitId, openingCents);
+                await kvSet('my_session_id', this.session.id);
                 await kvSet('cache', { ...(await kvGet('cache', {})), session: this.session });
+
+                // Ventas huerfanas de una caja anterior: renacen en esta.
+                const parked = await db.outbox.where('status').equals('sin_caja').toArray();
+                for (const sale of parked) {
+                    await db.outbox.update(sale.id, {
+                        status: 'pendiente',
+                        cash_session_id: this.session.id,
+                        client_ref: crypto.randomUUID(),
+                    });
+                }
+                await this.recount();
                 this.screen = 'sale';
+                this.syncOutbox();
             } catch (error) {
                 this.fail(error);
             } finally {
                 this.busy = false;
             }
+        },
+
+        async saveDraft() {
+            await kvSet('draft', { cart: JSON.parse(JSON.stringify(this.cart)), withTip: this.withTip });
         },
 
         addToCart(product) {
@@ -104,6 +150,7 @@ export const usePos = defineStore('pos', {
             } else {
                 this.cart.push({ product_id: product.id, name: product.name, price_cents: product.price_cents, quantity: 1 });
             }
+            this.saveDraft();
         },
 
         removeFromCart(productId) {
@@ -114,16 +161,19 @@ export const usePos = defineStore('pos', {
             } else {
                 this.cart.splice(index, 1);
             }
+            this.saveDraft();
         },
 
         // La venta se COBRA aqui, en el dispositivo: va a la bandeja local y
-        // se sincroniza cuando haya senal. La referencia nace unica.
+        // se sincroniza cuando haya senal. La referencia es un UUID: unica
+        // aunque haya dos pestanas o se pierda el almacenamiento.
         async charge(method, tenderedCents) {
-            const seq = (await kvGet('seq', 0)) + 1;
-            await kvSet('seq', seq);
-            const device = await kvGet('device');
+            if (this.closingTill || !this.session) {
+                this.error = 'La caja se esta cerrando: no se puede cobrar.';
+                return;
+            }
             const sale = {
-                client_ref: `${device}-${String(seq).padStart(6, '0')}`.slice(0, 40),
+                client_ref: crypto.randomUUID(),
                 cash_session_id: this.session.id,
                 with_tip: this.withTip,
                 lines: this.cart.map((line) => ({ product_id: line.product_id, quantity: line.quantity })),
@@ -135,13 +185,22 @@ export const usePos = defineStore('pos', {
             await db.outbox.add(sale);
             this.cart = [];
             this.withTip = false;
-            this.pending += 1;
+            await kvSet('draft', null);
+            await this.recount();
             this.syncOutbox();
         },
 
-        // Reenviar jamas duplica: el servidor es idempotente por referencia.
-        // Se decide por CODIGO: solo la falta de red deja la venta pendiente.
-        async syncOutbox() {
+        // Un solo vuelo a la vez: intervalo, reconexion, post-venta y cierre
+        // comparten la MISMA corrida en curso. Se decide por status y codigo:
+        // sin red sigue pendiente; 5xx/429 transitorio; 4xx definitivo va a
+        // revision; caja cerrada se reasigna a la caja abierta o se aparca.
+        syncOutbox() {
+            if (this.syncing) return this.syncing;
+            this.syncing = this.runSync().finally(() => { this.syncing = null; });
+            return this.syncing;
+        },
+
+        async runSync() {
             if (!navigator.onLine) return;
             const pending = await db.outbox.where('status').equals('pendiente').toArray();
             for (const sale of pending) {
@@ -155,38 +214,93 @@ export const usePos = defineStore('pos', {
                     });
                     await db.outbox.update(sale.id, { status: 'sincronizada', server: result });
                 } catch (error) {
-                    if (error?.code) {
-                        await db.outbox.update(sale.id, { status: 'error', error_code: error.code, error_message: error.message });
+                    if (!error?.status) {
+                        break; // sin red: todo lo demas puede esperar
                     }
-                    // Sin codigo = sin red o error de servidor: sigue pendiente.
+                    if (error.status === 401 || error.status === 403) {
+                        this.fail(error);
+                        break;
+                    }
+                    if (error.code === 'session_not_open') {
+                        if (this.session && this.session.id !== sale.cash_session_id) {
+                            // La caja original cerro: la venta renace en la abierta.
+                            await db.outbox.update(sale.id, {
+                                cash_session_id: this.session.id,
+                                client_ref: crypto.randomUUID(),
+                            });
+                        } else {
+                            await db.outbox.update(sale.id, { status: 'sin_caja', error_message: 'Su caja cerro: abre una caja para reenviarla.' });
+                        }
+                        continue;
+                    }
+                    if (error.status === 429 || error.status >= 500) {
+                        continue; // transitorio: reintento en la proxima corrida
+                    }
+                    await db.outbox.update(sale.id, {
+                        status: 'error',
+                        error_code: error.code ?? `http_${error.status}`,
+                        error_message: error.message,
+                    });
                 }
             }
-            this.pending = await db.outbox.where('status').equals('pendiente').count();
+            await this.recount();
+        },
+
+        async openReview() {
+            this.reviewRows = await db.outbox.where('status').anyOf('error', 'sin_caja', 'pendiente').toArray();
+            this.reviewing = true;
+        },
+
+        async retryRow(id) {
+            await db.outbox.update(id, { status: 'pendiente', error_code: null, error_message: null });
+            await this.recount();
+            this.reviewing = false;
+            this.syncOutbox();
+        },
+
+        async discardRow(id) {
+            // Descartar es decision del supervisor: la venta cobrada al
+            // cliente se saca de la bandeja a sabiendas.
+            await db.outbox.update(id, { status: 'descartada' });
+            await this.recount();
+            this.reviewing = false;
         },
 
         async closeTill(countedCents) {
             this.busy = true;
+            this.closingTill = true;
             this.error = null;
             try {
                 await this.syncOutbox();
-                if (this.pending > 0) {
-                    this.error = `Hay ${this.pending} venta(s) sin sincronizar: conecta el dispositivo antes de cerrar.`;
+                if (this.pending > 0 || this.errored > 0) {
+                    this.error = this.errored > 0
+                        ? `Hay ${this.errored} venta(s) en revision: resuelvelas antes de cerrar.`
+                        : `Hay ${this.pending} venta(s) sin sincronizar: conecta el dispositivo antes de cerrar.`;
                     return;
                 }
                 this.closing = await api.closeSession(this.session.id, countedCents);
                 this.session = null;
+                await kvSet('my_session_id', null);
                 await kvSet('cache', { ...(await kvGet('cache', {})), session: null });
                 this.screen = 'till';
             } catch (error) {
                 this.fail(error);
             } finally {
+                this.closingTill = false;
                 this.busy = false;
             }
         },
 
         async logout() {
+            await this.syncOutbox();
+            if (this.pending > 0 || this.errored > 0) {
+                this.error = 'Hay ventas sin sincronizar o en revision: no se puede salir todavia.';
+                return;
+            }
             try { await api.logout(); } catch { /* el token muere igual */ }
             setToken(null);
+            await kvSet('cache', null);
+            await kvSet('draft', null);
             this.user = null;
             this.session = null;
             this.screen = 'login';
