@@ -147,7 +147,8 @@ export const usePos = defineStore('pos', {
         },
 
         async saveDraft() {
-            await kvSet('draft', { cart: JSON.parse(JSON.stringify(this.cart)), withTip: this.withTip });
+            // kvSet ya desenvuelve los proxies reactivos: un solo punto.
+            await kvSet('draft', { cart: this.cart, withTip: this.withTip });
         },
 
         addToCart(product) {
@@ -189,7 +190,10 @@ export const usePos = defineStore('pos', {
                 status: 'pendiente',
                 created_at: Date.now(),
             };
-            await db.outbox.add(sale);
+            // Mismo saneo que kvSet: hoy la venta es toda primitivos, pero
+            // el dia que una linea gane un campo anidado copiado por
+            // referencia, seria un proxy reactivo y IndexedDB no los clona.
+            await db.outbox.add(JSON.parse(JSON.stringify(sale)));
             this.cart = [];
             this.withTip = false;
             await kvSet('draft', null);
