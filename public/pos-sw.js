@@ -1,7 +1,7 @@
 // App shell offline: el cascaron y los assets con hash se precachean al
 // instalar; solo se cachean respuestas OK. Los DATOS nunca pasan por aqui:
 // viven en Dexie y en la API.
-const SHELL = 'pos-shell-v2';
+const SHELL = 'pos-shell-v3';
 
 self.addEventListener('install', (event) => {
     event.waitUntil((async () => {
