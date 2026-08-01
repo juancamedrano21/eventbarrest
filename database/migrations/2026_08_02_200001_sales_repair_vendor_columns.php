@@ -46,8 +46,12 @@ return new class extends Migration
         }
 
         // Backfill: la pertenencia al comercio se deriva de la unidad.
-        DB::statement('UPDATE orders o JOIN operating_units u ON u.id = o.operating_unit_id SET o.vendor_id = u.vendor_id WHERE o.vendor_id IS NULL');
-        DB::statement('UPDATE cash_sessions c JOIN operating_units u ON u.id = c.operating_unit_id SET c.vendor_id = u.vendor_id WHERE c.vendor_id IS NULL');
+        // Sintaxis de UPDATE..JOIN de MySQL — y solo MySQL puede tener el
+        // desfase que esto repara (los tests corren en sqlite fresco).
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('UPDATE orders o JOIN operating_units u ON u.id = o.operating_unit_id SET o.vendor_id = u.vendor_id WHERE o.vendor_id IS NULL');
+            DB::statement('UPDATE cash_sessions c JOIN operating_units u ON u.id = c.operating_unit_id SET c.vendor_id = u.vendor_id WHERE c.vendor_id IS NULL');
+        }
     }
 
     public function down(): void
