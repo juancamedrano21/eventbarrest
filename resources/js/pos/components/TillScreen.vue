@@ -79,17 +79,17 @@ const fondos = [0, 500, 1000, 2000, 5000];
 .till-card {
     width: min(420px, 100%);
     background: var(--panel); border: 1px solid var(--line-strong);
-    border-radius: 20px; padding: 1.8rem 1.6rem;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, .45);
+    border-radius: 4px; padding: 1.8rem 1.6rem;
+   
 }
 .till-icon {
-    display: grid; place-items: center; width: 50px; height: 50px; border-radius: 14px;
+    display: grid; place-items: center; width: 50px; height: 50px; border-radius: 4px;
     background: linear-gradient(135deg, #0ea5e9, #0369a1);
-    box-shadow: 0 8px 24px rgba(14, 165, 233, .35);
+   
     color: white; margin-bottom: 1rem;
 }
 .till-icon svg { width: 24px; height: 24px; }
-.till-icon-ok { background: linear-gradient(135deg, #10b981, #047857); box-shadow: 0 8px 24px rgba(16, 185, 129, .3); }
+.till-icon-ok { background: linear-gradient(135deg, #10b981, #047857); }
 h1 { font-size: 1.3rem; margin-bottom: .25rem; }
 .till-sub { color: var(--muted); font-size: .87rem; margin-bottom: 1.4rem; }
 

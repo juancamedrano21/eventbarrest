@@ -9,7 +9,6 @@ const password = ref('');
 
 <template>
     <div class="login">
-        <div class="login-glow"></div>
         <form class="login-card" @submit.prevent="pos.login(username, password)">
             <div class="login-mark">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/><path d="M22 7v3a2 2 0 0 1-2 2a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 16 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 12 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 8 12a2.7 2.7 0 0 1-1.59-.63.7.7 0 0 0-.82 0A2.7 2.7 0 0 1 4 12a2 2 0 0 1-2-2V7"/></svg>
@@ -38,21 +37,16 @@ const password = ref('');
     flex: 1; display: grid; place-items: center; padding: 1.2rem;
     position: relative; overflow: hidden;
 }
-.login-glow {
-    position: absolute; width: 620px; height: 620px; border-radius: 999px;
-    background: radial-gradient(circle, rgba(14, 165, 233, .16), transparent 65%);
-    top: -180px; right: -120px; pointer-events: none;
-}
 .login-card {
     position: relative; width: min(400px, 100%);
     background: var(--panel); border: 1px solid var(--line-strong);
-    border-radius: 20px; padding: 2rem 1.7rem;
-    box-shadow: 0 24px 70px rgba(0, 0, 0, .5);
+    border-radius: 4px; padding: 2rem 1.7rem;
+   
 }
 .login-mark {
-    display: grid; place-items: center; width: 52px; height: 52px; border-radius: 14px;
+    display: grid; place-items: center; width: 52px; height: 52px; border-radius: 4px;
     background: linear-gradient(135deg, #0ea5e9, #0369a1);
-    box-shadow: 0 8px 24px rgba(14, 165, 233, .4);
+   
     color: white; margin-bottom: 1.1rem;
 }
 .login-mark svg { width: 26px; height: 26px; }

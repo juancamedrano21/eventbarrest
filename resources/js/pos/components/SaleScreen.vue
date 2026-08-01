@@ -226,12 +226,12 @@ async function confirm() {
 .cats::-webkit-scrollbar { display: none; }
 .cats button {
     border: 1px solid var(--line-strong); background: var(--panel); color: var(--muted);
-    border-radius: 999px; padding: .45rem 1rem; white-space: nowrap;
+    border-radius: 4px; padding: .45rem 1rem; white-space: nowrap;
     font-size: .84rem; font-weight: 600; transition: all .15s; flex-shrink: 0;
 }
 .cats button.active {
     background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; border-color: transparent;
-    box-shadow: 0 4px 14px rgba(14, 165, 233, .3);
+   
 }
 
 .grid {
@@ -242,13 +242,13 @@ async function confirm() {
     display: flex; flex-direction: column; align-items: flex-start; gap: .45rem;
     padding: .8rem; min-height: 108px;
     border: 1px solid var(--line); background: var(--panel); color: var(--text);
-    border-radius: 14px; text-align: left;
+    border-radius: 4px; text-align: left;
     transition: transform .1s, border-color .15s, background .15s;
 }
 .product:hover { border-color: var(--line-strong); background: var(--panel-2); }
 .product:active { transform: scale(.97); }
 .product-avatar {
-    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 4px;
     background: rgba(14, 165, 233, .14); color: #38bdf8; font-weight: 700; font-size: .85rem;
 }
 .product-name { font-size: .86rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -283,11 +283,11 @@ async function confirm() {
 .line-unit { font-size: .72rem; color: var(--muted); }
 .stepper {
     display: flex; align-items: center; gap: .1rem;
-    background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
 }
 .step {
     width: 30px; height: 30px; display: grid; place-items: center;
-    font-size: 1.05rem; color: var(--muted); border-radius: 9px; transition: all .12s;
+    font-size: 1.05rem; color: var(--muted); border-radius: 4px; transition: all .12s;
 }
 .step:hover { color: var(--bad); background: rgba(248, 113, 113, .1); }
 .step-add:hover { color: var(--ok); background: rgba(52, 211, 153, .1); }
@@ -303,13 +303,13 @@ async function confirm() {
 .switch { position: relative; width: 42px; height: 24px; display: inline-block; }
 .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
 .switch .knob {
-    position: absolute; inset: 0; border-radius: 999px; background: var(--panel-2);
+    position: absolute; inset: 0; border-radius: 4px; background: var(--panel-2);
     border: 1px solid var(--line-strong); transition: background .15s, border-color .15s;
     pointer-events: none;
 }
 .switch .knob::after {
     content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
-    border-radius: 999px; background: var(--muted); transition: transform .15s, background .15s;
+    border-radius: 4px; background: var(--muted); transition: transform .15s, background .15s;
 }
 .switch.on .knob { background: rgba(14, 165, 233, .25); border-color: var(--accent); }
 .switch.on .knob::after { transform: translateX(18px); background: var(--accent-2); }
@@ -320,7 +320,7 @@ async function confirm() {
 .trow-total strong { font-size: 1.45rem; letter-spacing: -.01em; }
 
 .btn-close-till {
-    border: 1px solid var(--line); border-radius: 12px; padding: .6rem;
+    border: 1px solid var(--line); border-radius: 4px; padding: .6rem;
     color: var(--muted); font-size: .84rem; transition: all .15s;
 }
 .btn-close-till:hover { color: var(--text); border-color: var(--line-strong); }
@@ -329,14 +329,14 @@ async function confirm() {
 .pay-total { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 1rem; }
 .segmented {
     display: grid; grid-template-columns: repeat(3, 1fr); gap: .3rem;
-    background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
     padding: .3rem; margin-bottom: 1rem;
 }
 .segmented button {
-    padding: .6rem .4rem; border-radius: 9px; font-size: .86rem; font-weight: 600;
+    padding: .6rem .4rem; border-radius: 4px; font-size: .86rem; font-weight: 600;
     color: var(--muted); transition: all .15s;
 }
-.segmented button.active { background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; box-shadow: 0 4px 12px rgba(14, 165, 233, .3); }
+.segmented button.active { background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; }
 .pay-input { font-size: 1.25rem; font-weight: 700; }
 .pay-chips { margin: -.3rem 0 .9rem; }
 .change { color: var(--ok); font-size: 1.05rem; font-weight: 700; margin-bottom: .9rem; }
