@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domains\Sales\Models;
 
+use App\Domains\EventManagement\Concerns\BelongsToVendor;
 use App\Domains\Operations\Models\OperatingUnit;
+use App\Domains\Sales\Eloquent\SalesHistoryBuilder;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
@@ -13,6 +15,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\Builder;
 
 /**
  * Una venta. Los totales viven en centavos y el desglose de ITBIS es
@@ -37,6 +40,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Order extends Model
 {
     use BelongsToTenant;
+    use BelongsToVendor;
 
     protected $fillable = ['client_ref', 'status', 'subtotal_cents', 'itbis_cents', 'tip_cents', 'total_cents'];
 
@@ -67,6 +71,14 @@ class Order extends Model
             if ($unitTenant !== $order->getAttribute('tenant_id')) {
                 throw SalesException::unitOutsideTenant();
             }
+
+            $unitVendor = OperatingUnit::query()->withoutGlobalScopes()
+                ->whereKey($order->operating_unit_id)
+                ->value('vendor_id');
+
+            if ($unitVendor !== $order->getAttribute('vendor_id')) {
+                throw SalesException::unitOutsideVendor();
+            }
         });
 
         static::updating(function (Order $order): void {
@@ -77,17 +89,22 @@ class Order extends Model
             }
 
             if ($original === OrderStatus::Paid) {
-                $allowed = ['status', 'voided_at', 'void_reason'];
-
-                if (array_diff(array_keys($order->getDirty()), $allowed) !== []) {
-                    throw SalesException::paidOrdersAreHistory();
-                }
+                throw SalesException::paidOrdersAreHistory();
             }
         });
 
         static::deleting(function (): void {
             throw SalesException::paidOrdersAreHistory();
         });
+    }
+
+    /**
+     * @param  Builder  $query
+     * @return SalesHistoryBuilder<*>
+     */
+    public function newEloquentBuilder($query): SalesHistoryBuilder
+    {
+        return new SalesHistoryBuilder($query);
     }
 
     /** @return HasMany<OrderLine, $this> */

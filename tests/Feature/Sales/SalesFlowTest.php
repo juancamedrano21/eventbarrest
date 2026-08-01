@@ -7,20 +7,25 @@ use App\Domains\Catalog\Enums\DispatchArea;
 use App\Domains\Catalog\Enums\ProductType;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
+use App\Domains\EventManagement\Actions\CreateEvent;
 use App\Domains\Inventory\Actions\RegisterPurchase;
 use App\Domains\Inventory\Enums\MeasurementUnit;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
+use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Platform\Actions\CreateTenant;
+use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Sales\Actions\CloseCashSession;
 use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
 use App\Domains\Sales\Actions\VoidOrder;
+use App\Domains\Sales\Enums\CashSessionStatus;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Models\Payment;
 use App\Domains\Tenancy\TenantContext;
 
 /**
@@ -102,11 +107,11 @@ it('charges the order and consumes stock through the recipe', function (): void 
             ['product_id' => $this->mojito->id, 'quantity' => 3],
         ], 'pos-0003', null, true);
 
-        // Propina legal 10 %: 3×400 = 1,200.00 + 120.00.
-        expect($order->tip_cents)->toBe(12000)
-            ->and($order->total_cents)->toBe(132000);
+        // Propina legal 10 % sobre la base sin ITBIS: (120000-18305)×0.10.
+        expect($order->tip_cents)->toBe(10170)
+            ->and($order->total_cents)->toBe(130170);
 
-        app(PayOrder::class)($order, PaymentMethod::Cash, 132000);
+        app(PayOrder::class)($order, PaymentMethod::Cash, 130170);
 
         $ron = StockLevel::query()
             ->where('operating_unit_id', $this->branch->id)
@@ -189,5 +194,82 @@ it('closes the till against the counted cash, cash payments only', function (): 
         expect(fn () => app(PlaceOrder::class)($this->caja->fresh(), [
             ['product_id' => $this->presidente->id, 'quantity' => 1],
         ], 'pos-0009'))->toThrow(SalesException::class);
+    });
+});
+
+it('demands the exact amount for card and transfer', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $order = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0010');
+
+        expect(fn () => app(PayOrder::class)($order, PaymentMethod::Card, 50000))
+            ->toThrow(SalesException::class);
+    });
+});
+
+it('rejects zero and negative quantities', function (): void {
+    app(TenantContext::class)->runAs(
+        $this->tenant,
+        fn () => app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 0],
+        ], 'pos-0011'),
+    );
+})->throws(SalesException::class);
+
+it('refuses to close a till with open orders', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0012');
+
+        expect(fn () => app(CloseCashSession::class)($this->caja, 500000))
+            ->toThrow(SalesException::class);
+    });
+});
+
+it('refuses to pay an order whose session already closed', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $order = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0013');
+        app(VoidOrder::class)($order, 'se cierra');
+
+        app(CloseCashSession::class)($this->caja, 500000);
+
+        $reabierta = app(PlaceOrder::class)(app(OpenCashSession::class)($this->branch, null, 0), [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0014');
+
+        // La orden nueva vive en la sesión nueva; la cerrada es historia:
+        // ni se reabre ni se retocan sus números.
+        expect(fn () => $this->caja->fresh()->update(['status' => CashSessionStatus::Open]))
+            ->toThrow(SalesException::class)
+            ->and($reabierta->status)->toBe(OrderStatus::Open);
+    });
+});
+
+it('blocks mass updates and deletes on sales history', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $order = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0015');
+        app(PayOrder::class)($order, PaymentMethod::Cash, 30000);
+
+        expect(fn () => Order::query()->update(['subtotal_cents' => 0]))->toThrow(SalesException::class)
+            ->and(fn () => Payment::query()->delete())->toThrow(SalesException::class);
+    });
+});
+
+it('keeps the organizer from opening a till on a vendor outlet', function (): void {
+    $organizer = app(CreateTenant::class)('Bocao', null, TenantType::Organizer);
+
+    app(TenantContext::class)->runAs($organizer, function (): void {
+        $event = app(CreateEvent::class)('Bocao 2026', now()->addWeek(), now()->addWeeks(2));
+        $outlet = outletFor($event, 'Barra', OperatingUnitKind::Bar);
+
+        // Sin comercio activo (el organizador mira, no opera): denegado.
+        expect(fn () => app(OpenCashSession::class)($outlet, null, 0))
+            ->toThrow(SalesException::class);
     });
 });

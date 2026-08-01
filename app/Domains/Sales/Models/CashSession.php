@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domains\Sales\Models;
 
+use App\Domains\EventManagement\Concerns\BelongsToVendor;
 use App\Domains\Operations\Models\OperatingUnit;
+use App\Domains\Sales\Eloquent\SalesHistoryBuilder;
 use App\Domains\Sales\Enums\CashSessionStatus;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
@@ -12,6 +14,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Query\Builder;
 
 /**
  * Una jornada de caja en una unidad: abre con fondo, acumula ventas y cierra
@@ -29,6 +32,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class CashSession extends Model
 {
     use BelongsToTenant;
+    use BelongsToVendor;
 
     protected $fillable = ['status', 'opening_cents', 'opened_at'];
 
@@ -59,7 +63,37 @@ class CashSession extends Model
             if ($unitTenant !== $session->getAttribute('tenant_id')) {
                 throw SalesException::unitOutsideTenant();
             }
+
+            // La caja es del comercio de su unidad: el equipo del
+            // organizador (sin comercio activo) no abre cajas ajenas.
+            $unitVendor = OperatingUnit::query()->withoutGlobalScopes()
+                ->whereKey($session->operating_unit_id)
+                ->value('vendor_id');
+
+            if ($unitVendor !== $session->getAttribute('vendor_id')) {
+                throw SalesException::unitOutsideVendor();
+            }
         });
+
+        // Cerrada es historia: ni contado, ni esperado, ni reabrir.
+        static::updating(function (CashSession $session): void {
+            if ((string) $session->getRawOriginal('status') === CashSessionStatus::Closed->value) {
+                throw SalesException::paidOrdersAreHistory();
+            }
+        });
+
+        static::deleting(function (): void {
+            throw SalesException::paidOrdersAreHistory();
+        });
+    }
+
+    /**
+     * @param  Builder  $query
+     * @return SalesHistoryBuilder<*>
+     */
+    public function newEloquentBuilder($query): SalesHistoryBuilder
+    {
+        return new SalesHistoryBuilder($query);
     }
 
     public function isOpen(): bool

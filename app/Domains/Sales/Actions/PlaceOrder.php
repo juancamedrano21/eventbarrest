@@ -10,6 +10,7 @@ use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -40,12 +41,38 @@ class PlaceOrder
             throw SalesException::orderNeedsLines();
         }
 
-        $existing = Order::query()->where('client_ref', $clientRef)->first();
+        // Idempotencia por UNIDAD: dos comercios o dos dispositivos con la
+        // misma referencia no chocan entre sí.
+        $existing = Order::query()
+            ->where('operating_unit_id', $session->operating_unit_id)
+            ->where('client_ref', $clientRef)
+            ->first();
 
         if ($existing !== null) {
             return $existing;
         }
 
+        try {
+            return $this->create($session, $lines, $clientRef, $user, $withTip);
+        } catch (UniqueConstraintViolationException) {
+            // Carrera del reenvío offline: otro request la creó primero.
+            return Order::query()
+                ->where('operating_unit_id', $session->operating_unit_id)
+                ->where('client_ref', $clientRef)
+                ->firstOrFail();
+        }
+    }
+
+    /**
+     * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
+     */
+    private function create(
+        CashSession $session,
+        array $lines,
+        string $clientRef,
+        ?User $user,
+        bool $withTip,
+    ): Order {
         return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip): Order {
             $subtotal = 0;
             $prepared = [];
@@ -57,7 +84,14 @@ class PlaceOrder
                     throw SalesException::productNotSellable($product->name);
                 }
 
-                $quantity = (float) $line['quantity'];
+                // Normalizada a la precisión de la columna (decimal 10,3):
+                // el total se deriva de la MISMA cantidad que se persiste.
+                $quantity = round((float) $line['quantity'], 3);
+
+                if ($quantity < 0.001) {
+                    throw SalesException::invalidQuantity();
+                }
+
                 $total = (int) round($product->price_cents * $quantity);
                 $subtotal += $total;
 
@@ -65,7 +99,8 @@ class PlaceOrder
             }
 
             $itbis = (int) round($subtotal * 18 / 118);
-            $tip = $withTip ? (int) round($subtotal * 0.10) : 0;
+            // Propina legal sobre la BASE, no sobre la base con impuesto.
+            $tip = $withTip ? (int) round(($subtotal - $itbis) * 0.10) : 0;
 
             $order = new Order([
                 'client_ref' => $clientRef,

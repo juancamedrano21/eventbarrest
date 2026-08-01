@@ -52,4 +52,24 @@ class SalesException extends RuntimeException
     {
         return new self('El cobro no cubre el total de la orden.');
     }
+
+    public static function unitOutsideVendor(): self
+    {
+        return new self('La unidad pertenece a otro comercio: cada comercio opera su propia caja y sus ventas.');
+    }
+
+    public static function invalidQuantity(): self
+    {
+        return new self('Cada línea vende una cantidad positiva (mínimo 0.001).');
+    }
+
+    public static function exactAmountRequired(): self
+    {
+        return new self('Tarjeta y transferencia se cobran por el monto exacto: el vuelto solo existe en efectivo.');
+    }
+
+    public static function sessionHasOpenOrders(): self
+    {
+        return new self('La caja tiene órdenes abiertas: cóbralas o anúlalas antes de cerrar.');
+    }
 }

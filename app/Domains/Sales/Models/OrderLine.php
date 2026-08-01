@@ -6,10 +6,12 @@ namespace App\Domains\Sales\Models;
 
 use App\Domains\Catalog\Models\Product;
 use App\Domains\Operations\Models\OperatingUnit;
+use App\Domains\Sales\Eloquent\SalesHistoryBuilder;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Query\Builder;
 
 /**
  * Una línea vendida, con nombre y precio INSTANTÁNEOS: el catálogo puede
@@ -73,6 +75,15 @@ class OrderLine extends Model
         static::deleting(function (): void {
             throw SalesException::paidOrdersAreHistory();
         });
+    }
+
+    /**
+     * @param  Builder  $query
+     * @return SalesHistoryBuilder<*>
+     */
+    public function newEloquentBuilder($query): SalesHistoryBuilder
+    {
+        return new SalesHistoryBuilder($query);
     }
 
     /** @return BelongsTo<Product, $this> */
