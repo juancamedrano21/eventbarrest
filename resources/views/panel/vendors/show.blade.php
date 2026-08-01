@@ -384,7 +384,7 @@
     </div>
 
 {{-- Modal: nueva categoría --}}
-    <div id="modal-categoria" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-categoria" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.categories.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
                 @csrf
@@ -406,7 +406,7 @@
     </div>
 
     {{-- Modal: nuevo producto --}}
-    <div id="modal-producto" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-producto" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.products.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
                 @csrf
@@ -432,7 +432,7 @@
     </div>
 
     {{-- Modal: nuevo insumo --}}
-    <div id="modal-insumo" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-insumo" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.items.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
                 @csrf
@@ -455,7 +455,7 @@
     </div>
 
     {{-- Modal: registrar compra --}}
-    <div id="modal-compra" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-compra" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.purchases.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
                 @csrf
@@ -488,7 +488,7 @@
     </div>
 
     {{-- Modal: editar datos --}}
-    <div id="modal-editar" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-editar" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.update', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
                 @csrf
@@ -514,7 +514,7 @@
     </div>
 
     {{-- Modal: nuevo usuario --}}
-    <div id="modal-usuario" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-usuario" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.users.store', $vendor) }}"
                 class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
@@ -540,7 +540,7 @@
     </div>
 
     {{-- Modal: invitar a evento --}}
-    <div id="modal-invitar" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-invitar" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.invite', $vendor) }}"
                 class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
@@ -566,7 +566,7 @@
     </div>
 
     {{-- Modal: nuevo puesto --}}
-    <div id="modal-puesto" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-puesto" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.outlets.store', $vendor) }}"
                 class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">

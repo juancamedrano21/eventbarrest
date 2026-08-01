@@ -5,3 +5,9 @@
 
 /* Los plugins JS de Preline traen clases en sus dist: Tailwind debe verlas. */
 @source '../../node_modules/preline/dist/*.js';
+
+/* El sidebar de la plantilla vive en z-60: el telón de los modales debe
+   cubrirlo y el modal (z-80) quedar encima de ambos. */
+.hs-overlay-backdrop {
+    z-index: 70 !important;
+}

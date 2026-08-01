@@ -47,7 +47,7 @@
     </div>
 
     {{-- Modal: nuevo evento --}}
-    <div id="modal-evento" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+    <div id="modal-evento" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.events.store') }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
                 @csrf
