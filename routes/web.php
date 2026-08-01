@@ -7,6 +7,7 @@ use App\Http\Controllers\Panel\EventsController;
 use App\Http\Controllers\Panel\VendorCatalogController;
 use App\Http\Controllers\Panel\VendorInventoryController;
 use App\Http\Controllers\Panel\VendorProfileController;
+use App\Http\Controllers\Panel\VendorSalesController;
 use App\Http\Controllers\Panel\VendorsController;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +32,7 @@ Route::middleware(['auth'])->prefix('panel')->name('panel.')->group(function ():
     Route::post('/eventos', [EventsController::class, 'store'])->name('events.store');
     Route::get('/eventos/{event}', [EventsController::class, 'show'])->name('events.show');
     Route::get('/comercios/{vendor}', [VendorProfileController::class, 'show'])->name('vendors.show');
+    Route::get('/comercios/{vendor}/ventas/{order}', [VendorSalesController::class, 'show'])->name('vendors.sales.show');
     Route::post('/comercios/{vendor}/usuarios', [VendorProfileController::class, 'storeUser'])->name('vendors.users.store');
     Route::post('/comercios/{vendor}/invitar', [VendorProfileController::class, 'invite'])->name('vendors.invite');
     Route::post('/comercios/{vendor}/puestos', [VendorProfileController::class, 'storeOutlet'])->name('vendors.outlets.store');

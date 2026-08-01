@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Operations\Models;
 
 use App\Domains\Business\Models\Branch;
+use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\Operations\Eloquent\OperatingUnitBuilder;
 use App\Domains\Operations\Enums\OperatingUnitKind;
@@ -14,6 +15,7 @@ use App\Domains\Operations\Exceptions\InvalidOperatingUnitException;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use App\Support\Eloquent\HasChildModels;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 
 /**
@@ -80,6 +82,17 @@ class OperatingUnit extends Model
                 throw InvalidOperatingUnitException::structureIsImmutable();
             }
         });
+    }
+
+    /**
+     * El evento del que cuelga, si es un puesto de evento (null = sucursal
+     * del mundo negocio). Útil para reportería transversal.
+     *
+     * @return BelongsTo<Event, $this>
+     */
+    public function event(): BelongsTo
+    {
+        return $this->belongsTo(Event::class);
     }
 
     /**

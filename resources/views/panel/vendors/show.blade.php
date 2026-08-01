@@ -243,19 +243,20 @@
         <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
             <table class="w-full text-sm">
                 <thead class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
-                    <tr><th class="px-5 py-3">Orden</th><th class="px-5 py-3">Puesto</th><th class="px-5 py-3">Estado</th><th class="px-5 py-3 text-right">Total</th><th class="px-5 py-3">Cobrada</th></tr>
+                    <tr><th class="px-5 py-3">Orden</th><th class="px-5 py-3">Puesto</th><th class="px-5 py-3">Estado</th><th class="px-5 py-3 text-right">Total</th><th class="px-5 py-3">Cobrada</th><th class="px-5 py-3"></th></tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
                     @forelse ($recentOrders as $order)
-                        <tr>
-                            <td class="px-5 py-3 font-mono text-xs text-gray-600">{{ Str::limit($order->client_ref, 14) }}</td>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-5 py-3 font-mono text-xs"><a href="{{ route('panel.vendors.sales.show', [$vendor, $order]) }}" class="text-sky-700 hover:underline">{{ Str::limit($order->client_ref, 14) }}</a></td>
                             <td class="px-5 py-3 text-gray-600">{{ $order->operatingUnit?->name }}</td>
                             <td class="px-5 py-3"><span class="rounded-full px-2.5 py-0.5 text-xs {{ $order->status->value === 'paid' ? 'bg-teal-100 text-teal-800' : ($order->status->value === 'void' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600') }}">{{ $order->status->getLabel() }}</span></td>
                             <td class="px-5 py-3 text-right text-gray-800">RD$ {{ number_format($order->total_cents / 100, 2) }}</td>
-                            <td class="px-5 py-3 text-gray-500">{{ $order->paid_at?->format('d M, H:i') ?? '—' }}</td>
+                            <td class="px-5 py-3 text-gray-500">{{ $order->paid_at?->timezone(config('app.business_timezone'))->format('d M, h:i a') ?? '—' }}</td>
+                            <td class="px-5 py-3 text-right"><a href="{{ route('panel.vendors.sales.show', [$vendor, $order]) }}" class="text-xs font-medium text-sky-700 hover:underline">Ver detalle</a></td>
                         </tr>
                     @empty
-                        <tr><td colspan="5" class="px-5 py-10 text-center text-gray-500">Sin ventas todavía: llegarán desde el POS de sus cajeros.</td></tr>
+                        <tr><td colspan="6" class="px-5 py-10 text-center text-gray-500">Sin ventas todavía: llegarán desde el POS de sus cajeros.</td></tr>
                     @endforelse
                 </tbody>
             </table>
@@ -272,7 +273,13 @@
                 <tbody class="divide-y divide-gray-200">
                     @forelse ($recentPayments as $payment)
                         <tr>
-                            <td class="px-5 py-3 font-mono text-xs text-gray-600">{{ Str::limit($payment->order?->client_ref, 14) }}</td>
+                            <td class="px-5 py-3 font-mono text-xs">
+                                @if ($payment->order !== null)
+                                    <a href="{{ route('panel.vendors.sales.show', [$vendor, $payment->order_id]) }}" class="text-sky-700 hover:underline">{{ Str::limit($payment->order->client_ref, 14) }}</a>
+                                @else
+                                    —
+                                @endif
+                            </td>
                             <td class="px-5 py-3"><span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $payment->method->getLabel() }}</span></td>
                             <td class="px-5 py-3 text-right text-gray-800">RD$ {{ number_format($payment->amount_cents / 100, 2) }}</td>
                             <td class="px-5 py-3 text-right text-gray-500">{{ $payment->tendered_cents !== null ? 'RD$ '.number_format($payment->tendered_cents / 100, 2) : '—' }}</td>
