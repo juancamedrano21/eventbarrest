@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Comercio\CatalogController as ComercioCatalogController;
+use App\Http\Controllers\Comercio\HomeController as ComercioHomeController;
+use App\Http\Controllers\Comercio\InventoryController as ComercioInventoryController;
+use App\Http\Controllers\Comercio\SalesController as ComercioSalesController;
 use App\Http\Controllers\Panel\DashboardController;
 use App\Http\Controllers\Panel\EventsController;
 use App\Http\Controllers\Panel\VendorCatalogController;
@@ -9,6 +13,7 @@ use App\Http\Controllers\Panel\VendorInventoryController;
 use App\Http\Controllers\Panel\VendorProfileController;
 use App\Http\Controllers\Panel\VendorSalesController;
 use App\Http\Controllers\Panel\VendorsController;
+use App\Http\Middleware\EnsureComercioUser;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -43,4 +48,19 @@ Route::middleware(['auth'])->prefix('panel')->name('panel.')->group(function ():
     Route::post('/comercios/{vendor}/productos/{product}/receta/{item}/eliminar', [VendorCatalogController::class, 'destroyRecipeItem'])->name('vendors.recipe.destroy');
     Route::post('/comercios/{vendor}/insumos', [VendorInventoryController::class, 'storeItem'])->name('vendors.items.store');
     Route::post('/comercios/{vendor}/compras', [VendorInventoryController::class, 'storePurchase'])->name('vendors.purchases.store');
+});
+
+// La puerta del personal del comercio (ADR-007): su comercio es implícito
+// por su usuario — jamás elegido por URL. El middleware rebota a cada
+// audiencia a SU puerta.
+Route::middleware(['auth', EnsureComercioUser::class])->prefix('comercio')->name('comercio.')->group(function (): void {
+    Route::get('/', ComercioHomeController::class)->name('home');
+    Route::get('/ventas/{order}', [ComercioSalesController::class, 'show'])->name('sales.show');
+    Route::post('/categorias', [ComercioCatalogController::class, 'storeCategory'])->name('categories.store');
+    Route::post('/productos', [ComercioCatalogController::class, 'storeProduct'])->name('products.store');
+    Route::post('/productos/{product}', [ComercioCatalogController::class, 'updateProduct'])->name('products.update');
+    Route::post('/productos/{product}/receta', [ComercioCatalogController::class, 'storeRecipeItem'])->name('recipe.store');
+    Route::post('/productos/{product}/receta/{item}/eliminar', [ComercioCatalogController::class, 'destroyRecipeItem'])->name('recipe.destroy');
+    Route::post('/insumos', [ComercioInventoryController::class, 'storeItem'])->name('items.store');
+    Route::post('/compras', [ComercioInventoryController::class, 'storePurchase'])->name('purchases.store');
 });

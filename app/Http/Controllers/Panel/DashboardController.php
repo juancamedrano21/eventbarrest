@@ -34,9 +34,9 @@ class DashboardController extends Controller
     {
         $user = $request->user();
 
-        // El personal de comercio no vive en este panel todavía.
+        // El personal de comercio tiene su propia puerta (ADR-007).
         if ($user instanceof User && $user->worksForAVendor()) {
-            return redirect('/app');
+            return redirect('/comercio');
         }
 
         $esOrganizador = $user?->tenant instanceof OrganizerAccount;

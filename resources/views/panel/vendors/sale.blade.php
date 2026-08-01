@@ -16,7 +16,7 @@
     {{-- Miga y encabezado --}}
     <div class="mb-5 flex flex-wrap items-center justify-between gap-2">
         <div>
-            <a href="{{ route('panel.vendors.show', $vendor) }}" class="inline-flex items-center gap-x-1 text-sm text-gray-500 hover:text-gray-800">
+            <a href="{{ $volver ?? route('panel.vendors.show', $vendor) }}" class="inline-flex items-center gap-x-1 text-sm text-gray-500 hover:text-gray-800">
                 <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 {{ $vendor->name }}
             </a>

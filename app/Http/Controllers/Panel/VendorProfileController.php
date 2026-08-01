@@ -92,6 +92,18 @@ class VendorProfileController extends Controller
             'vendorTypes' => VendorType::query()->orderBy('name')->pluck('name', 'id'),
             'foodTypes' => FoodType::query()->orderBy('name')->pluck('name', 'id'),
             'vendor' => $record,
+            // Los parciales compartidos con /comercio reciben sus acciones
+            // por aquí: cada puerta pone las suyas.
+            'urls' => [
+                'categorias' => route('panel.vendors.categories.store', $record),
+                'productos' => route('panel.vendors.products.store', $record),
+                'producto' => fn ($product) => route('panel.vendors.products.update', [$record, $product]),
+                'receta' => fn ($product) => route('panel.vendors.recipe.store', [$record, $product]),
+                'recetaQuitar' => fn ($product, $ingrediente) => route('panel.vendors.recipe.destroy', [$record, $product, $ingrediente]),
+                'venta' => fn ($order) => route('panel.vendors.sales.show', [$record, $order]),
+                'insumos' => route('panel.vendors.items.store', $record),
+                'compras' => route('panel.vendors.purchases.store', $record),
+            ],
             'participations' => $record->events()->orderBy('starts_at')->get(),
             'outlets' => EventOutlet::query()
                 ->where('vendor_id', $record->id)

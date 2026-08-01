@@ -125,10 +125,10 @@ it('never shows another account its sales', function (): void {
         ->assertDontSee('1,000.00');
 });
 
-it('redirects vendor staff to their own world', function (): void {
+it('redirects vendor staff to their own door', function (): void {
     $organizer = app(CreateTenant::class)('Bocao', null, TenantType::Organizer);
     $vendor = app(TenantContext::class)->runAs($organizer, fn () => app(CreateVendor::class)('Tacos'));
     $staff = app(CreateTenantUser::class)($organizer, 'Caro', 'caro@x.test', 'Secreta-2026', Role::VendorManager, $vendor);
 
-    $this->actingAs($staff)->get('/panel')->assertRedirect('/app');
+    $this->actingAs($staff)->get('/panel')->assertRedirect('/comercio');
 });
