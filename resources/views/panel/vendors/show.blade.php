@@ -205,34 +205,65 @@
 
     {{-- Tab: Usuarios --}}
     <div id="tab-usuarios" class="hidden" role="tabpanel" aria-labelledby="tab-usuarios-item">
-        <div class="grid gap-6 lg:grid-cols-2">
-{{-- Equipo --}}
-        <section class="rounded-xl border border-gray-200 bg-white shadow-2xs">
-            <header class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-                <h2 class="font-medium text-gray-800">Equipo del comercio</h2>
+        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+            <header class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
+                <div class="flex items-center gap-2">
+                    <h2 class="font-medium text-gray-800">Equipo del comercio</h2>
+                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ $vendor->users->count() }}</span>
+                </div>
                 <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-usuario" data-hs-overlay="#modal-usuario">
                     Nuevo usuario
                 </button>
             </header>
-            <ul class="divide-y divide-gray-200">
-                @forelse ($vendor->users as $member)
-                    <li class="flex items-center justify-between px-5 py-3 text-sm">
-                        <div>
-                            <p class="text-gray-800">{{ $member->name }}</p>
-                            <p class="text-xs text-gray-500">{{ $member->email }}
-                                @if ($member->username) · POS: <span class="text-gray-500">{{ $member->username }}</span> @endif
-                            </p>
-                        </div>
-                        <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
-                            {{ $roleLabels[$member->roles->first()?->name] ?? '—' }}
-                        </span>
-                    </li>
-                @empty
-                    <li class="px-5 py-6 text-sm text-gray-500">Sin equipo: crea su encargado — él montará el catálogo.</li>
-                @endforelse
-            </ul>
-        </section>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                        <tr>
+                            <th class="px-5 py-3 font-medium">Usuario</th>
+                            <th class="px-5 py-3 font-medium">Usuario POS</th>
+                            <th class="px-5 py-3 font-medium">Rol</th>
+                            <th class="px-5 py-3 font-medium">Alta</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        @forelse ($vendor->users as $member)
+                            <tr class="hover:bg-gray-50">
+                                <td class="whitespace-nowrap px-5 py-3">
+                                    <div class="flex items-center gap-x-3">
+                                        <span class="grid size-9 shrink-0 place-items-center rounded-full bg-sky-100 text-sm font-semibold text-sky-700">
+                                            {{ mb_substr($member->name, 0, 1) }}
+                                        </span>
+                                        <div>
+                                            <p class="font-medium text-gray-800">{{ $member->name }}</p>
+                                            <p class="text-xs text-gray-500">{{ $member->email }}</p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-3">
+                                    @if ($member->username)
+                                        <span class="rounded-full bg-gray-100 px-2.5 py-0.5 font-mono text-xs text-gray-600">{{ $member->username }}</span>
+                                    @else
+                                        <span class="text-xs text-gray-400">—</span>
+                                    @endif
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-3">
+                                    <span class="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs text-sky-800">
+                                        {{ $roleLabels[$member->roles->first()?->name] ?? '—' }}
+                                    </span>
+                                </td>
+                                <td class="whitespace-nowrap px-5 py-3 text-gray-500">{{ $member->created_at->format('d M Y') }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="4" class="px-5 py-10 text-center text-gray-500">
+                                    Sin equipo: crea su encargado — él montará el catálogo y sus cajeros venderán en el POS.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 
