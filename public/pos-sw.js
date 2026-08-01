@@ -4,26 +4,27 @@
 const SHELL = 'pos-shell-v3';
 
 self.addEventListener('install', (event) => {
+    // El precache debe COMPLETARSE: si la red cae a mitad, el install falla
+    // y el SW anterior sigue sirviendo su shell. Jamas se activa un shell
+    // vacio encima de uno que funcionaba; el registro reintenta en la
+    // proxima visita con red.
     event.waitUntil((async () => {
         const cache = await caches.open(SHELL);
-        try {
-            await cache.add('/pos');
-            const manifest = await (await fetch('/build/manifest.json')).json();
-            const assets = Object.values(manifest)
-                .flatMap((entry) => [entry.file, ...(entry.css ?? [])])
-                .map((file) => `/build/${file}`);
-            await cache.addAll([...new Set(assets)]);
-        } catch {
-            // Sin red en la instalacion: se cachea sobre la marcha al navegar.
-        }
-        self.skipWaiting();
+        await cache.add('/pos');
+        const manifest = await (await fetch('/build/manifest.json')).json();
+        const assets = Object.values(manifest)
+            .flatMap((entry) => [entry.file, ...(entry.css ?? [])])
+            .map((file) => `/build/${file}`);
+        await cache.addAll([...new Set(assets)]);
+        await self.skipWaiting();
     })());
 });
 
 self.addEventListener('activate', (event) => {
     event.waitUntil((async () => {
+        // Solo caches del POS: otro SW del mismo origen no es asunto nuestro.
         for (const key of await caches.keys()) {
-            if (key !== SHELL) await caches.delete(key);
+            if (key.startsWith('pos-shell-') && key !== SHELL) await caches.delete(key);
         }
         await self.clients.claim();
     })());

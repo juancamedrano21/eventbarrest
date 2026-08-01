@@ -128,7 +128,7 @@ async function confirm() {
                 <label class="tip-row">
                     <span>Propina legal 10 %</span>
                     <span class="switch" :class="{ on: pos.withTip }">
-                        <input v-model="pos.withTip" type="checkbox">
+                        <input v-model="pos.withTip" type="checkbox" @change="pos.saveDraft()">
                         <span class="knob"></span>
                     </span>
                 </label>
@@ -312,7 +312,7 @@ async function confirm() {
     border-radius: 999px; background: var(--muted); transition: transform .15s, background .15s;
 }
 .switch.on .knob { background: rgba(14, 165, 233, .25); border-color: var(--accent); }
-.switch.on .knob::after { transform: translateX(18px); background: var(--accent-2, #38bdf8); }
+.switch.on .knob::after { transform: translateX(18px); background: var(--accent-2); }
 
 .totals { display: flex; flex-direction: column; gap: .3rem; }
 .trow { display: flex; justify-content: space-between; font-size: .82rem; color: var(--muted); }
@@ -347,7 +347,7 @@ async function confirm() {
 /* ---------- Movil ---------- */
 @media (max-width: 760px) {
     .sale { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
-    .ticket { border-left: 0; border-top: 1px solid var(--line-strong); max-height: 46vh; }
+    .ticket { border-left: 0; border-top: 1px solid var(--line-strong); max-height: 46vh; max-height: 46dvh; overflow-y: auto; }
     .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
     .product { min-height: 96px; }
 }

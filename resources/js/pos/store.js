@@ -60,6 +60,9 @@ export const usePos = defineStore('pos', {
         },
 
         async login(username, password) {
+            // Guard interno ademas del disabled del boton: el doble Enter
+            // no depende de un re-render de Vue.
+            if (this.busy) return;
             this.busy = true;
             this.error = null;
             try {
@@ -71,6 +74,7 @@ export const usePos = defineStore('pos', {
                 const data = await api.login(username, password, device);
                 setToken(data.token);
                 this.user = data.user;
+                await kvSet('user', data.user);
                 await this.arrive();
             } catch (error) {
                 this.fail(error);
@@ -82,6 +86,12 @@ export const usePos = defineStore('pos', {
         // Al entrar (login, recarga o vuelta de senal): estado del servidor si
         // hay red, lo cacheado si no. Vender nunca depende de la red.
         async arrive() {
+            // El cajero sobrevive al reload: el chip de la barra no espera
+            // al proximo login.
+            if (this.user === null) {
+                this.user = await kvGet('user');
+            }
+
             try {
                 const boot = await api.bootstrap();
                 const catalog = await api.catalog();
@@ -120,6 +130,7 @@ export const usePos = defineStore('pos', {
         },
 
         async openTill(unitId, openingCents) {
+            if (this.busy) return;
             this.busy = true;
             this.error = null;
             try {
@@ -312,6 +323,7 @@ export const usePos = defineStore('pos', {
             setToken(null);
             await kvSet('cache', null);
             await kvSet('draft', null);
+            await kvSet('user', null);
             this.user = null;
             this.session = null;
             this.screen = 'login';

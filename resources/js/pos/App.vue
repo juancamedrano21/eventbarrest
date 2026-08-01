@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { usePos } from './store';
+import { money } from './money';
 import LoginScreen from './components/LoginScreen.vue';
 import TillScreen from './components/TillScreen.vue';
 import SaleScreen from './components/SaleScreen.vue';
@@ -74,7 +75,7 @@ const statusLabel = {
                             <strong>{{ row.client_ref.slice(0, 8) }}</strong>
                             <span class="review-chip" :class="'chip-' + row.status">{{ statusLabel[row.status] ?? row.status }}</span>
                         </div>
-                        <span class="review-sub">{{ row.lines.length }} linea(s) · {{ new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format((row.display?.total ?? 0) / 100) }}</span>
+                        <span class="review-sub">{{ row.lines.length }} linea(s) · {{ money(row.display?.total ?? 0) }}</span>
                         <p v-if="row.error_message" class="review-msg">{{ row.error_message }}</p>
                     </div>
                     <div class="review-actions">
@@ -105,6 +106,7 @@ const statusLabel = {
     --text: #e8edf6;
     --muted: #8b99b3;
     --accent: #0ea5e9;
+    --accent-2: #38bdf8;
     --accent-strong: #0284c7;
     --ok: #34d399;
     --warn: #fbbf24;
@@ -214,6 +216,7 @@ input, select { font: inherit; }
 .chip-pendiente, .chip-sin_caja { background: rgba(251, 191, 36, .14); color: #fcd34d; }
 .chip-error { background: rgba(248, 113, 113, .14); color: #fca5a5; }
 .chip-sincronizada { background: rgba(52, 211, 153, .12); color: #6ee7b7; }
+.chip-descartada { background: rgba(148, 163, 184, .14); color: #b6c2d6; }
 .review-sub { font-size: .78rem; color: var(--muted); }
 .review-msg { color: #fca5a5; font-size: .78rem; margin-top: .2rem; }
 .review-empty {
@@ -266,5 +269,5 @@ select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmln
     padding: .42rem .85rem; font-size: .82rem; font-weight: 600; color: var(--text);
     transition: all .15s;
 }
-.chip-btn:hover { border-color: var(--accent); color: var(--accent-2, #38bdf8); }
+.chip-btn:hover { border-color: var(--accent); color: var(--accent-2); }
 </style>
