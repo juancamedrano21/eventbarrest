@@ -37,6 +37,9 @@ $platformTables = [
     // materializa por cuenta en las tablas de spatie; la plantilla no
     // pertenece a ningún tenant y su name es único a nivel global adrede.
     'role_templates',
+    // Catálogos de plataforma para clasificar comercios (admin los gestiona).
+    'vendor_types',
+    'food_types',
 ];
 
 $businessTables = fn (): array => collect(Schema::getTableListing(schemaQualified: false))

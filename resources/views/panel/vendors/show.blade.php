@@ -5,12 +5,21 @@
 @section('content')
     {{-- Encabezado del perfil --}}
     <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div class="flex items-start gap-4">
+            @if ($vendor->logo_path)
+                <img src="{{ Storage::url($vendor->logo_path) }}" alt="Logo" class="size-14 rounded-xl border border-gray-200 object-cover">
+            @else
+                <span class="grid size-14 place-items-center rounded-xl border border-gray-200 bg-gray-100 text-lg font-semibold text-gray-500">{{ mb_substr($vendor->name, 0, 1) }}</span>
+            @endif
+            <div>
             <p class="text-xs uppercase tracking-widest text-gray-500">Comercio</p>
             <h1 class="mt-1 text-2xl font-semibold text-gray-800">{{ $vendor->name }}</h1>
             <div class="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
                 <span>RNC: {{ $vendor->rnc ?? '—' }}</span>
                 <span>Contacto: {{ $vendor->contact_name ?? '—' }} {{ $vendor->contact_phone ? '· '.$vendor->contact_phone : '' }}</span>
+                @if ($vendor->vendorType)<span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $vendor->vendorType->name }}</span>@endif
+                @if ($vendor->foodType)<span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $vendor->foodType->name }}</span>@endif
+            </div>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -25,35 +34,20 @@
         </div>
     </div>
 
-    <div class="grid gap-6 lg:grid-cols-2">
-        {{-- Equipo --}}
-        <section class="rounded-xl border border-gray-200 bg-white shadow-2xs">
-            <header class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-                <h2 class="font-medium text-gray-800">Equipo del comercio</h2>
-                <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
-                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-usuario" data-hs-overlay="#modal-usuario">
-                    Nuevo usuario
-                </button>
-            </header>
-            <ul class="divide-y divide-gray-200">
-                @forelse ($vendor->users as $member)
-                    <li class="flex items-center justify-between px-5 py-3 text-sm">
-                        <div>
-                            <p class="text-gray-800">{{ $member->name }}</p>
-                            <p class="text-xs text-gray-500">{{ $member->email }}
-                                @if ($member->username) · POS: <span class="text-gray-500">{{ $member->username }}</span> @endif
-                            </p>
-                        </div>
-                        <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
-                            {{ $roleLabels[$member->roles->first()?->name] ?? '—' }}
-                        </span>
-                    </li>
-                @empty
-                    <li class="px-5 py-6 text-sm text-gray-500">Sin equipo: crea su encargado — él montará el catálogo.</li>
-                @endforelse
-            </ul>
-        </section>
+    
+    {{-- Pestañas --}}
+    <nav class="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" role="tablist" aria-orientation="horizontal">
+        @foreach (['resumen' => 'Resumen', 'ventas' => 'Ventas', 'transacciones' => 'Transacciones', 'inventario' => 'Inventario', 'usuarios' => 'Usuarios', 'config' => 'Configuraciones'] as $id => $label)
+            <button type="button" id="tab-{{ $id }}-item" data-hs-tab="#tab-{{ $id }}" aria-controls="tab-{{ $id }}" role="tab"
+                class="{{ $loop->first ? 'active ' : '' }}hs-tab-active:border-sky-600 hs-tab-active:text-sky-600 whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm text-gray-500 hover:text-gray-700">
+                {{ $label }}
+            </button>
+        @endforeach
+    </nav>
 
+    {{-- Tab: Resumen --}}
+    <div id="tab-resumen" role="tabpanel" aria-labelledby="tab-resumen-item">
+<div class="grid gap-6 lg:grid-cols-2">
         {{-- Eventos --}}
         <section class="rounded-xl border border-gray-200 bg-white shadow-2xs">
             <header class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
@@ -122,8 +116,194 @@
             </ul>
         </section>
     </div>
+    </div>
 
-    {{-- Modal: editar datos --}}
+    {{-- Tab: Ventas --}}
+    <div id="tab-ventas" class="hidden" role="tabpanel" aria-labelledby="tab-ventas-item">
+        <div class="mb-6 grid gap-4 sm:grid-cols-2">
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs">
+                <p class="text-xs uppercase tracking-wide text-gray-500">Ventas de hoy</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-800">RD$ {{ number_format($salesToday / 100, 2) }}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs">
+                <p class="text-xs uppercase tracking-wide text-gray-500">Ventas históricas</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-800">RD$ {{ number_format($salesTotal / 100, 2) }}</p>
+            </div>
+        </div>
+        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+            <table class="w-full text-sm">
+                <thead class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr><th class="px-5 py-3">Orden</th><th class="px-5 py-3">Puesto</th><th class="px-5 py-3">Estado</th><th class="px-5 py-3 text-right">Total</th><th class="px-5 py-3">Cobrada</th></tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    @forelse ($recentOrders as $order)
+                        <tr>
+                            <td class="px-5 py-3 font-mono text-xs text-gray-600">{{ Str::limit($order->client_ref, 14) }}</td>
+                            <td class="px-5 py-3 text-gray-600">{{ $order->operatingUnit?->name }}</td>
+                            <td class="px-5 py-3"><span class="rounded-full px-2.5 py-0.5 text-xs {{ $order->status->value === 'paid' ? 'bg-teal-100 text-teal-800' : ($order->status->value === 'void' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600') }}">{{ $order->status->getLabel() }}</span></td>
+                            <td class="px-5 py-3 text-right text-gray-800">RD$ {{ number_format($order->total_cents / 100, 2) }}</td>
+                            <td class="px-5 py-3 text-gray-500">{{ $order->paid_at?->format('d M, H:i') ?? '—' }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="5" class="px-5 py-10 text-center text-gray-500">Sin ventas todavía: llegarán desde el POS de sus cajeros.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- Tab: Transacciones --}}
+    <div id="tab-transacciones" class="hidden" role="tabpanel" aria-labelledby="tab-transacciones-item">
+        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+            <table class="w-full text-sm">
+                <thead class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr><th class="px-5 py-3">Orden</th><th class="px-5 py-3">Método</th><th class="px-5 py-3 text-right">Cobrado</th><th class="px-5 py-3 text-right">Recibido</th><th class="px-5 py-3 text-right">Vuelto</th><th class="px-5 py-3">Fecha</th></tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    @forelse ($recentPayments as $payment)
+                        <tr>
+                            <td class="px-5 py-3 font-mono text-xs text-gray-600">{{ Str::limit($payment->order?->client_ref, 14) }}</td>
+                            <td class="px-5 py-3"><span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $payment->method->getLabel() }}</span></td>
+                            <td class="px-5 py-3 text-right text-gray-800">RD$ {{ number_format($payment->amount_cents / 100, 2) }}</td>
+                            <td class="px-5 py-3 text-right text-gray-500">{{ $payment->tendered_cents !== null ? 'RD$ '.number_format($payment->tendered_cents / 100, 2) : '—' }}</td>
+                            <td class="px-5 py-3 text-right text-gray-500">{{ $payment->change_cents ? 'RD$ '.number_format($payment->change_cents / 100, 2) : '—' }}</td>
+                            <td class="px-5 py-3 text-gray-500">{{ $payment->created_at->format('d M, H:i') }}</td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="6" class="px-5 py-10 text-center text-gray-500">Sin cobros registrados todavía.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- Tab: Inventario --}}
+    <div id="tab-inventario" class="hidden" role="tabpanel" aria-labelledby="tab-inventario-item">
+        <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+            <table class="w-full text-sm">
+                <thead class="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr><th class="px-5 py-3">Insumo</th><th class="px-5 py-3">Puesto</th><th class="px-5 py-3 text-right">Existencia</th><th class="px-5 py-3">Estado</th></tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    @forelse ($stockLevels as $level)
+                        <tr>
+                            <td class="px-5 py-3 text-gray-800">{{ $level->inventoryItem?->name }}</td>
+                            <td class="px-5 py-3 text-gray-600">{{ $level->operatingUnit?->name }}</td>
+                            <td class="px-5 py-3 text-right text-gray-800">{{ number_format((float) $level->quantity, 3) }} {{ $level->inventoryItem?->base_unit->short() }}</td>
+                            <td class="px-5 py-3">
+                                <span class="rounded-full px-2.5 py-0.5 text-xs {{ $level->isLow() ? 'bg-red-100 text-red-800' : 'bg-teal-100 text-teal-800' }}">{{ $level->isLow() ? 'Bajo mínimo' : 'OK' }}</span>
+                            </td>
+                        </tr>
+                    @empty
+                        <tr><td colspan="4" class="px-5 py-10 text-center text-gray-500">Sin existencias: su encargado registra las compras desde su panel.</td></tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-3 text-xs text-gray-500">El inventario lo opera el comercio; aquí lo ves en tiempo real.</p>
+    </div>
+
+    {{-- Tab: Usuarios --}}
+    <div id="tab-usuarios" class="hidden" role="tabpanel" aria-labelledby="tab-usuarios-item">
+        <div class="grid gap-6 lg:grid-cols-2">
+{{-- Equipo --}}
+        <section class="rounded-xl border border-gray-200 bg-white shadow-2xs">
+            <header class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                <h2 class="font-medium text-gray-800">Equipo del comercio</h2>
+                <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-usuario" data-hs-overlay="#modal-usuario">
+                    Nuevo usuario
+                </button>
+            </header>
+            <ul class="divide-y divide-gray-200">
+                @forelse ($vendor->users as $member)
+                    <li class="flex items-center justify-between px-5 py-3 text-sm">
+                        <div>
+                            <p class="text-gray-800">{{ $member->name }}</p>
+                            <p class="text-xs text-gray-500">{{ $member->email }}
+                                @if ($member->username) · POS: <span class="text-gray-500">{{ $member->username }}</span> @endif
+                            </p>
+                        </div>
+                        <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
+                            {{ $roleLabels[$member->roles->first()?->name] ?? '—' }}
+                        </span>
+                    </li>
+                @empty
+                    <li class="px-5 py-6 text-sm text-gray-500">Sin equipo: crea su encargado — él montará el catálogo.</li>
+                @endforelse
+            </ul>
+        </section>
+        </div>
+    </div>
+
+    {{-- Tab: Configuraciones --}}
+    <div id="tab-config" class="hidden" role="tabpanel" aria-labelledby="tab-config-item">
+        <form method="POST" action="{{ route('panel.vendors.update', $vendor) }}" enctype="multipart/form-data"
+            class="max-w-xl rounded-xl border border-gray-200 bg-white p-6 shadow-2xs">
+            @csrf
+            <h2 class="mb-4 font-medium text-gray-800">Configuración del comercio</h2>
+            <div class="space-y-4">
+                <div class="flex items-center gap-4">
+                    @if ($vendor->logo_path)
+                        <img src="{{ Storage::url($vendor->logo_path) }}" alt="Logo" class="size-16 rounded-xl border border-gray-200 object-cover">
+                    @else
+                        <span class="grid size-16 place-items-center rounded-xl border border-dashed border-gray-300 text-xs text-gray-400">Sin logo</span>
+                    @endif
+                    <label class="block text-sm">
+                        <span class="mb-1 block text-xs text-gray-500">Logo del comercio (PNG/JPG, máx. 2 MB)</span>
+                        <input type="file" name="logo" accept="image/*" class="block w-full text-sm text-gray-500 file:me-4 file:rounded-lg file:border-0 file:bg-sky-600 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-sky-500">
+                    </label>
+                </div>
+                <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">Nombre</span>
+                    <input name="name" value="{{ old('name', $vendor->name) }}" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-sky-500 focus:ring-sky-500">
+                </label>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">Tipo de negocio</span>
+                        <select name="vendor_type_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                            <option value="">Sin clasificar</option>
+                            @foreach ($vendorTypes as $id => $name)
+                                <option value="{{ $id }}" @selected((int) old('vendor_type_id', $vendor->vendor_type_id) === $id)>{{ $name }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">Tipo de comida</span>
+                        <select name="food_type_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                            <option value="">Sin clasificar</option>
+                            @foreach ($foodTypes as $id => $name)
+                                <option value="{{ $id }}" @selected((int) old('food_type_id', $vendor->food_type_id) === $id)>{{ $name }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">RNC / Cédula</span>
+                        <input name="rnc" value="{{ old('rnc', $vendor->rnc) }}" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                    </label>
+                    <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">Estado</span>
+                        <select name="status" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                            @foreach (['draft' => 'En alta', 'active' => 'Activo', 'suspended' => 'Suspendido'] as $value => $label)
+                                <option value="{{ $value }}" @selected(old('status', $vendor->status->value) === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">Persona de contacto</span>
+                        <input name="contact_name" value="{{ old('contact_name', $vendor->contact_name) }}" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                    </label>
+                    <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">Teléfono</span>
+                        <input name="contact_phone" value="{{ old('contact_phone', $vendor->contact_phone) }}" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                    </label>
+                </div>
+                <p class="text-xs text-gray-500">Suspender corta el acceso de todo su personal, incluido el POS.</p>
+            </div>
+            <div class="mt-6 flex justify-end">
+                <button type="submit" class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500">Guardar configuración</button>
+            </div>
+        </form>
+    </div>
+
+{{-- Modal: editar datos --}}
     <div id="modal-editar" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.update', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">

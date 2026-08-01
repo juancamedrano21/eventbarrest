@@ -13,7 +13,13 @@ use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Models\RoleTemplate;
+use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Operations\Enums\OperatingUnitKind;
+use App\Domains\Platform\Models\FoodType;
+use App\Domains\Platform\Models\VendorType;
+use App\Domains\Sales\Enums\OrderStatus;
+use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Models\Payment;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
 use Illuminate\Http\RedirectResponse;
@@ -35,7 +41,39 @@ class VendorProfileController extends Controller
 
         $record = Vendor::query()->with(['users.roles'])->findOrFail($vendor);
 
+        $orderIds = Order::query()
+            ->where('vendor_id', $record->id)
+            ->select('id');
+
         return view('panel.vendors.show', [
+            'salesToday' => (int) Order::query()
+                ->where('vendor_id', $record->id)
+                ->where('status', OrderStatus::Paid->value)
+                ->whereDate('paid_at', today())
+                ->sum('total_cents'),
+            'salesTotal' => (int) Order::query()
+                ->where('vendor_id', $record->id)
+                ->where('status', OrderStatus::Paid->value)
+                ->sum('total_cents'),
+            'recentOrders' => Order::query()
+                ->where('vendor_id', $record->id)
+                ->with('operatingUnit')
+                ->orderByDesc('id')
+                ->limit(15)
+                ->get(),
+            'recentPayments' => Payment::query()
+                ->whereIn('order_id', $orderIds)
+                ->with('order')
+                ->orderByDesc('id')
+                ->limit(15)
+                ->get(),
+            'stockLevels' => StockLevel::query()
+                ->whereHas('operatingUnit', fn ($q) => $q->where('vendor_id', $record->id))
+                ->with(['operatingUnit', 'inventoryItem'])
+                ->orderBy('inventory_item_id')
+                ->get(),
+            'vendorTypes' => VendorType::query()->orderBy('name')->pluck('name', 'id'),
+            'foodTypes' => FoodType::query()->orderBy('name')->pluck('name', 'id'),
             'vendor' => $record,
             'participations' => $record->events()->orderBy('starts_at')->get(),
             'outlets' => EventOutlet::query()

@@ -64,15 +64,26 @@ class VendorsController extends Controller
             'contact_name' => ['nullable', 'string', 'max:255'],
             'contact_phone' => ['nullable', 'string', 'max:30'],
             'status' => ['required', 'in:draft,active,suspended'],
+            'vendor_type_id' => ['nullable', 'integer', 'exists:vendor_types,id'],
+            'food_type_id' => ['nullable', 'integer', 'exists:food_types,id'],
+            'logo' => ['nullable', 'image', 'max:2048'],
         ]);
 
-        $record->update([
+        $update = [
             'name' => $data['name'],
             'rnc' => filled($data['rnc'] ?? null) ? ValidRnc::normalize($data['rnc']) : null,
             'contact_name' => $data['contact_name'] ?? null,
             'contact_phone' => $data['contact_phone'] ?? null,
             'status' => VendorStatus::from($data['status']),
-        ]);
+            'vendor_type_id' => $data['vendor_type_id'] ?? null,
+            'food_type_id' => $data['food_type_id'] ?? null,
+        ];
+
+        if ($request->hasFile('logo')) {
+            $update['logo_path'] = $request->file('logo')->store('vendor-logos', 'public');
+        }
+
+        $record->update($update);
 
         return back()->with('status', 'Datos del comercio actualizados.');
     }

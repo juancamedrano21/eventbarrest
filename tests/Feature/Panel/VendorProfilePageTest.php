@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domains\Catalog\Enums\DispatchArea;
+use App\Domains\Catalog\Enums\ProductType;
+use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Actions\CreateEvent;
 use App\Domains\EventManagement\Actions\CreateVendor;
 use App\Domains\EventManagement\Actions\InviteVendorToEvent;
@@ -9,10 +13,19 @@ use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
+use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantType;
+use App\Domains\Platform\Models\FoodType;
+use App\Domains\Platform\Models\VendorType;
+use App\Domains\Sales\Actions\OpenCashSession;
+use App\Domains\Sales\Actions\PayOrder;
+use App\Domains\Sales\Actions\PlaceOrder;
+use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Tenancy\TenantContext;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * La primera pantalla del panel nuevo (Blade + Preline, ADR-006): el perfil
@@ -108,4 +121,51 @@ it('creates an outlet already attached to the vendor', function (): void {
 
     $outlet = EventOutlet::query()->withoutGlobalScopes()->where('name', 'Barra principal')->sole();
     expect($outlet->vendor_id)->toBe($this->vendor->id);
+});
+
+it('shows the tabs and the sales numbers of the vendor', function (): void {
+    app(TenantContext::class)->runAs($this->organizer, function (): void {
+        app(InviteVendorToEvent::class)($this->event, $this->vendor);
+        $outlet = outletFor($this->event, 'Puesto', OperatingUnitKind::Kitchen, $this->vendor);
+
+        app(VendorContext::class)->runAs($this->vendor, function () use ($outlet): void {
+            $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+            $taco = Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 25000]);
+            $caja = app(OpenCashSession::class)($outlet, null, 0);
+            $orden = app(PlaceOrder::class)($caja, [['product_id' => $taco->id, 'quantity' => 2]], 'perfil-001');
+            app(PayOrder::class)($orden, PaymentMethod::Cash, 50000);
+        });
+    });
+
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}")
+        ->assertOk()
+        ->assertSee('Transacciones')
+        ->assertSee('Configuraciones')
+        ->assertSee('perfil-001')
+        ->assertSee('500.00');
+});
+
+it('saves the configuration: logo, business type and food type', function (): void {
+    Storage::fake('public');
+    $tipo = VendorType::query()->firstOrCreate(['name' => 'Bar']);
+    $comida = FoodType::query()->create(['name' => 'Mariscos']);
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/datos", [
+            'name' => 'Tacos del Puerto',
+            'status' => 'active',
+            'vendor_type_id' => $tipo->id,
+            'food_type_id' => $comida->id,
+            'logo' => UploadedFile::fake()->image('logo.png', 300, 300),
+        ])
+        ->assertRedirect();
+
+    app(TenantContext::class)->runAs($this->organizer, function () use ($tipo, $comida): void {
+        $fresh = $this->vendor->fresh();
+        expect($fresh->vendor_type_id)->toBe($tipo->id)
+            ->and($fresh->food_type_id)->toBe($comida->id)
+            ->and($fresh->logo_path)->not->toBeNull();
+        Storage::disk('public')->assertExists($fresh->logo_path);
+    });
 });

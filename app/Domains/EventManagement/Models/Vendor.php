@@ -8,12 +8,15 @@ use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Enums\VendorStatus;
 use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Operations\Models\OperatingUnit;
+use App\Domains\Platform\Models\FoodType;
 use App\Domains\Platform\Models\Tenant;
+use App\Domains\Platform\Models\VendorType;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use App\Models\User;
 use Database\Factories\VendorFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -32,6 +35,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $contact_name
  * @property string|null $contact_phone
  * @property VendorStatus $status
+ * @property string|null $logo_path
+ * @property int|null $vendor_type_id
+ * @property int|null $food_type_id
  */
 class Vendor extends Model
 {
@@ -46,6 +52,9 @@ class Vendor extends Model
         'contact_name',
         'contact_phone',
         'status',
+        'logo_path',
+        'vendor_type_id',
+        'food_type_id',
     ];
 
     protected function casts(): array
@@ -113,6 +122,18 @@ class Vendor extends Model
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
+    }
+
+    /** @return BelongsTo<VendorType, $this> */
+    public function vendorType(): BelongsTo
+    {
+        return $this->belongsTo(VendorType::class);
+    }
+
+    /** @return BelongsTo<FoodType, $this> */
+    public function foodType(): BelongsTo
+    {
+        return $this->belongsTo(FoodType::class);
     }
 
     public function isActive(): bool
