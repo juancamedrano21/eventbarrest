@@ -14,7 +14,7 @@ use Spatie\Permission\PermissionRegistrar;
 
 class AssignTenantRole
 {
-    public function __invoke(User $user, RoleEnum|string $role): User
+    public function __invoke(User $user, RoleEnum|string $role, ?User $actor = null): User
     {
         $tenantId = $user->tenant_id;
 
@@ -23,6 +23,8 @@ class AssignTenantRole
         }
 
         $template = RoleTemplate::resolveOrFail($role instanceof RoleEnum ? $role->value : $role);
+
+        GrantCeiling::assert($template, $actor);
 
         // Mismas fronteras que en el alta: el personal de un comercio no
         // asciende a un rol de cuenta cambiándole el rol después.

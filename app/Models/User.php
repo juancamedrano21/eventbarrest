@@ -8,8 +8,8 @@ namespace App\Models;
 use App\Domains\EventManagement\Enums\VendorStatus;
 use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\EventManagement\Models\Vendor;
-use App\Domains\Identity\Enums\Role;
-use App\Domains\Identity\Queries\UserRoles;
+use App\Domains\Identity\Enums\Permission;
+use App\Domains\Identity\Queries\UserPermissions;
 use App\Domains\Platform\Enums\TenantStatus;
 use App\Domains\Platform\Models\Tenant;
 use Database\Factories\UserFactory;
@@ -122,18 +122,19 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
-     * Roles cuyo trabajo entero ocurre en el POS: hoy, el cajero. Entrar al
-     * panel de gestión solo les mostraría un menú vacío.
+     * Usuarios cuyo trabajo entero ocurre en el POS. Se decide por
+     * CAPACIDADES, no por el nombre del rol: un clon del cajero con otro
+     * nombre (rol creado por el superadmin) queda igual de fuera, y un
+     * cajero al que le concedan un permiso de gestión entra a ejercerlo.
      */
     public function onlyOperatesThePos(): bool
     {
-        // Consulta explícita, no getRoleNames(): canAccessPanel se evalúa al
-        // autenticar, antes de que el middleware fije el equipo de permisos,
-        // y ahí la relación de roles vendría vacía.
-        $roles = app(UserRoles::class)->namesFor($this);
+        // Consulta explícita, no la relación de spatie: canAccessPanel se
+        // evalúa al autenticar, antes de que el middleware fije el equipo.
+        $permissions = app(UserPermissions::class)->namesFor($this);
 
-        return $roles->isNotEmpty()
-            && $roles->diff([Role::Cashier->value])->isEmpty();
+        return $permissions->isNotEmpty()
+            && $permissions->diff(Permission::posOnly())->isEmpty();
     }
 
     public function isPlatformStaff(): bool

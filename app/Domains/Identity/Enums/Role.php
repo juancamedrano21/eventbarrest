@@ -22,13 +22,11 @@ enum Role: string implements HasLabel
     case Cashier = 'cashier';
 
     /**
-     * Los formularios de Filament devuelven el enum ya convertido cuando el
-     * campo se declara con ->options(self::class), pero un string cuando el
-     * valor viene de la petición. Aceptamos ambos.
+     * @return array<int, string>
      */
-    public static function coerce(self|string $value): self
+    public static function values(): array
     {
-        return $value instanceof self ? $value : self::from($value);
+        return array_map(static fn (self $case): string => $case->value, self::cases());
     }
 
     public function getLabel(): string

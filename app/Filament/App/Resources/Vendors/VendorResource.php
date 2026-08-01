@@ -11,6 +11,7 @@ use App\Domains\Identity\Enums\Permission;
 use App\Domains\Platform\Rules\ValidRnc;
 use App\Domains\Tenancy\TenantContext;
 use App\Filament\App\Resources\Vendors\Pages\ListVendors;
+use App\Models\User;
 use BackedEnum;
 use Filament\Actions\CreateAction;
 use Filament\Actions\EditAction;
@@ -51,7 +52,11 @@ class VendorResource extends Resource
     {
         $user = Filament::auth()->user();
 
-        return $user?->tenant instanceof OrganizerAccount
+        // Los comercios los administra la CUENTA, jamás el personal de un
+        // comercio — pase lo que pase con los permisos de su rol.
+        return $user instanceof User
+            && ! $user->worksForAVendor()
+            && $user->tenant instanceof OrganizerAccount
             && $user->can(Permission::VendorsManage->value);
     }
 

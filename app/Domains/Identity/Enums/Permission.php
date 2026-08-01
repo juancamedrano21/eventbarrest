@@ -96,6 +96,54 @@ enum Permission: string implements HasLabel
     }
 
     /**
+     * Permisos de ADMINISTRACIÓN DE CUENTA: jamás pueden llegar al personal
+     * de un comercio, ni siquiera a través de un rol creado por el
+     * superadmin — romperían la frontera entre cuenta y comercio (ver
+     * quién administra eventos, comercios, equipo, fiscal y consolidados).
+     */
+    public function accountOnly(): bool
+    {
+        return match ($this) {
+            self::UsersManage,
+            self::BranchesManage,
+            self::EventOutletsManage,
+            self::VendorsManage,
+            self::EventsManage,
+            self::EventsSettle,
+            self::ReportsViewTenant,
+            self::FiscalManage => true,
+            default => false,
+        };
+    }
+
+    /**
+     * El trabajo que ocurre entero en el POS: quien solo tiene estos
+     * permisos no encuentra ninguna pantalla en el panel de gestión.
+     *
+     * @return array<int, string>
+     */
+    public static function posOnly(): array
+    {
+        return [
+            self::SalesOperate->value,
+            self::SalesVoid->value,
+            self::SalesDiscount->value,
+            self::CashSessionManage->value,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function labeledOptionsForKind(RoleKind $kind): array
+    {
+        return collect(self::cases())
+            ->reject(fn (self $case): bool => $kind !== RoleKind::Account && $case->accountOnly())
+            ->mapWithKeys(fn (self $case): array => [$case->value => $case->getLabel()])
+            ->all();
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function labeledOptions(): array

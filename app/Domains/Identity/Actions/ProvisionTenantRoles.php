@@ -8,6 +8,7 @@ use App\Domains\Identity\Enums\Permission as PermissionEnum;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Platform\Models\Tenant;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -24,9 +25,10 @@ use Spatie\Permission\PermissionRegistrar;
 class ProvisionTenantRoles
 {
     /**
-     * Cada plantilla existe como rol y con EXACTAMENTE sus permisos. La
-     * comparación es por conjunto, no por conteo: cambiar un permiso por
-     * otro deja el mismo total y aun así hay que resincronizar.
+     * Cada plantilla existe como rol y con EXACTAMENTE sus permisos, y no
+     * quedan roles huérfanos retirables. La comparación es por conjunto, no
+     * por conteo: cambiar un permiso por otro deja el mismo total y aun así
+     * hay que resincronizar.
      *
      * @param  Collection<int, RoleTemplate>  $templates
      */
@@ -53,13 +55,38 @@ class ProvisionTenantRoles
             }
         }
 
-        return true;
+        return $this->deletableOrphans($roles, $templates)->isEmpty();
     }
 
-    public function __invoke(Tenant $tenant): void
+    /**
+     * Roles de la cuenta sin plantilla que los respalde y sin titulares:
+     * residuos de una plantilla eliminada o de siembras viejas. Con
+     * titulares se conservan — retirarlos dejaría usuarios sin rol.
+     *
+     * @param  Collection<string, Role>  $roles
+     * @param  Collection<int, RoleTemplate>  $templates
+     * @return Collection<string, Role>
+     */
+    private function deletableOrphans(Collection $roles, Collection $templates): Collection
     {
-        RoleTemplate::ensureSystemTemplates();
-        $templates = RoleTemplate::query()->get();
+        $backed = $templates->pluck('name');
+
+        return $roles
+            ->reject(fn (Role $role, string $name): bool => $backed->contains($name))
+            ->reject(fn (Role $role): bool => DB::table('model_has_roles')
+                ->where('role_id', $role->id)
+                ->exists());
+    }
+
+    /**
+     * @param  Collection<int, RoleTemplate>|null  $templates
+     */
+    public function __invoke(Tenant $tenant, ?Collection $templates = null): void
+    {
+        if ($templates === null) {
+            RoleTemplate::ensureSystemTemplates();
+            $templates = RoleTemplate::query()->get();
+        }
 
         // Salida temprana: crear un usuario llama a esto y, si no cambiara
         // nada, vaciaría la caché de permisos de TODA la plataforma.
@@ -80,6 +107,15 @@ class ProvisionTenantRoles
             foreach ($templates as $template) {
                 $role = Role::findOrCreate($template->name, 'web');
                 $role->syncPermissions($template->permissions);
+            }
+
+            $roles = Role::query()
+                ->where('tenant_id', $tenant->id)
+                ->get()
+                ->keyBy('name');
+
+            foreach ($this->deletableOrphans($roles, $templates) as $orphan) {
+                $orphan->delete();
             }
         } finally {
             $registrar->setPermissionsTeamId($previousTeam);

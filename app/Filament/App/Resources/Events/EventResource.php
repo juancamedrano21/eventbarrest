@@ -14,6 +14,7 @@ use App\Filament\App\Resources\Events\Pages\ListEvents;
 use App\Filament\App\Resources\Events\RelationManagers\OutletsRelationManager;
 use App\Filament\App\Resources\Events\Schemas\EventForm;
 use App\Filament\App\Resources\Events\Tables\EventsTable;
+use App\Models\User;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
@@ -49,7 +50,11 @@ class EventResource extends Resource
     {
         $user = Filament::auth()->user();
 
-        return $user?->tenant instanceof OrganizerAccount
+        // Los eventos los administra la CUENTA, jamás el personal de un
+        // comercio — pase lo que pase con los permisos de su rol.
+        return $user instanceof User
+            && ! $user->worksForAVendor()
+            && $user->tenant instanceof OrganizerAccount
             && $user->can(Permission::EventsManage->value);
     }
 

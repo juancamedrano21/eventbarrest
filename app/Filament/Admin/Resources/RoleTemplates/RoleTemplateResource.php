@@ -7,6 +7,7 @@ namespace App\Filament\Admin\Resources\RoleTemplates;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Enums\Role as RoleEnum;
 use App\Domains\Identity\Enums\RoleKind;
+use App\Domains\Identity\Exceptions\RoleTemplateException;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Filament\Admin\Resources\RoleTemplates\Pages\CreateRoleTemplate;
 use App\Filament\Admin\Resources\RoleTemplates\Pages\EditRoleTemplate;
@@ -28,6 +29,8 @@ use Filament\Tables\Table;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * El sistema de roles de la plataforma, operado por el superadmin: ajustar
@@ -87,6 +90,25 @@ class RoleTemplateResource extends Resource
                 ->maxLength(100)
                 ->unique(table: RoleTemplate::class, ignoreRecord: true)
                 ->validationMessages(['unique' => 'Ya existe un rol con ese nombre.'])
+                // El identificador se deriva del nombre: su colisión (y el
+                // caso sin letras) se valida AQUÍ para que salga como error
+                // de campo y no como excepción del guard del modelo.
+                ->rules(fn (string $operation): array => $operation !== 'create' ? [] : [
+                    function (string $attribute, mixed $value, \Closure $fail): void {
+                        $name = Str::slug((string) $value, '_');
+
+                        if ($name === '') {
+                            $fail('El nombre debe contener letras o números.');
+
+                            return;
+                        }
+
+                        if (in_array($name, RoleEnum::values(), true)
+                            || RoleTemplate::query()->where('name', $name)->exists()) {
+                            $fail("Ya existe un rol cuyo identificador sería [{$name}]: elige otro nombre.");
+                        }
+                    },
+                ])
                 ->helperText(fn (string $operation): ?string => $operation === 'create'
                     ? 'El identificador interno se genera de este nombre y ya no cambia.'
                     : null),
@@ -100,6 +122,7 @@ class RoleTemplateResource extends Resource
                 ->options(RoleKind::class)
                 ->default(RoleKind::Account)
                 ->required()
+                ->live()
                 // El alcance es identidad del rol: se decide al crear. Si
                 // cambiara, usuarios ya asignados quedarían del lado
                 // equivocado de la frontera cuenta/comercio.
@@ -108,7 +131,10 @@ class RoleTemplateResource extends Resource
                 ->helperText('La frontera entre cuenta y comercio: un rol de cuenta nunca baja a un comercio, ni al revés.'),
             CheckboxList::make('permissions')
                 ->label('Permisos (los límites del rol)')
-                ->options(Permission::labeledOptions())
+                // Filtrados por alcance: los permisos de administración de
+                // cuenta ni se ofrecen en roles asignables a comercios (el
+                // guard del modelo los rechaza de todas formas).
+                ->options(fn (mixed $get): array => Permission::labeledOptionsForKind(self::kindFrom($get('kind'))))
                 ->descriptions(Permission::descriptions())
                 ->columns(2)
                 ->required()
@@ -140,7 +166,15 @@ class RoleTemplateResource extends Resource
                     ->alignCenter(),
                 TextColumn::make('usuarios')
                     ->label('Usuarios')
-                    ->state(fn (RoleTemplate $record): int => $record->assignedUsersCount())
+                    // once(): un solo agregado por petición, no uno por fila.
+                    ->state(fn (RoleTemplate $record): int => once(
+                        fn (): array => DB::table('model_has_roles')
+                            ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+                            ->groupBy('roles.name')
+                            ->selectRaw('roles.name as name, count(distinct model_has_roles.model_id) as total')
+                            ->pluck('total', 'name')
+                            ->all()
+                    )[$record->name] ?? 0)
                     ->alignCenter(),
                 IconColumn::make('is_system')
                     ->label('Sistema')
@@ -148,22 +182,43 @@ class RoleTemplateResource extends Resource
             ])
             ->recordActions([
                 EditAction::make(),
-                DeleteAction::make()
-                    ->before(function (RoleTemplate $record, DeleteAction $action): void {
-                        if ($record->assignedUsersCount() > 0) {
-                            Notification::make()
-                                ->danger()
-                                ->title('No se puede eliminar')
-                                ->body("[{$record->label}] tiene usuarios asignados: quítaselo antes de eliminarlo.")
-                                ->send();
-
-                            $action->cancel();
-                        }
-                    }),
+                self::configureDeleteAction(DeleteAction::make()),
             ])
             ->defaultSort('label')
             ->emptyStateHeading('Sin roles todavía')
             ->emptyStateDescription('Los roles de sistema se siembran solos al abrir esta pantalla.');
+    }
+
+    /**
+     * El borrado corre en transacción (guard + limpieza spatie, o todo o
+     * nada) y los guards del modelo salen como notificación, no como 500 —
+     * incluso si el estado cambió entre abrir el modal y confirmar.
+     */
+    public static function configureDeleteAction(DeleteAction $action): DeleteAction
+    {
+        return $action->using(function (RoleTemplate $record, DeleteAction $action): bool {
+            try {
+                return (bool) DB::transaction(fn (): bool => (bool) $record->delete());
+            } catch (RoleTemplateException $e) {
+                $action->failureNotification(
+                    fn (Notification $notification): Notification => $notification
+                        ->danger()
+                        ->title('No se puede eliminar')
+                        ->body($e->getMessage()),
+                );
+
+                return false;
+            }
+        });
+    }
+
+    private static function kindFrom(mixed $state): RoleKind
+    {
+        return match (true) {
+            $state instanceof RoleKind => $state,
+            is_string($state) && RoleKind::tryFrom($state) !== null => RoleKind::from($state),
+            default => RoleKind::Account,
+        };
     }
 
     public static function getPages(): array

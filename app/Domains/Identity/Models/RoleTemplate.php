@@ -8,8 +8,8 @@ use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Enums\Role as RoleEnum;
 use App\Domains\Identity\Enums\RoleKind;
 use App\Domains\Identity\Exceptions\RoleTemplateException;
-use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role as SpatieRole;
@@ -52,7 +52,25 @@ class RoleTemplate extends Model
                 $template->setAttribute('name', Str::slug($template->label, '_'));
             }
 
+            if ($template->name === '') {
+                throw RoleTemplateException::labelNeedsLetters($template->label);
+            }
+
+            // Los identificadores del código son de las plantillas de
+            // sistema: nadie los captura antes de que se siembren (una
+            // plataforma virgen donde alguien crea «Owner» dejaría a todas
+            // las cuentas sin poder tener dueño).
+            if (! $template->is_system && in_array($template->name, RoleEnum::values(), true)) {
+                throw RoleTemplateException::nameReservedForSystem($template->name);
+            }
+
             if (static::query()->where('name', $template->name)->exists()) {
+                throw RoleTemplateException::nameTaken($template->name);
+            }
+
+            // Tampoco se adopta un rol de spatie preexistente que no nació
+            // de plantilla: propagar lo pisaría y el borrado se lo llevaría.
+            if (! $template->is_system && SpatieRole::query()->where('name', $template->name)->exists()) {
                 throw RoleTemplateException::nameTaken($template->name);
             }
 
@@ -60,7 +78,7 @@ class RoleTemplate extends Model
                 $template->setAttribute('kind', RoleKind::Account);
             }
 
-            $template->permissions = self::assertValidPermissions($template->permissions ?? []);
+            $template->permissions = self::assertValidPermissions($template->permissions ?? [], $template->kind);
         });
 
         static::updating(function (RoleTemplate $template): void {
@@ -73,7 +91,7 @@ class RoleTemplate extends Model
             }
 
             if ($template->isDirty('permissions')) {
-                $template->permissions = self::assertValidPermissions($template->permissions);
+                $template->permissions = self::assertValidPermissions($template->permissions, $template->kind);
             }
         });
 
@@ -88,18 +106,27 @@ class RoleTemplate extends Model
         });
 
         // Sin usuarios asignados (lo garantiza el guard), las filas de
-        // spatie que la materializaban en cada cuenta se retiran también.
+        // spatie que la materializaban en cada cuenta se retiran también —
+        // solo las materializadas: por cuenta (tenant_id) y guard web.
         static::deleted(function (RoleTemplate $template): void {
-            SpatieRole::query()->where('name', $template->name)->delete();
+            SpatieRole::query()
+                ->where('name', $template->name)
+                ->where('guard_name', 'web')
+                ->whereNotNull('tenant_id')
+                ->delete();
             app(PermissionRegistrar::class)->forgetCachedPermissions();
         });
     }
 
     /**
+     * Válidos contra el catálogo del código Y contra el alcance: un permiso
+     * de administración de cuenta jamás entra en una plantilla asignable a
+     * personal de comercio — la frontera no se cruza ni componiendo roles.
+     *
      * @param  array<int, string>  $permissions
      * @return array<int, string>
      */
-    private static function assertValidPermissions(array $permissions): array
+    private static function assertValidPermissions(array $permissions, RoleKind $kind): array
     {
         $clean = array_values(array_unique($permissions));
 
@@ -108,21 +135,30 @@ class RoleTemplate extends Model
         }
 
         foreach ($clean as $permission) {
-            if (! in_array($permission, Permission::values(), true)) {
+            $case = Permission::tryFrom((string) $permission);
+
+            if ($case === null) {
                 throw RoleTemplateException::unknownPermission((string) $permission);
+            }
+
+            if ($kind !== RoleKind::Account && $case->accountOnly()) {
+                throw RoleTemplateException::permissionNotForKind($case->value, $kind->value);
             }
         }
 
         return $clean;
     }
 
-    /** Cuántos usuarios de toda la plataforma tienen hoy este rol. */
+    /**
+     * Cuántas asignaciones vivas tiene este rol en toda la plataforma. Sin
+     * filtro de model_type a propósito: cualquier titular, del tipo que
+     * sea, hace al rol «en uso».
+     */
     public function assignedUsersCount(): int
     {
         return DB::table('model_has_roles')
             ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
             ->where('roles.name', $this->name)
-            ->where('model_has_roles.model_type', User::class)
             ->distinct()
             ->count('model_has_roles.model_id');
     }
@@ -140,30 +176,41 @@ class RoleTemplate extends Model
     }
 
     /**
-     * Siembra los roles del código como plantillas de sistema, solo si no
-     * existen: jamás pisa lo que el superadmin haya ajustado.
+     * Siembra los roles del código como plantillas de sistema — solo los
+     * que falten: jamás pisa lo que el superadmin haya ajustado, y es
+     * autocurativa: una siembra interrumpida o un rol nuevo del enum se
+     * completan en la siguiente llamada (la salida rápida exige que estén
+     * TODOS, no alguno).
      */
     public static function ensureSystemTemplates(): void
     {
-        if (static::query()->where('is_system', true)->exists()) {
+        $existing = static::query()
+            ->whereIn('name', RoleEnum::values())
+            ->pluck('name');
+
+        if ($existing->count() === count(RoleEnum::cases())) {
             return;
         }
 
         foreach (RoleEnum::cases() as $case) {
-            if (static::query()->where('name', $case->value)->exists()) {
+            if ($existing->contains($case->value)) {
                 continue;
             }
 
-            $template = new self([
-                'label' => $case->getLabel(),
-                'description' => $case->description(),
-                'permissions' => $case->permissions(),
-            ]);
-            $template->forceFill([
-                'name' => $case->value,
-                'kind' => self::systemKindFor($case)->value,
-                'is_system' => true,
-            ])->save();
+            try {
+                $template = new self([
+                    'label' => $case->getLabel(),
+                    'description' => $case->description(),
+                    'permissions' => $case->permissions(),
+                ]);
+                $template->forceFill([
+                    'name' => $case->value,
+                    'kind' => self::systemKindFor($case)->value,
+                    'is_system' => true,
+                ])->save();
+            } catch (UniqueConstraintViolationException) {
+                // Otra petición sembró este rol primero: mismo resultado.
+            }
         }
     }
 

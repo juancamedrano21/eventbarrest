@@ -13,6 +13,7 @@ use App\Filament\App\Resources\Branches\Pages\EditBranch;
 use App\Filament\App\Resources\Branches\Pages\ListBranches;
 use App\Filament\App\Resources\Branches\Schemas\BranchForm;
 use App\Filament\App\Resources\Branches\Tables\BranchesTable;
+use App\Models\User;
 use BackedEnum;
 use Filament\Facades\Filament;
 use Filament\Resources\Resource;
@@ -50,7 +51,10 @@ class BranchResource extends Resource
     {
         $user = Filament::auth()->user();
 
-        return $user?->tenant instanceof BusinessAccount
+        // Las sucursales las administra la CUENTA, no personal de comercio.
+        return $user instanceof User
+            && ! $user->worksForAVendor()
+            && $user->tenant instanceof BusinessAccount
             && $user->can(Permission::BranchesManage->value);
     }
 

@@ -32,8 +32,11 @@ class CreateTenantUser
         string $password,
         RoleEnum|string $role,
         ?Vendor $vendor = null,
+        ?User $actor = null,
     ): User {
         $template = RoleTemplate::resolveOrFail($role instanceof RoleEnum ? $role->value : $role);
+
+        GrantCeiling::assert($template, $actor);
 
         if ($vendor !== null && $vendor->tenant_id !== $tenant->id) {
             throw VendorException::userOutsideTenant();

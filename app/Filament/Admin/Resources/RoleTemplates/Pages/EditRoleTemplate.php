@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Filament\Admin\Resources\RoleTemplates\Pages;
 
 use App\Domains\Identity\Actions\ApplyRoleTemplates;
-use App\Domains\Identity\Models\RoleTemplate;
 use App\Filament\Admin\Resources\RoleTemplates\RoleTemplateResource;
 use Filament\Actions\DeleteAction;
 use Filament\Notifications\Notification;
@@ -18,18 +17,7 @@ class EditRoleTemplate extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            DeleteAction::make()
-                ->before(function (RoleTemplate $record, DeleteAction $action): void {
-                    if ($record->assignedUsersCount() > 0) {
-                        Notification::make()
-                            ->danger()
-                            ->title('No se puede eliminar')
-                            ->body("[{$record->label}] tiene usuarios asignados: quítaselo antes de eliminarlo.")
-                            ->send();
-
-                        $action->cancel();
-                    }
-                }),
+            RoleTemplateResource::configureDeleteAction(DeleteAction::make()),
         ];
     }
 

@@ -5,7 +5,9 @@ declare(strict_types=1);
 use App\Domains\EventManagement\Actions\CreateVendor;
 use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Identity\Actions\ApplyRoleTemplates;
+use App\Domains\Identity\Actions\AssignTenantRole;
 use App\Domains\Identity\Actions\CreateTenantUser;
+use App\Domains\Identity\Actions\ProvisionTenantRoles;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Enums\Role;
 use App\Domains\Identity\Enums\RoleKind;
@@ -19,6 +21,7 @@ use App\Filament\Admin\Resources\RoleTemplates\Pages\EditRoleTemplate;
 use App\Filament\Admin\Resources\RoleTemplates\Pages\ListRoleTemplates;
 use App\Models\User;
 use Filament\Facades\Filament;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Role as SpatieRole;
 
@@ -170,4 +173,98 @@ it('keeps regular platform users out of the admin panel screens', function (): v
     $owner = app(CreateTenantUser::class)($tenant, 'Ana', 'ana@bar.test', 'Secreta-2026', Role::Owner);
 
     expect($this->actingAs($owner)->get('/admin/role-templates')->getStatusCode())->toBe(403);
+});
+
+// ── Correcciones de la revisión adversarial ──────────────────────────────
+
+it('reserves the system identifiers even on a virgin platform', function (): void {
+    // Sin siembra previa: crear «Owner» capturaría el identificador del rol
+    // de dueño y ninguna cuenta podría tener dueño jamás.
+    $template = new RoleTemplate([
+        'label' => 'Owner',
+        'permissions' => [Permission::SalesOperate->value],
+    ]);
+
+    $template->save();
+})->throws(RoleTemplateException::class);
+
+it('rejects a label that cannot produce an identifier', function (): void {
+    $template = new RoleTemplate([
+        'label' => '###',
+        'permissions' => [Permission::SalesOperate->value],
+    ]);
+
+    $template->save();
+})->throws(RoleTemplateException::class);
+
+it('keeps account-only permissions out of vendor-assignable roles', function (): void {
+    // La frontera cuenta/comercio no se cruza ni componiendo roles: un rol
+    // asignable a personal de comercio no puede llevar administración de
+    // cuenta (equipo, eventos, comercios, fiscal...).
+    $template = new RoleTemplate([
+        'label' => 'Runner con equipo',
+        'permissions' => [Permission::SalesOperate->value, Permission::UsersManage->value],
+    ]);
+    $template->forceFill(['kind' => RoleKind::Vendor->value])->save();
+})->throws(RoleTemplateException::class);
+
+it('never lets anyone grant a role above their own ceiling', function (): void {
+    Livewire::test(CreateRoleTemplate::class)
+        ->fillForm([
+            'label' => 'Coordinador',
+            'kind' => RoleKind::Account->value,
+            'permissions' => [Permission::UsersManage->value],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $tenant = app(CreateTenant::class)('Bar del Puerto');
+    $coordinador = app(CreateTenantUser::class)($tenant, 'Coco', 'coco@bar.test', 'Secreta-2026', 'coordinador');
+
+    // Con solo users.manage intenta auto-ascenderse a dueño: denegado.
+    app(AssignTenantRole::class)($coordinador, Role::Owner, $coordinador);
+})->throws(RoleTemplateException::class);
+
+it('keeps a cashier clone with another name out of the management panel', function (): void {
+    // El candado del POS se decide por capacidades, no por el nombre del rol.
+    Livewire::test(CreateRoleTemplate::class)
+        ->fillForm([
+            'label' => 'Barra',
+            'kind' => RoleKind::Account->value,
+            'permissions' => [Permission::SalesOperate->value, Permission::CashSessionManage->value],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $tenant = app(CreateTenant::class)('Bar del Puerto');
+    $barra = app(CreateTenantUser::class)($tenant, 'Bea', 'bea@bar.test', 'Secreta-2026', 'barra');
+
+    expect($this->actingAs($barra)->get('/app')->getStatusCode())->toBe(403);
+});
+
+it('re-seeds a missing system template instead of giving up forever', function (): void {
+    Livewire::test(ListRoleTemplates::class)->assertOk();
+
+    // Simula una siembra interrumpida (SQL directo: los guards no corren).
+    DB::table('role_templates')->where('name', 'cashier')->delete();
+
+    RoleTemplate::ensureSystemTemplates();
+
+    expect(RoleTemplate::query()->where('name', 'cashier')->exists())->toBeTrue();
+});
+
+it('cleans up orphan spatie roles without holders and keeps the ones in use', function (): void {
+    $tenant = app(CreateTenant::class)('Bar del Puerto');
+    $user = app(CreateTenantUser::class)($tenant, 'Ana', 'ana@bar.test', 'Secreta-2026', Role::Owner);
+
+    // Dos huérfanos sin plantilla: uno sin titulares y uno asignado.
+    actAsTenantPermissions($tenant->id);
+    $suelto = SpatieRole::create(['name' => 'legacy_libre', 'guard_name' => 'web', 'tenant_id' => $tenant->id]);
+    $vivo = SpatieRole::create(['name' => 'legacy_usado', 'guard_name' => 'web', 'tenant_id' => $tenant->id]);
+    $user->assignRole($vivo);
+
+    app(ProvisionTenantRoles::class)($tenant);
+
+    expect(SpatieRole::query()->where('name', 'legacy_libre')->exists())->toBeFalse()
+        ->and(SpatieRole::query()->where('name', 'legacy_usado')->exists())->toBeTrue();
 });

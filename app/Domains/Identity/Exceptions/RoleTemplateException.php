@@ -56,4 +56,32 @@ class RoleTemplateException extends RuntimeException
     {
         return new self("Ya existe un rol con el identificador [{$name}].");
     }
+
+    public static function nameReservedForSystem(string $name): self
+    {
+        return new self("[{$name}] es un identificador de rol de sistema: elige otro nombre.");
+    }
+
+    public static function labelNeedsLetters(string $label): self
+    {
+        return new self(
+            "De [{$label}] no se puede derivar un identificador: el nombre necesita letras o números."
+        );
+    }
+
+    public static function permissionNotForKind(string $permission, string $kind): self
+    {
+        return new self(
+            "El permiso [{$permission}] es de administración de cuenta y no puede ir en un rol ".
+            "asignable a personal de comercio [{$kind}]: rompería la frontera entre cuenta y comercio."
+        );
+    }
+
+    public static function cannotGrantBeyondSelf(string $role): self
+    {
+        return new self(
+            "No puedes conceder [{$role}]: otorga permisos que tú no tienes. ".
+            'Nadie asigna por encima de su propio techo.'
+        );
+    }
 }
