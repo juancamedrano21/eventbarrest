@@ -82,12 +82,39 @@ it('places an order with frozen names and prices and the itbis breakdown', funct
             'pos-0001',
         );
 
-        // 2×400.00 + 300.00 = 1,100.00; ITBIS incluido = 1100×18/118.
+        // 2×400.00 + 300.00 = 1,100.00; ITBIS incluido, POR LÍNEA (es el
+        // redondeo del comprobante): round(80000×18/118) + round(30000×18/118).
         expect($order->subtotal_cents)->toBe(110000)
-            ->and($order->itbis_cents)->toBe((int) round(110000 * 18 / 118))
+            ->and($order->itbis_cents)->toBe(12203 + 4576)
             ->and($order->total_cents)->toBe(110000)
             ->and($order->lines)->toHaveCount(2)
+            ->and($order->lines->firstWhere('product_name', 'Mojito')->itbis_cents)->toBe(12203)
             ->and($order->lines->firstWhere('product_name', 'Mojito')->unit_price_cents)->toBe(40000);
+    });
+});
+
+it('exempts flagged products from the itbis breakdown, line by line', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $categoria = Category::query()->where('name', 'Cócteles')->sole();
+        $agua = Product::create([
+            'category_id' => $categoria->id, 'name' => 'Agua',
+            'type' => ProductType::Simple, 'price_cents' => 10000,
+            'itbis_exempt' => true,
+        ]);
+
+        $order = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $agua->id, 'quantity' => 2],
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0016', null, true);
+
+        // Solo la Presidente desglosa ITBIS; el agua es exenta. La propina
+        // legal sigue siendo el 10 % de la base sin impuesto.
+        expect($order->subtotal_cents)->toBe(50000)
+            ->and($order->itbis_cents)->toBe(4576)
+            ->and($order->lines->firstWhere('product_name', 'Agua')->itbis_cents)->toBe(0)
+            ->and($order->lines->firstWhere('product_name', 'Presidente')->itbis_cents)->toBe(4576)
+            ->and($order->tip_cents)->toBe((int) round((50000 - 4576) * 0.10))
+            ->and($order->total_cents)->toBe(50000 + $order->tip_cents);
     });
 });
 

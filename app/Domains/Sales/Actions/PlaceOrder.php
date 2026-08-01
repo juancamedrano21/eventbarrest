@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Domains\Sales\Actions;
 
 use App\Domains\Catalog\Models\Product;
+use App\Domains\EventManagement\Models\EventVendor;
+use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
@@ -19,7 +21,12 @@ use Illuminate\Support\Facades\DB;
  * la misma orden mil veces y existe una sola.
  *
  * El precio al público ya incluye el ITBIS (18 %): el desglose se calcula
- * hacia adentro. La propina legal (10 %) es opcional y se suma al total.
+ * hacia adentro, LÍNEA a LÍNEA — un producto exento (agua, alimentos no
+ * gravados) simplemente no aporta. La propina legal (10 %) es opcional y se
+ * calcula sobre la base sin impuesto.
+ *
+ * La venta también congela la comisión del organizador: la participación
+ * puede renegociarse mañana, lo cobrado hoy no se reescribe.
  */
 class PlaceOrder
 {
@@ -104,6 +111,7 @@ class PlaceOrder
     ): Order {
         return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip): Order {
             $subtotal = 0;
+            $itbis = 0;
             $prepared = [];
 
             foreach ($lines as $line) {
@@ -122,12 +130,16 @@ class PlaceOrder
                 }
 
                 $total = (int) round($product->price_cents * $quantity);
-                $subtotal += $total;
+                // El desglose es POR LÍNEA: los exentos no aportan y el
+                // redondeo por línea es el que irá al comprobante fiscal.
+                $lineItbis = $product->itbis_exempt ? 0 : (int) round($total * 18 / 118);
 
-                $prepared[] = [$product, $quantity, $total];
+                $subtotal += $total;
+                $itbis += $lineItbis;
+
+                $prepared[] = [$product, $quantity, $total, $lineItbis];
             }
 
-            $itbis = (int) round($subtotal * 18 / 118);
             // Propina legal sobre la BASE, no sobre la base con impuesto.
             $tip = $withTip ? (int) round(($subtotal - $itbis) * 0.10) : 0;
 
@@ -142,14 +154,16 @@ class PlaceOrder
             $order->operating_unit_id = $session->operating_unit_id;
             $order->cash_session_id = $session->id;
             $order->user_id = $user?->id;
+            $order->commission_bps = $this->commissionFor($session);
             $order->save();
 
-            foreach ($prepared as [$product, $quantity, $total]) {
+            foreach ($prepared as [$product, $quantity, $total, $lineItbis]) {
                 $orderLine = $order->lines()->make([
                     'product_name' => $product->name,
                     'quantity' => $quantity,
                     'unit_price_cents' => $product->price_cents,
                     'total_cents' => $total,
+                    'itbis_cents' => $lineItbis,
                 ]);
                 $orderLine->product_id = $product->id;
                 $orderLine->save();
@@ -157,5 +171,29 @@ class PlaceOrder
 
             return $order;
         });
+    }
+
+    /**
+     * La comisión pactada HOY para el puesto que vende, congelada en la
+     * orden. Null en el mundo negocio (sucursales sin evento). Sin scopes:
+     * el guard decide con la verdad de las filas, no la vista del contexto.
+     */
+    private function commissionFor(CashSession $session): ?int
+    {
+        $unit = OperatingUnit::query()->withoutGlobalScopes()
+            ->whereKey($session->operating_unit_id)
+            ->first(['tenant_id', 'vendor_id', 'event_id']);
+
+        if ($unit === null || $unit->event_id === null || $unit->getAttribute('vendor_id') === null) {
+            return null;
+        }
+
+        $bps = EventVendor::query()->withoutGlobalScopes()
+            ->where('tenant_id', $unit->getAttribute('tenant_id'))
+            ->where('event_id', $unit->event_id)
+            ->where('vendor_id', $unit->getAttribute('vendor_id'))
+            ->value('commission_bps');
+
+        return $bps === null ? null : (int) $bps;
     }
 }

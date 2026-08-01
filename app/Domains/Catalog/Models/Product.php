@@ -32,6 +32,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $price_cents
  * @property bool $track_stock
  * @property bool $active
+ * @property bool $itbis_exempt
  * @property-read Category $category
  * @property-read InventoryItem|null $inventoryItem
  * @property-read Collection<int, RecipeItem> $recipeItems
@@ -52,6 +53,7 @@ class Product extends Model
         'price_cents',
         'track_stock',
         'active',
+        'itbis_exempt',
     ];
 
     protected function casts(): array
@@ -61,6 +63,7 @@ class Product extends Model
             'price_cents' => 'integer',
             'track_stock' => 'boolean',
             'active' => 'boolean',
+            'itbis_exempt' => 'boolean',
         ];
     }
 

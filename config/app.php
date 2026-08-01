@@ -71,6 +71,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Business Timezone
+    |--------------------------------------------------------------------------
+    |
+    | Todo se ALMACENA en UTC; esta es la zona donde el negocio corta sus
+    | días (reportes, "ventas de hoy", series). RD es UTC-4 fijo, sin
+    | horario de verano. Cuando la plataforma salga de RD, esto pasará a
+    | vivir por cuenta (tenant), no aquí.
+    |
+    */
+
+    'business_timezone' => 'America/Santo_Domingo',
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------
     |

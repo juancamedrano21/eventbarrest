@@ -138,6 +138,9 @@
                                     @else
                                         Sin control de inventario
                                     @endif
+                                    @if ($product->itbis_exempt)
+                                        · <span class="font-medium text-violet-700">Exento de ITBIS</span>
+                                    @endif
                                 </p>
                             </div>
                             <form method="POST" action="{{ route('panel.vendors.products.update', [$vendor, $product]) }}" class="flex shrink-0 items-center gap-2">
@@ -151,6 +154,11 @@
                                 <button type="submit" name="active" value="{{ $product->active ? 0 : 1 }}"
                                     class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs {{ $product->active ? 'text-amber-700' : 'text-teal-700' }} hover:bg-gray-50">
                                     {{ $product->active ? 'Desactivar' : 'Activar' }}
+                                </button>
+                                <button type="submit" name="itbis_exempt" value="{{ $product->itbis_exempt ? 0 : 1 }}"
+                                    class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs {{ $product->itbis_exempt ? 'text-gray-600' : 'text-violet-700' }} hover:bg-gray-50"
+                                    title="{{ $product->itbis_exempt ? 'Volver a desglosar el 18 % incluido en el precio' : 'Marcarlo exento: su precio deja de desglosar ITBIS' }}">
+                                    {{ $product->itbis_exempt ? 'Gravar 18 %' : 'Hacer exento' }}
                                 </button>
                             </form>
                             @if ($product->type->value === 'recipe')
@@ -486,6 +494,10 @@
                     <select name="kind" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
                         <option value="simple">Simple — puede descontar UN insumo por venta</option>
                         <option value="receta">Con receta — descuenta varios ingredientes (el escandallo se arma después)</option>
+                    </select>
+                    <select name="itbis" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        <option value="gravado">Grava ITBIS — el 18 % va incluido en el precio</option>
+                        <option value="exento">Exento de ITBIS — agua embotellada, alimentos no gravados</option>
                     </select>
                     <select name="inventory_item_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
                         <option value="">Sin insumo vinculado (solo para Simple)</option>

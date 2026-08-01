@@ -4,9 +4,16 @@ import { db, kvGet, kvSet } from './db';
 
 // El precio ya incluye el ITBIS; el desglose y la propina espejan el calculo
 // del servidor (redondeo POR LINEA incluido): el servidor manda al sincronizar.
+// Los productos exentos (itbis_exempt) no aportan al desglose; un catalogo
+// cacheado sin el flag cuenta como gravado, igual que el default del servidor.
 function totals(cart, withTip) {
-    const subtotal = cart.reduce((sum, line) => sum + Math.round(line.price_cents * line.quantity), 0);
-    const itbis = Math.round((subtotal * 18) / 118);
+    let subtotal = 0;
+    let itbis = 0;
+    for (const line of cart) {
+        const total = Math.round(line.price_cents * line.quantity);
+        subtotal += total;
+        if (!line.itbis_exempt) itbis += Math.round((total * 18) / 118);
+    }
     const tip = withTip ? Math.round((subtotal - itbis) * 0.1) : 0;
     return { subtotal, itbis, tip, total: subtotal + tip };
 }
@@ -148,7 +155,7 @@ export const usePos = defineStore('pos', {
             if (line) {
                 line.quantity += 1;
             } else {
-                this.cart.push({ product_id: product.id, name: product.name, price_cents: product.price_cents, quantity: 1 });
+                this.cart.push({ product_id: product.id, name: product.name, price_cents: product.price_cents, itbis_exempt: !!product.itbis_exempt, quantity: 1 });
             }
             this.saveDraft();
         },

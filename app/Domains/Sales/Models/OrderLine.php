@@ -14,8 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Query\Builder;
 
 /**
- * Una línea vendida, con nombre y precio INSTANTÁNEOS: el catálogo puede
- * cambiar mañana, la venta de hoy no. Inmutable tras crear.
+ * Una línea vendida, con nombre, precio y desglose de ITBIS INSTANTÁNEOS:
+ * el catálogo puede cambiar mañana, la venta de hoy no. itbis_cents es cero
+ * cuando el producto era exento al vender. Inmutable tras crear.
  *
  * @property int $order_id
  * @property int $product_id
@@ -23,18 +24,20 @@ use Illuminate\Database\Query\Builder;
  * @property string $quantity
  * @property int $unit_price_cents
  * @property int $total_cents
+ * @property int $itbis_cents
  */
 class OrderLine extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['product_name', 'quantity', 'unit_price_cents', 'total_cents'];
+    protected $fillable = ['product_name', 'quantity', 'unit_price_cents', 'total_cents', 'itbis_cents'];
 
     protected function casts(): array
     {
         return [
             'unit_price_cents' => 'integer',
             'total_cents' => 'integer',
+            'itbis_cents' => 'integer',
         ];
     }
 

@@ -8,6 +8,13 @@
         <p class="mt-1 text-sm text-gray-500">Los números vivos de {{ auth()->user()?->tenant?->name }}.</p>
     </div>
 
+    @if (! $conReportes)
+        <div class="rounded-xl border border-dashed border-gray-300 bg-white px-5 py-12 text-center text-sm text-gray-500">
+            Tu rol no incluye los reportes de la cuenta: pídele al dueño o a un administrador
+            el permiso «Reportes de la cuenta» si necesitas ver el consolidado.
+        </div>
+    @else
+
     {{-- KPIs --}}
     <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs">
@@ -39,7 +46,7 @@
             {{-- Por comercio --}}
             <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
                 <header class="border-b border-gray-200 px-5 py-4">
-                    <h2 class="font-medium text-gray-800">Ventas por comercio</h2>
+                    <h2 class="font-medium text-gray-800">Ventas por comercio <span class="ml-1 text-xs font-normal text-gray-500">últimos 30 días</span></h2>
                 </header>
                 <table class="w-full text-sm">
                     <tbody class="divide-y divide-gray-200">
@@ -59,7 +66,7 @@
             {{-- Comisión por evento: el reporte del organizador --}}
             <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
                 <header class="border-b border-gray-200 px-5 py-4">
-                    <h2 class="font-medium text-gray-800">Tu comisión por evento</h2>
+                    <h2 class="font-medium text-gray-800">Tu comisión por evento <span class="ml-1 text-xs font-normal text-gray-500">acumulado</span></h2>
                 </header>
                 <table class="w-full text-sm">
                     <thead class="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
@@ -70,14 +77,14 @@
                             <tr>
                                 <td class="px-5 py-3 text-gray-800">{{ $fila->nombre }}</td>
                                 <td class="px-5 py-3 text-right text-gray-600">RD$ {{ number_format($fila->bruto / 100, 2) }}</td>
-                                <td class="px-5 py-3 text-right font-medium text-teal-700">RD$ {{ number_format(round((float) $fila->comision) / 100, 2) }}</td>
+                                <td class="px-5 py-3 text-right font-medium text-teal-700">RD$ {{ number_format($fila->comision / 100, 2) }}</td>
                             </tr>
                         @empty
                             <tr><td colspan="3" class="px-5 py-8 text-center text-gray-500">Sin ventas en eventos todavía.</td></tr>
                         @endforelse
                     </tbody>
                 </table>
-                <p class="border-t border-gray-200 px-5 py-3 text-xs text-gray-500">Calculada sobre lo cobrado, con la comisión pactada en cada participación.</p>
+                <p class="border-t border-gray-200 px-5 py-3 text-xs text-gray-500">Calculada sobre lo cobrado, con la comisión pactada al momento de cada venta.</p>
             </section>
         </div>
     @endif
@@ -100,4 +107,5 @@
             }).render();
         });
     </script>
+    @endif
 @endsection

@@ -19,11 +19,15 @@ use Illuminate\Database\Query\Builder;
 
 /**
  * Una venta. Los totales viven en centavos y el desglose de ITBIS es
- * informativo (el precio al público ya lo incluye, como se vende en RD).
+ * informativo (el precio al público ya lo incluye, como se vende en RD);
+ * se suma de las líneas, donde los productos exentos aportan cero.
  *
- * Cobrada o anulada, la orden es historia: el guard de updating solo deja
- * pasar la transición de anulación sobre una cobrada, y nada sobre una
- * anulada.
+ * Cobrada o anulada, la orden es historia: el guard de updating no deja
+ * tocar ninguna de las dos — la anulación post-cobro llegará como
+ * reembolso contable, nunca como edición del pasado.
+ *
+ * commission_bps congela la comisión del organizador pactada al vender
+ * (null en el mundo negocio): renegociarla después no reescribe historia.
  *
  * @property int $id
  * @property int $operating_unit_id
@@ -34,6 +38,7 @@ use Illuminate\Database\Query\Builder;
  * @property int $itbis_cents
  * @property int $tip_cents
  * @property int $total_cents
+ * @property int|null $commission_bps
  * @property-read Collection<int, OrderLine> $lines
  * @property-read Collection<int, Payment> $payments
  */
@@ -52,6 +57,7 @@ class Order extends Model
             'itbis_cents' => 'integer',
             'tip_cents' => 'integer',
             'total_cents' => 'integer',
+            'commission_bps' => 'integer',
             'paid_at' => 'datetime',
             'voided_at' => 'datetime',
         ];

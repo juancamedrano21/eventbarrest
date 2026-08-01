@@ -51,6 +51,10 @@ class ProductForm
                     ->required()
                     ->formatStateUsing(fn (?int $state): ?float => $state === null ? null : $state / 100)
                     ->dehydrateStateUsing(fn (float|int|string|null $state): int => (int) round(((float) $state) * 100)),
+                Toggle::make('itbis_exempt')
+                    ->label('Exento de ITBIS')
+                    ->default(false)
+                    ->helperText('Agua embotellada y alimentos no gravados: su precio no desglosa el 18 %. El resto lo lleva incluido.'),
                 Select::make('type')
                     ->label('Tipo')
                     ->options(ProductType::class)

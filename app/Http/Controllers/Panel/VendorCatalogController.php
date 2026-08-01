@@ -60,6 +60,8 @@ class VendorCatalogController extends Controller
             'category_id' => ['required', 'integer'],
             'kind' => ['required', 'in:simple,receta'],
             'inventory_item_id' => ['nullable', 'integer'],
+            // Gravado si no se dice lo contrario: el default fiscal seguro.
+            'itbis' => ['nullable', 'in:gravado,exento'],
         ]);
 
         app(VendorContext::class)->runAs($record, function () use ($data): void {
@@ -81,6 +83,7 @@ class VendorCatalogController extends Controller
                 'price_cents' => (int) round(((float) $data['price']) * 100),
                 'track_stock' => $itemId !== null,
                 'inventory_item_id' => $itemId,
+                'itbis_exempt' => ($data['itbis'] ?? 'gravado') === 'exento',
             ]);
         });
 
@@ -136,6 +139,7 @@ class VendorCatalogController extends Controller
         $data = $request->validate([
             'price' => ['nullable', 'numeric', 'min:0'],
             'active' => ['nullable', 'boolean'],
+            'itbis_exempt' => ['nullable', 'boolean'],
         ]);
 
         app(VendorContext::class)->runAs($record, function () use ($product, $data): void {
@@ -145,6 +149,7 @@ class VendorCatalogController extends Controller
             $target->update(array_filter([
                 'price_cents' => isset($data['price']) ? (int) round(((float) $data['price']) * 100) : null,
                 'active' => isset($data['active']) ? (bool) $data['active'] : null,
+                'itbis_exempt' => isset($data['itbis_exempt']) ? (bool) $data['itbis_exempt'] : null,
             ], fn ($value) => $value !== null));
         });
 

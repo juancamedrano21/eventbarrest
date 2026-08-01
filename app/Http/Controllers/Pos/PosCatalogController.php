@@ -25,7 +25,7 @@ class PosCatalogController extends Controller
             'products' => Product::query()
                 ->where('active', true)
                 ->orderBy('name')
-                ->get(['id', 'category_id', 'name', 'type', 'price_cents']),
+                ->get(['id', 'category_id', 'name', 'type', 'price_cents', 'itbis_exempt']),
         ]);
     }
 }

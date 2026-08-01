@@ -335,3 +335,32 @@ it('links a simple product to an item and builds a recipe from the profile', fun
 
     expect($receta->recipeItems()->withoutGlobalScopes()->count())->toBe(0);
 });
+
+it('creates an itbis exempt product and re-taxes it from its row', function (): void {
+    $categoria = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs(
+        $this->vendor,
+        fn () => Category::create(['name' => 'Refrescos', 'dispatch' => DispatchArea::Bar]),
+    ));
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos", [
+            'name' => 'Agua', 'price' => '50', 'category_id' => $categoria->id,
+            'kind' => 'simple', 'itbis' => 'exento',
+        ])
+        ->assertRedirect();
+
+    $agua = Product::query()->withoutGlobalScopes()->where('name', 'Agua')->sole();
+    expect($agua->itbis_exempt)->toBeTrue();
+
+    // Y el perfil lo delata y permite volver a gravarlo desde su fila.
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}")
+        ->assertOk()
+        ->assertSee('Exento de ITBIS');
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$agua->id}", ['itbis_exempt' => 0])
+        ->assertRedirect();
+
+    expect(Product::query()->withoutGlobalScopes()->findOrFail($agua->id)->itbis_exempt)->toBeFalse();
+});
