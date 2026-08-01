@@ -29,13 +29,20 @@ class PosAuthController extends Controller
 
         $user = User::query()->where('email', $data['email'])->first();
 
-        if ($user === null || ! Hash::check($data['password'], (string) $user->password)) {
+        // Un solo fallo indistinguible para credencial mala, usuario
+        // inexistente o usuario sin POS: nada que enumerar. El hash se
+        // comprueba SIEMPRE (dummy si no hay usuario) para no filtrar por
+        // tiempo de respuesta.
+        $passwordOk = Hash::check(
+            $data['password'],
+            (string) ($user->password ?? Hash::make('nunca-coincide-'.$data['email'])),
+        );
+
+        if ($user === null || ! $passwordOk || ! $user->canOperateThePos()) {
             throw ValidationException::withMessages([
                 'email' => 'Credenciales incorrectas.',
             ]);
         }
-
-        abort_unless($user->canOperateThePos(), 403, 'Este usuario no opera el punto de venta.');
 
         return response()->json([
             'token' => $user->createToken($data['device_name'], ['pos'])->plainTextToken,

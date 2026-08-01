@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Pos;
 
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Actions\CloseCashSession;
@@ -30,7 +31,12 @@ class PosCashSessionController extends Controller
             'opening_cents' => ['required', 'integer', 'min:0'],
         ]);
 
-        $unit = OperatingUnit::query()->findOrFail($data['operating_unit_id']);
+        // Filtrada por el comercio activo: una unidad ajena no existe (404),
+        // sin oráculo de existencia vía 422.
+        $vendors = app(VendorContext::class);
+        $unit = OperatingUnit::query()
+            ->when($vendors->check(), fn ($query) => $query->where('vendor_id', $vendors->id()))
+            ->findOrFail($data['operating_unit_id']);
         $session = app(OpenCashSession::class)($unit, $request->user(), $data['opening_cents']);
 
         return response()->json([

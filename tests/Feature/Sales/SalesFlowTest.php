@@ -91,14 +91,23 @@ it('places an order with frozen names and prices and the itbis breakdown', funct
     });
 });
 
-it('is idempotent by client_ref: resending returns the same order', function (): void {
-    [$a, $b] = app(TenantContext::class)->runAs($this->tenant, fn (): array => [
-        app(PlaceOrder::class)($this->caja, [['product_id' => $this->presidente->id, 'quantity' => 1]], 'pos-0002'),
-        app(PlaceOrder::class)($this->caja, [['product_id' => $this->presidente->id, 'quantity' => 5]], 'pos-0002'),
-    ]);
+it('is idempotent by client_ref: the same sale returns the same order, a different one is refused', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $lines = [['product_id' => $this->presidente->id, 'quantity' => 1]];
 
-    expect($b->id)->toBe($a->id)
-        ->and(Order::query()->withoutGlobalScopes()->where('client_ref', 'pos-0002')->count())->toBe(1);
+        $a = app(PlaceOrder::class)($this->caja, $lines, 'pos-0002');
+        $b = app(PlaceOrder::class)($this->caja, $lines, 'pos-0002');
+
+        expect($b->id)->toBe($a->id)
+            ->and(Order::query()->withoutGlobalScopes()->where('client_ref', 'pos-0002')->count())->toBe(1);
+
+        // Misma referencia con OTRO contenido: jamás un éxito silencioso.
+        expect(fn () => app(PlaceOrder::class)(
+            $this->caja,
+            [['product_id' => $this->presidente->id, 'quantity' => 5]],
+            'pos-0002',
+        ))->toThrow(SalesException::class);
+    });
 });
 
 it('charges the order and consumes stock through the recipe', function (): void {

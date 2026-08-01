@@ -49,6 +49,10 @@ class PosOrderController extends Controller
             (bool) ($data['with_tip'] ?? false),
         );
 
+        // La señal de alta se captura AQUÍ: el cobro relee con lock y
+        // devuelve otra instancia hidratada de la base.
+        $created = $order->wasRecentlyCreated;
+
         if ($order->status === OrderStatus::Open) {
             try {
                 $order = app(PayOrder::class)(
@@ -67,15 +71,46 @@ class PosOrderController extends Controller
             }
         }
 
+        // Una venta anulada no se «re-cobra» con la misma referencia: el
+        // POS debe renumerar y reenviar. Contrato explícito, no un 200 mudo.
+        if ($order->status === OrderStatus::Void) {
+            return response()->json([
+                'code' => 'order_voided',
+                'message' => 'Esa referencia corresponde a una orden anulada: renumera y reenvía.',
+                'id' => $order->id,
+                'client_ref' => $order->client_ref,
+                'voided_at' => $order->voided_at,
+                'void_reason' => $order->void_reason,
+            ], 409);
+        }
+
+        $order->load(['lines', 'payments']);
+        $payment = $order->payments->first();
+
         return response()->json([
             'id' => $order->id,
             'client_ref' => $order->client_ref,
+            'cash_session_id' => $order->cash_session_id,
             'status' => $order->status->value,
             'subtotal_cents' => $order->subtotal_cents,
             'itbis_cents' => $order->itbis_cents,
             'tip_cents' => $order->tip_cents,
             'total_cents' => $order->total_cents,
             'paid_at' => $order->paid_at,
-        ]);
+            'lines' => $order->lines->map(fn ($line): array => [
+                'id' => $line->id,
+                'product_id' => $line->product_id,
+                'product_name' => $line->product_name,
+                'quantity' => (float) $line->quantity,
+                'unit_price_cents' => $line->unit_price_cents,
+                'total_cents' => $line->total_cents,
+            ]),
+            'payment' => $payment === null ? null : [
+                'method' => $payment->method->value,
+                'amount_cents' => $payment->amount_cents,
+                'tendered_cents' => $payment->tendered_cents,
+                'change_cents' => $payment->change_cents,
+            ],
+        ], $created ? 201 : 200);
     }
 }

@@ -58,6 +58,12 @@ class AssignTenantRole
             }
 
             $user->syncRoles([$template->name]);
+
+            // Un rol que ya no vende ni maneja caja no deja dispositivos
+            // vivos: los tokens del POS se revocan en el acto.
+            if (! $user->canOperateThePos()) {
+                $user->tokens()->delete();
+            }
         } finally {
             $registrar->setPermissionsTeamId($previousTeam);
         }

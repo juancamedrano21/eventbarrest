@@ -33,23 +33,28 @@ class PlaceOrder
         ?User $user = null,
         bool $withTip = false,
     ): Order {
-        if (! $session->isOpen()) {
-            throw SalesException::sessionNotOpen();
-        }
-
         if ($lines === []) {
             throw SalesException::orderNeedsLines();
         }
 
-        // Idempotencia por UNIDAD: dos comercios o dos dispositivos con la
-        // misma referencia no chocan entre sí.
+        // El lookup idempotente va ANTES del guard de sesión: el reenvío de
+        // una venta ya registrada devuelve su estado aunque la caja haya
+        // cerrado. Y devuelve la MISMA venta o nada: otra sesión u otro
+        // contenido con la misma referencia es un error operable, no un
+        // éxito silencioso sobre una orden distinta.
         $existing = Order::query()
             ->where('operating_unit_id', $session->operating_unit_id)
             ->where('client_ref', $clientRef)
             ->first();
 
         if ($existing !== null) {
+            $this->assertSameSale($existing, $session, $lines, $withTip);
+
             return $existing;
+        }
+
+        if (! $session->isOpen()) {
+            throw SalesException::sessionNotOpen();
         }
 
         try {
@@ -60,6 +65,30 @@ class PlaceOrder
                 ->where('operating_unit_id', $session->operating_unit_id)
                 ->where('client_ref', $clientRef)
                 ->firstOrFail();
+        }
+    }
+
+    /**
+     * El reenvío legítimo trae exactamente lo mismo; cualquier divergencia
+     * (sesión, líneas o propina) delata una referencia reutilizada.
+     *
+     * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
+     */
+    private function assertSameSale(Order $existing, CashSession $session, array $lines, bool $withTip): void
+    {
+        $sent = collect($lines)
+            ->map(fn (array $line): string => (int) $line['product_id'].':'.round((float) $line['quantity'], 3))
+            ->sort()->values()->implode('|');
+
+        $stored = $existing->lines()
+            ->get(['product_id', 'quantity'])
+            ->map(fn ($line): string => (int) $line->product_id.':'.round((float) $line->quantity, 3))
+            ->sort()->values()->implode('|');
+
+        if ($existing->cash_session_id !== $session->id
+            || $sent !== $stored
+            || $withTip !== ($existing->tip_cents > 0)) {
+            throw SalesException::clientRefReused();
         }
     }
 

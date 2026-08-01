@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Sales\Actions;
 
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Sales\Enums\CashSessionStatus;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Enums\PaymentMethod;
@@ -31,6 +32,12 @@ class CloseCashSession
 
             if (! $session->isOpen()) {
                 throw SalesException::sessionNotOpen();
+            }
+
+            // La caja se cierra desde su comercio: el organizador mira,
+            // no opera — tampoco los arqueos.
+            if ($session->getAttribute('vendor_id') !== app(VendorContext::class)->id()) {
+                throw SalesException::unitOutsideVendor();
             }
 
             if ($session->orders()->where('status', OrderStatus::Open->value)->exists()) {

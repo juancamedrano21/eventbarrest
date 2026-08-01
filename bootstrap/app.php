@@ -36,7 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // no fallos del servidor: 422 con el mensaje en español.
         $exceptions->render(function (SalesException $e, Request $request) {
             if ($request->expectsJson()) {
-                return response()->json(['message' => $e->getMessage()], 422);
+                return response()->json(['code' => $e->errorCode, 'message' => $e->getMessage()], 422);
             }
 
             return null;

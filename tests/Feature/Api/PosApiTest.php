@@ -82,11 +82,12 @@ it('logs a cashier in and refuses whoever cannot operate the pos', function (): 
         'email' => 'caro@pos.test', 'password' => 'mala', 'device_name' => 'SUNMI-01',
     ])->assertUnprocessable();
 
-    // Almacén no vende ni maneja caja: sin POS.
+    // Almacén no vende ni maneja caja: sin POS — y con el MISMO fallo que
+    // una credencial mala, para no enumerar usuarios.
     app(CreateTenantUser::class)($this->organizer, 'Wally', 'wally@pos.test', 'Secreta-2026', Role::Warehouse, $this->cerveceria);
     $this->postJson('/api/pos/login', [
         'email' => 'wally@pos.test', 'password' => 'Secreta-2026', 'device_name' => 'SUNMI-01',
-    ])->assertForbidden();
+    ])->assertUnprocessable();
 });
 
 it('bootstraps only the units of the cashiers vendor', function (): void {
@@ -114,10 +115,10 @@ it('opens a till on its own unit and refuses a foreign one', function (): void {
         'operating_unit_id' => $this->barra->id, 'opening_cents' => 100000,
     ])->assertCreated();
 
-    // El puesto de Tacos no es suyo: el guard de comercio lo niega.
+    // El puesto de Tacos no es suyo: para ella ni existe.
     $this->postJson('/api/pos/sessions', [
         'operating_unit_id' => $this->puesto->id, 'opening_cents' => 0,
-    ])->assertUnprocessable();
+    ])->assertNotFound();
 });
 
 it('syncs a sale idempotently: one order, one charge, one stock hit', function (): void {
@@ -135,7 +136,7 @@ it('syncs a sale idempotently: one order, one charge, one stock hit', function (
         'payment' => ['method' => 'cash', 'tendered_cents' => 100000],
     ];
 
-    $first = $this->postJson('/api/pos/orders', $payload)->assertOk();
+    $first = $this->postJson('/api/pos/orders', $payload)->assertCreated();
     expect($first->json('status'))->toBe('paid')
         ->and($first->json('total_cents'))->toBe(80000);
 
@@ -167,7 +168,7 @@ it('closes the till through the api', function (): void {
         'client_ref' => 'sunmi01-000200',
         'lines' => [['product_id' => $this->cubaLibre->id, 'quantity' => 1]],
         'payment' => ['method' => 'cash', 'tendered_cents' => 40000],
-    ])->assertOk();
+    ])->assertCreated();
 
     $close = $this->postJson("/api/pos/sessions/{$sessionId}/close", [
         'counted_cents' => 90000,
@@ -189,4 +190,57 @@ it('never serves another tenants session through the api', function (): void {
 
     $this->postJson("/api/pos/sessions/{$ajena->id}/close", ['counted_cents' => 0])
         ->assertNotFound();
+});
+
+it('keeps organizer staff out of the pos entirely', function (): void {
+    $owner = app(CreateTenantUser::class)($this->organizer, 'Ana', 'ana@pos.test', 'Secreta-2026', Role::Owner);
+    Sanctum::actingAs($owner, ['pos']);
+
+    // El organizador mira desde el panel; el POS es de los comercios.
+    $this->getJson('/api/pos/bootstrap')->assertForbidden();
+    $this->getJson('/api/pos/catalog')->assertForbidden();
+});
+
+it('rejects a reused client_ref with different content instead of lying', function (): void {
+    Sanctum::actingAs($this->cajera, ['pos']);
+
+    $sessionId = $this->postJson('/api/pos/sessions', [
+        'operating_unit_id' => $this->barra->id, 'opening_cents' => 0,
+    ])->json('id');
+
+    $base = [
+        'cash_session_id' => $sessionId,
+        'client_ref' => 'sunmi01-000300',
+        'lines' => [['product_id' => $this->cubaLibre->id, 'quantity' => 1]],
+        'payment' => ['method' => 'cash', 'tendered_cents' => 40000],
+    ];
+    $this->postJson('/api/pos/orders', $base)->assertCreated();
+
+    // Misma referencia, contenido distinto: error operable con código.
+    $base['lines'] = [['product_id' => $this->cubaLibre->id, 'quantity' => 3]];
+    $this->postJson('/api/pos/orders', $base)
+        ->assertUnprocessable()
+        ->assertJsonPath('code', 'client_ref_reused');
+});
+
+it('answers a resync after the till closed with the recorded sale', function (): void {
+    Sanctum::actingAs($this->cajera, ['pos']);
+
+    $sessionId = $this->postJson('/api/pos/sessions', [
+        'operating_unit_id' => $this->barra->id, 'opening_cents' => 0,
+    ])->json('id');
+
+    $payload = [
+        'cash_session_id' => $sessionId,
+        'client_ref' => 'sunmi01-000400',
+        'lines' => [['product_id' => $this->cubaLibre->id, 'quantity' => 1]],
+        'payment' => ['method' => 'cash', 'tendered_cents' => 40000],
+    ];
+    $this->postJson('/api/pos/orders', $payload)->assertCreated();
+    $this->postJson("/api/pos/sessions/{$sessionId}/close", ['counted_cents' => 40000])->assertOk();
+
+    // El reenvío tras el cierre devuelve la venta registrada, no un 422.
+    $this->postJson('/api/pos/orders', $payload)
+        ->assertOk()
+        ->assertJsonPath('status', 'paid');
 });
