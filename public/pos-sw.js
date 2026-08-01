@@ -31,8 +31,10 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Assets compilados: cache primero (van con hash en el nombre).
-    if (url.pathname.startsWith('/build/') || url.pathname.startsWith('/pos/')) {
+    // Assets compilados y estaticos del POS: cache primero.
+    if (url.pathname.startsWith('/build/')
+        || url.pathname === '/pos-manifest.webmanifest'
+        || url.pathname === '/pos-icon.svg') {
         event.respondWith(
             caches.match(event.request).then((hit) => hit || fetch(event.request).then((response) => {
                 const copy = response.clone();
