@@ -37,7 +37,7 @@
     
     {{-- Pestañas --}}
     <nav class="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" role="tablist" aria-orientation="horizontal">
-        @foreach (['resumen' => 'Resumen', 'ventas' => 'Ventas', 'transacciones' => 'Transacciones', 'inventario' => 'Inventario', 'usuarios' => 'Usuarios', 'config' => 'Configuraciones'] as $id => $label)
+        @foreach (['resumen' => 'Resumen', 'menu' => 'Menú', 'ventas' => 'Ventas', 'transacciones' => 'Transacciones', 'inventario' => 'Inventario', 'usuarios' => 'Usuarios', 'config' => 'Configuraciones'] as $id => $label)
             <button type="button" id="tab-{{ $id }}-item" data-hs-tab="#tab-{{ $id }}" aria-controls="tab-{{ $id }}" role="tab"
                 class="{{ $loop->first ? 'active ' : '' }}hs-tab-active:border-sky-600 hs-tab-active:text-sky-600 whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm text-gray-500 hover:text-gray-700">
                 {{ $label }}
@@ -96,42 +96,66 @@
             </ul>
         </section>
 
-        {{-- Catálogo (solo lectura) --}}
-        <section class="rounded-xl border border-gray-200 bg-white shadow-2xs">
-            <header class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-                <h2 class="font-medium text-gray-800">Catálogo</h2>
+
+    </div>
+    </div>
+
+    {{-- Tab: Menú --}}
+    <div id="tab-menu" class="hidden" role="tabpanel" aria-labelledby="tab-menu-item">
+        <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-gray-500">El menú del comercio, clasificado en <span class="font-medium text-gray-700">Alimentos</span> (salen de cocina) y <span class="font-medium text-gray-700">Bebidas</span> (salen de barra).</p>
+            <div class="flex gap-2">
+                <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-categoria" data-hs-overlay="#modal-categoria">
+                    Nueva categoría
+                </button>
                 <button type="button" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500"
                     aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-producto" data-hs-overlay="#modal-producto">
                     Nuevo producto
                 </button>
-            </header>
-            <ul class="divide-y divide-gray-200">
-                @forelse ($products as $product)
-                    <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
-                        <div class="min-w-0">
-                            <p class="truncate text-gray-800 {{ $product->active ? '' : 'line-through opacity-60' }}">{{ $product->name }}</p>
-                            <p class="text-xs text-gray-500">{{ $product->category?->name }}</p>
-                        </div>
-                        <form method="POST" action="{{ route('panel.vendors.products.update', [$vendor, $product]) }}" class="flex shrink-0 items-center gap-2">
-                            @csrf
-                            <div class="flex items-center rounded-lg border border-gray-200">
-                                <span class="px-2 text-xs text-gray-500">RD$</span>
-                                <input name="price" value="{{ number_format($product->price_cents / 100, 2, '.', '') }}"
-                                    class="w-20 border-0 bg-transparent py-1.5 pe-2 text-right text-sm text-gray-800 focus:ring-0">
+            </div>
+        </div>
+
+        @forelse ($menuCategories as $categoria)
+            <section class="mb-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+                <header class="flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-5 py-3">
+                    <h3 class="font-medium text-gray-800">{{ $categoria->name }}</h3>
+                    <span class="rounded-full px-2.5 py-0.5 text-xs {{ $categoria->dispatch->value === 'kitchen' ? 'bg-orange-100 text-orange-800' : 'bg-sky-100 text-sky-800' }}">
+                        {{ $categoria->dispatch->value === 'kitchen' ? 'Alimentos' : 'Bebidas' }}
+                    </span>
+                    <span class="text-xs text-gray-400">{{ $categoria->products->count() }} producto(s)</span>
+                </header>
+                <ul class="divide-y divide-gray-200">
+                    @forelse ($categoria->products as $product)
+                        <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                            <div class="min-w-0">
+                                <p class="truncate text-gray-800 {{ $product->active ? '' : 'line-through opacity-60' }}">{{ $product->name }}</p>
+                                <p class="text-xs text-gray-500">{{ $product->type->value === 'recipe' ? 'Con receta (la arma el encargado)' : 'Producto simple' }}</p>
                             </div>
-                            <button type="submit" class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50">Guardar</button>
-                            <button type="submit" name="active" value="{{ $product->active ? 0 : 1 }}"
-                                class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs {{ $product->active ? 'text-amber-700' : 'text-teal-700' }} hover:bg-gray-50">
-                                {{ $product->active ? 'Desactivar' : 'Activar' }}
-                            </button>
-                        </form>
-                    </li>
-                @empty
-                    <li class="px-5 py-6 text-sm text-gray-500">Sin catálogo: créalo tú o su encargado.</li>
-                @endforelse
-            </ul>
-        </section>
-    </div>
+                            <form method="POST" action="{{ route('panel.vendors.products.update', [$vendor, $product]) }}" class="flex shrink-0 items-center gap-2">
+                                @csrf
+                                <div class="flex items-center rounded-lg border border-gray-200">
+                                    <span class="px-2 text-xs text-gray-500">RD$</span>
+                                    <input name="price" value="{{ number_format($product->price_cents / 100, 2, '.', '') }}"
+                                        class="w-20 border-0 bg-transparent py-1.5 pe-2 text-right text-sm text-gray-800 focus:ring-0">
+                                </div>
+                                <button type="submit" class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50">Guardar</button>
+                                <button type="submit" name="active" value="{{ $product->active ? 0 : 1 }}"
+                                    class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs {{ $product->active ? 'text-amber-700' : 'text-teal-700' }} hover:bg-gray-50">
+                                    {{ $product->active ? 'Desactivar' : 'Activar' }}
+                                </button>
+                            </form>
+                        </li>
+                    @empty
+                        <li class="px-5 py-4 text-sm text-gray-500">Sin productos en esta categoría.</li>
+                    @endforelse
+                </ul>
+            </section>
+        @empty
+            <div class="rounded-xl border border-dashed border-gray-300 bg-white px-5 py-12 text-center text-sm text-gray-500">
+                El menú está vacío: crea la primera categoría (Alimentos o Bebidas) y añade sus productos.
+            </div>
+        @endforelse
     </div>
 
     {{-- Tab: Ventas --}}
@@ -359,7 +383,111 @@
         </form>
     </div>
 
-{{-- Modal: editar datos --}}
+{{-- Modal: nueva categoría --}}
+    <div id="modal-categoria" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+        <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
+            <form method="POST" action="{{ route('panel.vendors.categories.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+                @csrf
+                <h3 class="mb-4 font-medium text-gray-800">Nueva categoría del menú</h3>
+                <div class="space-y-3">
+                    <input name="name" value="{{ old('name') }}" placeholder="Cervezas, Tacos, Postres..." required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                    <select name="tipo" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        <option value="bebidas">Bebidas — salen de barra</option>
+                        <option value="alimentos">Alimentos — salen de cocina</option>
+                    </select>
+                    <p class="text-xs text-gray-500">Esta clasificación decide qué POS la muestra y por qué impresora saldrán las comandas.</p>
+                </div>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600" data-hs-overlay="#modal-categoria">Cancelar</button>
+                    <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Crear categoría</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Modal: nuevo producto --}}
+    <div id="modal-producto" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+        <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
+            <form method="POST" action="{{ route('panel.vendors.products.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+                @csrf
+                <h3 class="mb-4 font-medium text-gray-800">Nuevo producto del menú</h3>
+                <div class="space-y-3">
+                    <input name="name" value="{{ old('name') }}" placeholder="Nombre del producto" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                    <input name="price" type="text" inputmode="decimal" value="{{ old('price') }}" placeholder="Precio (RD$)" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                    <select name="category_id" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        @forelse ($menuCategories as $categoria)
+                            <option value="{{ $categoria->id }}">{{ $categoria->name }} — {{ $categoria->dispatch->value === 'kitchen' ? 'Alimentos' : 'Bebidas' }}</option>
+                        @empty
+                            <option value="" disabled>Primero crea una categoría</option>
+                        @endforelse
+                    </select>
+                    <p class="text-xs text-gray-500">Los productos con receta (escandallo) los arma el encargado desde su panel.</p>
+                </div>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600" data-hs-overlay="#modal-producto">Cancelar</button>
+                    <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Crear producto</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Modal: nuevo insumo --}}
+    <div id="modal-insumo" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+        <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
+            <form method="POST" action="{{ route('panel.vendors.items.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+                @csrf
+                <h3 class="mb-4 font-medium text-gray-800">Nuevo insumo</h3>
+                <div class="space-y-3">
+                    <input name="name" placeholder="Ron blanco, limones..." required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                    <select name="base_unit" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        <option value="ml">Mililitros</option>
+                        <option value="g">Gramos</option>
+                        <option value="unidad">Unidades</option>
+                    </select>
+                    <input name="cost" type="text" inputmode="decimal" placeholder="Costo por unidad base (RD$, opcional)" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                </div>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600" data-hs-overlay="#modal-insumo">Cancelar</button>
+                    <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Crear insumo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Modal: registrar compra --}}
+    <div id="modal-compra" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
+        <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
+            <form method="POST" action="{{ route('panel.vendors.purchases.store', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+                @csrf
+                <h3 class="mb-4 font-medium text-gray-800">Registrar compra</h3>
+                <div class="space-y-3">
+                    <select name="operating_unit_id" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        @forelse ($outlets as $outlet)
+                            <option value="{{ $outlet->id }}">{{ $outlet->name }} — {{ $outlet->event?->name }}</option>
+                        @empty
+                            <option value="" disabled>Primero crea un puesto</option>
+                        @endforelse
+                    </select>
+                    <select name="inventory_item_id" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        @forelse ($vendorItems as $id => $name)
+                            <option value="{{ $id }}">{{ $name }}</option>
+                        @empty
+                            <option value="" disabled>Primero crea un insumo</option>
+                        @endforelse
+                    </select>
+                    <input name="quantity" type="text" inputmode="decimal" placeholder="Cantidad recibida" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                    <input name="unit_cost" type="text" inputmode="decimal" placeholder="Costo unitario pagado (RD$)" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                    <input name="reference" placeholder="Factura o proveedor (opcional)" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                </div>
+                <div class="mt-5 flex justify-end gap-2">
+                    <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600" data-hs-overlay="#modal-compra">Cancelar</button>
+                    <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Registrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Modal: editar datos --}}
     <div id="modal-editar" class="hs-overlay hidden size-full fixed top-0 start-0 z-60 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
             <form method="POST" action="{{ route('panel.vendors.update', $vendor) }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">

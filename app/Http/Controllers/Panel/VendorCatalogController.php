@@ -26,6 +26,27 @@ class VendorCatalogController extends Controller
 {
     use AuthorizesOrganizerPanel;
 
+    public function storeCategory(Request $request, int $vendor): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::CatalogManage);
+
+        $record = Vendor::query()->findOrFail($vendor);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'tipo' => ['required', 'in:alimentos,bebidas'],
+        ]);
+
+        app(VendorContext::class)->runAs($record, fn () => Category::create([
+            'name' => $data['name'],
+            // La clasificación del menú ES el despacho: Alimentos salen de
+            // cocina, Bebidas de barra — el POS y las comandas ya lo usan.
+            'dispatch' => $data['tipo'] === 'alimentos' ? DispatchArea::Kitchen : DispatchArea::Bar,
+        ]));
+
+        return back()->with('status', 'Categoría creada en el menú.');
+    }
+
     public function storeProduct(Request $request, int $vendor): RedirectResponse
     {
         $this->authorizeOrganizer($request, Permission::CatalogManage);
@@ -35,32 +56,22 @@ class VendorCatalogController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
-            'category_id' => ['nullable', 'integer'],
-            'new_category' => ['nullable', 'string', 'max:255', 'required_without:category_id'],
+            'category_id' => ['required', 'integer'],
         ]);
 
         app(VendorContext::class)->runAs($record, function () use ($data): void {
-            $categoryId = $data['category_id'] ?? null;
-
-            if ($categoryId !== null) {
-                // Con el comercio activo, una categoría ajena no existe.
-                $categoryId = Category::query()->findOrFail((int) $categoryId)->id;
-            } else {
-                $categoryId = Category::query()->firstOrCreate(
-                    ['name' => trim((string) $data['new_category'])],
-                    ['dispatch' => DispatchArea::Bar],
-                )->id;
-            }
+            // Con el comercio activo, una categoría ajena no existe.
+            $category = Category::query()->findOrFail((int) $data['category_id']);
 
             Product::create([
-                'category_id' => $categoryId,
+                'category_id' => $category->id,
                 'name' => $data['name'],
                 'type' => ProductType::Simple,
                 'price_cents' => (int) round(((float) $data['price']) * 100),
             ]);
         });
 
-        return back()->with('status', 'Producto creado en el catálogo del comercio.');
+        return back()->with('status', 'Producto añadido al menú.');
     }
 
     public function updateProduct(Request $request, int $vendor, int $product): RedirectResponse
