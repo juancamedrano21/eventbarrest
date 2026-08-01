@@ -42,10 +42,11 @@ use Spatie\Permission\Traits\HasRoles;
  * @property bool $is_platform_admin
  * @property string $email
  * @property string $name
+ * @property string|null $username
  * @property-read Tenant|null $tenant
  * @property-read Vendor|null $vendor
  */
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'username', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {

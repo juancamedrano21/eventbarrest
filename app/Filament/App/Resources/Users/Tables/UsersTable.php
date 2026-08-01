@@ -23,6 +23,12 @@ class UsersTable
                 TextColumn::make('email')
                     ->label('Correo')
                     ->searchable(),
+                TextColumn::make('username')
+                    ->label('Usuario POS')
+                    ->badge()
+                    ->color('gray')
+                    ->placeholder('—')
+                    ->searchable(),
                 TextColumn::make('vendor.name')
                     ->label('Comercio')
                     ->placeholder('Equipo de la cuenta')

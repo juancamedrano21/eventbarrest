@@ -43,7 +43,7 @@ async function request(method, path, body = null) {
 }
 
 export const api = {
-    login: (email, password, device) => request('POST', '/login', { email, password, device_name: device }),
+    login: (username, password, device) => request('POST', '/login', { username, password, device_name: device }),
     logout: () => request('POST', '/logout'),
     bootstrap: () => request('GET', '/bootstrap'),
     catalog: () => request('GET', '/catalog'),

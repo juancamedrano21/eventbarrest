@@ -46,6 +46,13 @@ class UsersRelationManager extends RelationManager
                     ->required()
                     ->unique(table: User::class, ignoreRecord: true)
                     ->maxLength(255),
+                TextInput::make('username')
+                    ->label('Usuario del POS')
+                    ->maxLength(30)
+                    ->rule('regex:/^[a-z0-9._-]+$/i')
+                    ->unique(table: User::class, ignoreRecord: true)
+                    ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? mb_strtolower(trim($state)) : null)
+                    ->helperText('Solo si va a vender en el POS.'),
                 TextInput::make('password')
                     ->label('Contraseña')
                     ->password()
@@ -101,6 +108,7 @@ class UsersRelationManager extends RelationManager
                             $data['email'],
                             $data['password'],
                             (string) $data['role'],
+                            username: $data['username'] ?? null,
                         );
                     }),
             ])

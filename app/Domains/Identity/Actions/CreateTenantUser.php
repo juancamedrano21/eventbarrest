@@ -33,6 +33,7 @@ class CreateTenantUser
         RoleEnum|string $role,
         ?Vendor $vendor = null,
         ?User $actor = null,
+        ?string $username = null,
     ): User {
         $template = RoleTemplate::resolveOrFail($role instanceof RoleEnum ? $role->value : $role);
 
@@ -53,7 +54,7 @@ class CreateTenantUser
             throw VendorException::roleOnlyForVendorStaff($template->name);
         }
 
-        return DB::transaction(function () use ($tenant, $name, $email, $password, $template, $vendor): User {
+        return DB::transaction(function () use ($tenant, $name, $email, $password, $template, $vendor, $username): User {
             app(ProvisionTenantRoles::class)($tenant);
 
             $user = new User;
@@ -61,6 +62,7 @@ class CreateTenantUser
                 'tenant_id' => $tenant->id,
                 'vendor_id' => $vendor?->id,
                 'name' => $name,
+                'username' => $username === null ? null : mb_strtolower(trim($username)),
                 'email' => $email,
                 'password' => $password,
                 'is_platform_admin' => false,

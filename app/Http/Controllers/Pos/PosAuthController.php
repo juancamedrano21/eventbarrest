@@ -22,12 +22,12 @@ class PosAuthController extends Controller
     public function login(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'email' => ['required', 'email'],
+            'username' => ['required', 'string', 'max:30'],
             'password' => ['required', 'string'],
             'device_name' => ['required', 'string', 'max:80'],
         ]);
 
-        $user = User::query()->where('email', $data['email'])->first();
+        $user = User::query()->where('username', mb_strtolower(trim($data['username'])))->first();
 
         // Un solo fallo indistinguible para credencial mala, usuario
         // inexistente o usuario sin POS: nada que enumerar. El hash se
@@ -35,12 +35,12 @@ class PosAuthController extends Controller
         // tiempo de respuesta.
         $passwordOk = Hash::check(
             $data['password'],
-            (string) ($user->password ?? Hash::make('nunca-coincide-'.$data['email'])),
+            (string) ($user->password ?? Hash::make('nunca-coincide-'.$data['username'])),
         );
 
         if ($user === null || ! $passwordOk || ! $user->canOperateThePos()) {
             throw ValidationException::withMessages([
-                'email' => 'Credenciales incorrectas.',
+                'username' => 'Credenciales incorrectas.',
             ]);
         }
 
@@ -49,6 +49,7 @@ class PosAuthController extends Controller
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
+                'username' => $user->username,
                 'tenant' => $user->tenant?->name,
                 'vendor_id' => $user->vendor_id,
             ],

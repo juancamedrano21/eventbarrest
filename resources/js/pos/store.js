@@ -52,7 +52,7 @@ export const usePos = defineStore('pos', {
             this.errored = await db.outbox.where('status').equals('error').count();
         },
 
-        async login(email, password) {
+        async login(username, password) {
             this.busy = true;
             this.error = null;
             try {
@@ -61,7 +61,7 @@ export const usePos = defineStore('pos', {
                     device = `pos-${crypto.randomUUID().slice(0, 8)}`;
                     await kvSet('device', device);
                 }
-                const data = await api.login(email, password, device);
+                const data = await api.login(username, password, device);
                 setToken(data.token);
                 this.user = data.user;
                 await this.arrive();

@@ -38,6 +38,7 @@ class CreateUser extends CreateRecord
             $data['password'],
             (string) $data['role'],
             $vendorId === null ? null : Vendor::query()->findOrFail((int) $vendorId),
+            username: $data['username'] ?? null,
         );
     }
 }

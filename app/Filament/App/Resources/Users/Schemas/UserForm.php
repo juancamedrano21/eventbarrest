@@ -24,6 +24,18 @@ class UserForm
                     ->label('Nombre')
                     ->required()
                     ->maxLength(255),
+                TextInput::make('username')
+                    ->label('Usuario del POS')
+                    ->placeholder('caro')
+                    ->maxLength(30)
+                    ->rule('regex:/^[a-z0-9._-]+$/i')
+                    ->unique(table: User::class, ignoreRecord: true)
+                    ->dehydrateStateUsing(fn (?string $state): ?string => filled($state) ? mb_strtolower(trim($state)) : null)
+                    ->validationMessages([
+                        'unique' => 'Ese usuario ya está tomado en la plataforma.',
+                        'regex' => 'Solo letras, números, punto, guion y guion bajo.',
+                    ])
+                    ->helperText('Lo que teclea en el terminal para entrar al POS. Vacío si no vende.'),
                 TextInput::make('email')
                     ->label('Correo')
                     ->email()

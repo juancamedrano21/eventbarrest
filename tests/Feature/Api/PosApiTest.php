@@ -64,6 +64,7 @@ beforeEach(function (): void {
 
     $this->cajera = app(CreateTenantUser::class)(
         $this->organizer, 'Caro', 'caro@pos.test', 'Secreta-2026', Role::Cashier, $this->cerveceria,
+        username: 'caro',
     );
 });
 
@@ -73,20 +74,22 @@ afterEach(function (): void {
 });
 
 it('logs a cashier in and refuses whoever cannot operate the pos', function (): void {
+    // El POS entra por NOMBRE DE USUARIO, no por correo — y acepta
+    // mayúsculas o espacios accidentales del teclado del terminal.
     $ok = $this->postJson('/api/pos/login', [
-        'email' => 'caro@pos.test', 'password' => 'Secreta-2026', 'device_name' => 'SUNMI-01',
+        'username' => '  Caro ', 'password' => 'Secreta-2026', 'device_name' => 'SUNMI-01',
     ]);
-    $ok->assertCreated()->assertJsonStructure(['token', 'user' => ['id', 'name', 'vendor_id']]);
+    $ok->assertCreated()->assertJsonStructure(['token', 'user' => ['id', 'name', 'username', 'vendor_id']]);
 
     $this->postJson('/api/pos/login', [
-        'email' => 'caro@pos.test', 'password' => 'mala', 'device_name' => 'SUNMI-01',
+        'username' => 'caro', 'password' => 'mala', 'device_name' => 'SUNMI-01',
     ])->assertUnprocessable();
 
     // Almacén no vende ni maneja caja: sin POS — y con el MISMO fallo que
     // una credencial mala, para no enumerar usuarios.
-    app(CreateTenantUser::class)($this->organizer, 'Wally', 'wally@pos.test', 'Secreta-2026', Role::Warehouse, $this->cerveceria);
+    app(CreateTenantUser::class)($this->organizer, 'Wally', 'wally@pos.test', 'Secreta-2026', Role::Warehouse, $this->cerveceria, username: 'wally');
     $this->postJson('/api/pos/login', [
-        'email' => 'wally@pos.test', 'password' => 'Secreta-2026', 'device_name' => 'SUNMI-01',
+        'username' => 'wally', 'password' => 'Secreta-2026', 'device_name' => 'SUNMI-01',
     ])->assertUnprocessable();
 });
 

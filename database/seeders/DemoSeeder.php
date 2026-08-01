@@ -60,9 +60,9 @@ class DemoSeeder extends Seeder
         // ── Mundo negocios ────────────────────────────────────────────────
         $bar = app(CreateTenant::class)('Bar Demo', '131111119', TenantType::Business, TenantStatus::Active);
 
-        app(CreateTenantUser::class)($bar, 'Dueño Bar', 'dueno@bar.demo', self::PASSWORD, Role::Owner);
+        app(CreateTenantUser::class)($bar, 'Dueño Bar', 'dueno@bar.demo', self::PASSWORD, Role::Owner, username: 'dueno');
         app(CreateTenantUser::class)($bar, 'Gerente Bar', 'gerente@bar.demo', self::PASSWORD, Role::UnitManager);
-        app(CreateTenantUser::class)($bar, 'Cajero Bar', 'cajero@bar.demo', self::PASSWORD, Role::Cashier);
+        app(CreateTenantUser::class)($bar, 'Cajero Bar', 'cajero@bar.demo', self::PASSWORD, Role::Cashier, username: 'cajero');
 
         $context->runAs($bar, function (): void {
             $centro = app(CreateBranch::class)('Sucursal Centro');
@@ -127,8 +127,8 @@ class DemoSeeder extends Seeder
             $barra = app(CreateEventOutlet::class)($festival, $cerveceria, 'Barra principal', OperatingUnitKind::Bar);
             $puestoTacos = app(CreateEventOutlet::class)($festival, $tacos, 'Puesto de tacos', OperatingUnitKind::Kitchen);
 
-            app(CreateTenantUser::class)($productora, 'Encargada Cervecería', 'encargada@cerveceria.demo', self::PASSWORD, Role::VendorManager, $cerveceria);
-            app(CreateTenantUser::class)($productora, 'Encargado Tacos', 'encargado@tacos.demo', self::PASSWORD, Role::VendorManager, $tacos);
+            app(CreateTenantUser::class)($productora, 'Encargada Cervecería', 'encargada@cerveceria.demo', self::PASSWORD, Role::VendorManager, $cerveceria, username: 'encargada');
+            app(CreateTenantUser::class)($productora, 'Encargado Tacos', 'encargado@tacos.demo', self::PASSWORD, Role::VendorManager, $tacos, username: 'tacos');
 
             $vendors = app(VendorContext::class);
 
