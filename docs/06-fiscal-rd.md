@@ -36,6 +36,29 @@ Subtotal (suma de líneas)
 > Nota: si el precio de carta es "ITBIS incluido" (común en bares), el sistema
 > desglosa hacia atrás. Configurable por tenant: precios con impuesto incluido o no.
 
+### Estado de implementación (2026-08-03)
+
+Lo que ya está en el código (dominio de ventas + panel + POS):
+
+- **Precio ITBIS incluido, desglose hacia atrás**: implementado como único modo
+  por ahora (`×18/118`); el modo "impuesto por fuera" queda para cuando un
+  tenant lo pida.
+- **ITBIS por producto**: cada producto del menú declara si es **exento**
+  (`products.itbis_exempt`, default gravado). Se configura en el perfil del
+  comercio del panel (alta y fila del producto), en Filament y viaja al POS.
+- **Desglose POR LÍNEA congelado**: `order_lines.itbis_cents` guarda el ITBIS
+  de cada línea al vender (exenta = 0). Es el redondeo que irá al comprobante
+  NCF; el total de la orden es la suma de sus líneas.
+- **Propina legal 10 % sobre la base sin ITBIS**, opcional por orden desde el
+  POS (checkbox). Con líneas exentas, su base es el precio completo de estas.
+  Pendiente: hacerla configurable por unidad (hoy el 18 % y el 10 % son
+  constantes del dominio; las tasas cambiarán por ley, no por tenant).
+- **La PWA espeja el cálculo por línea** para mostrar totales offline; el
+  servidor manda al sincronizar.
+
+Sigue pendiente (fase fiscal): secuencias NCF, foliado por bloques, nota de
+crédito para anulación post-cobro, exportes 606/607, e-CF.
+
 ## Requisitos funcionales del módulo Fiscal
 
 1. **Gestión de secuencias NCF**: alta de rangos autorizados por tipo, control de
