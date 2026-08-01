@@ -7,7 +7,7 @@ import vue from '@vitejs/plugin-vue';
 export default defineConfig({
     plugins: [
         laravel({
-            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/pos/main.js'],
+            input: ['resources/css/app.css', 'resources/js/app.js', 'resources/js/pos/main.js', 'resources/css/panel.css', 'resources/js/panel.js'],
             refresh: true,
             fonts: [
                 bunny('Instrument Sans', {

@@ -1,0 +1,7 @@
+@import 'tailwindcss';
+
+/* El paquete no exporta variants.css en su mapa de exports: ruta relativa. */
+@import '../../node_modules/preline/variants.css';
+
+/* Los plugins JS de Preline traen clases en sus dist: Tailwind debe verlas. */
+@source '../../node_modules/preline/dist/*.js';
