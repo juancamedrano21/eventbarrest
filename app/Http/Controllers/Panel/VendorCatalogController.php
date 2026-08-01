@@ -16,6 +16,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * El dueño de la cuenta también OPERA dentro del comercio (decisión
@@ -137,20 +138,65 @@ class VendorCatalogController extends Controller
         $record = Vendor::query()->findOrFail($vendor);
 
         $data = $request->validate([
+            'name' => ['nullable', 'string', 'max:255',
+                // Único dentro del comercio, no de la cuenta: dos comercios
+                // pueden vender su «Mojito» (misma regla que Filament).
+                Rule::unique('products', 'name')
+                    ->where('tenant_id', $record->tenant_id)
+                    ->where('vendor_id', $record->id)
+                    ->ignore($product)],
             'price' => ['nullable', 'numeric', 'min:0'],
             'active' => ['nullable', 'boolean'],
             'itbis_exempt' => ['nullable', 'boolean'],
+            'category_id' => ['nullable', 'integer'],
+            'inventory_item_id' => ['nullable', 'integer'],
+        ], [
+            'name.unique' => 'Ya existe un producto con ese nombre en este comercio.',
         ]);
 
         app(VendorContext::class)->runAs($record, function () use ($product, $data): void {
             // El scope del comercio activo hace el 404 de lo ajeno.
             $target = Product::query()->findOrFail($product);
 
-            $target->update(array_filter([
-                'price_cents' => isset($data['price']) ? (int) round(((float) $data['price']) * 100) : null,
-                'active' => isset($data['active']) ? (bool) $data['active'] : null,
-                'itbis_exempt' => isset($data['itbis_exempt']) ? (bool) $data['itbis_exempt'] : null,
-            ], fn ($value) => $value !== null));
+            $attrs = [];
+
+            if (filled($data['name'] ?? null)) {
+                $attrs['name'] = $data['name'];
+            }
+
+            if (isset($data['price'])) {
+                $attrs['price_cents'] = (int) round(((float) $data['price']) * 100);
+            }
+
+            if (isset($data['active'])) {
+                $attrs['active'] = (bool) $data['active'];
+            }
+
+            if (isset($data['itbis_exempt'])) {
+                $attrs['itbis_exempt'] = (bool) $data['itbis_exempt'];
+            }
+
+            if (filled($data['category_id'] ?? null)) {
+                // Con el comercio activo, una categoría ajena no existe.
+                $attrs['category_id'] = Category::query()
+                    ->findOrFail((int) $data['category_id'])->id;
+            }
+
+            // El vínculo de inventario es cosa de productos simples (la
+            // receta descuenta por escandallo). La clave presente aunque
+            // venga vacía significa «desvincular».
+            if ($target->type !== ProductType::Recipe && array_key_exists('inventory_item_id', $data)) {
+                $itemId = filled($data['inventory_item_id'])
+                    ? InventoryItem::query()->findOrFail((int) $data['inventory_item_id'])->id
+                    : null;
+
+                $attrs['inventory_item_id'] = $itemId;
+                $attrs['track_stock'] = $itemId !== null;
+            }
+
+            if ($attrs !== []) {
+                $target->update($attrs);
+            }
         });
 
         return back()->with('status', 'Producto actualizado.');

@@ -13,6 +13,7 @@ use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
+use App\Domains\Inventory\Enums\MeasurementUnit;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Operations\Enums\OperatingUnitKind;
@@ -363,4 +364,73 @@ it('creates an itbis exempt product and re-taxes it from its row', function (): 
         ->assertRedirect();
 
     expect(Product::query()->withoutGlobalScopes()->findOrFail($agua->id)->itbis_exempt)->toBeFalse();
+});
+
+it('edits every product setting from the item modal', function (): void {
+    [$producto, $tragos, $ron] = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+        $cocteles = Category::create(['name' => 'Cócteles', 'dispatch' => DispatchArea::Bar]);
+        $tragos = Category::create(['name' => 'Tragos', 'dispatch' => DispatchArea::Bar]);
+        $ron = InventoryItem::create(['name' => 'Ron añejo', 'base_unit' => MeasurementUnit::Milliliter, 'cost_cents' => 0]);
+        $producto = Product::create(['category_id' => $cocteles->id, 'name' => 'Cuba', 'type' => ProductType::Simple, 'price_cents' => 30000]);
+
+        return [$producto, $tragos, $ron];
+    }));
+
+    // El perfil pinta el modal del ítem.
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}")
+        ->assertOk()
+        ->assertSee("modal-item-{$producto->id}");
+
+    // Y el modal edita TODO de una vez: nombre, precio, categoría, estado,
+    // fiscalidad y el insumo vinculado.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$producto->id}", [
+            'name' => 'Cuba Libre',
+            'price' => '350.50',
+            'category_id' => $tragos->id,
+            'active' => 0,
+            'itbis_exempt' => 1,
+            'inventory_item_id' => $ron->id,
+        ])
+        ->assertRedirect();
+
+    $fresh = Product::query()->withoutGlobalScopes()->findOrFail($producto->id);
+    expect($fresh->name)->toBe('Cuba Libre')
+        ->and($fresh->price_cents)->toBe(35050)
+        ->and($fresh->category_id)->toBe($tragos->id)
+        ->and($fresh->active)->toBeFalse()
+        ->and($fresh->itbis_exempt)->toBeTrue()
+        ->and($fresh->inventory_item_id)->toBe($ron->id)
+        ->and($fresh->track_stock)->toBeTrue();
+
+    // El select vacío desvincula el insumo.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$producto->id}", [
+            'name' => 'Cuba Libre', 'price' => '350.50', 'inventory_item_id' => '',
+        ])
+        ->assertRedirect();
+
+    $fresh = Product::query()->withoutGlobalScopes()->findOrFail($producto->id);
+    expect($fresh->inventory_item_id)->toBeNull()->and($fresh->track_stock)->toBeFalse();
+});
+
+it('refuses a duplicate product name within the vendor', function (): void {
+    [$uno, $dos] = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+        $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+
+        return [
+            Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 10000]),
+            Product::create(['category_id' => $cat->id, 'name' => 'Quesadilla', 'type' => ProductType::Simple, 'price_cents' => 12000]),
+        ];
+    }));
+
+    $this->actingAs($this->owner)
+        ->from("/panel/comercios/{$this->vendor->id}")
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$dos->id}", [
+            'name' => 'Taco',
+        ])
+        ->assertSessionHasErrors('name');
+
+    expect(Product::query()->withoutGlobalScopes()->findOrFail($dos->id)->name)->toBe('Quesadilla');
 });
