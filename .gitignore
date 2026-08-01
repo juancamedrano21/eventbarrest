@@ -25,3 +25,7 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Preline Pro (código licenciado, se restaura desde el ZIP comprado)
+/public/panel-theme
+/resources/panel-theme

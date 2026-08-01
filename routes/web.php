@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Panel\DashboardController;
 use App\Http\Controllers\Panel\EventsController;
 use App\Http\Controllers\Panel\VendorProfileController;
 use App\Http\Controllers\Panel\VendorsController;
@@ -20,7 +21,7 @@ Route::view('/pos', 'pos');
 Route::redirect('/login', '/app/login')->name('login');
 
 Route::middleware(['auth'])->prefix('panel')->name('panel.')->group(function (): void {
-    Route::redirect('/', '/panel/comercios')->name('home');
+    Route::get('/', DashboardController::class)->name('home');
     Route::get('/comercios', [VendorsController::class, 'index'])->name('vendors.index');
     Route::post('/comercios', [VendorsController::class, 'store'])->name('vendors.store');
     Route::post('/comercios/{vendor}/datos', [VendorsController::class, 'update'])->name('vendors.update');
