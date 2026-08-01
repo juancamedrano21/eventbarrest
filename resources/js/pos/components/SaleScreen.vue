@@ -9,8 +9,6 @@ const search = ref('');
 const paying = ref(false);
 const method = ref('cash');
 const tendered = ref('');
-const counting = ref(false);
-const counted = ref('');
 
 const visibleProducts = computed(() => pos.products.filter((product) =>
     (category.value === null || product.category_id === category.value)
@@ -143,7 +141,6 @@ async function confirm() {
                 <button class="btn-primary" :disabled="pos.cart.length === 0 || pos.closingTill" @click="openPayment()">
                     Cobrar<span v-if="pos.cart.length > 0" class="money"> · {{ money(pos.totals.total) }}</span>
                 </button>
-                <button class="btn-close-till" @click="counting = true">Cerrar caja</button>
             </div>
         </aside>
 
@@ -186,24 +183,6 @@ async function confirm() {
             </div>
         </div>
 
-        <div v-if="counting" class="overlay" @click.self="counting = false">
-            <div class="sheet">
-                <div class="sheet-head">
-                    <h2>Cerrar caja</h2>
-                    <button class="icon-btn" @click="counting = false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-                    </button>
-                </div>
-                <label class="field"><span>Efectivo contado (RD$)</span>
-                    <input v-model="counted" type="text" inputmode="decimal" placeholder="0.00" class="pay-input money">
-                </label>
-                <p class="close-note">Se cierra contra <strong class="money">{{ money(toCents(counted)) }}</strong>. Irreversible desde el POS.</p>
-                <button class="btn-primary" :disabled="pos.busy || counted === ''"
-                    @click="pos.closeTill(toCents(counted)); counting = false">
-                    Cerrar contra lo contado
-                </button>
-            </div>
-        </div>
     </div>
 </template>
 
@@ -319,12 +298,6 @@ async function confirm() {
 .trow-total { margin-top: .2rem; padding-top: .55rem; border-top: 1px dashed var(--line-strong); color: var(--text); align-items: baseline; }
 .trow-total strong { font-size: 1.45rem; letter-spacing: -.01em; }
 
-.btn-close-till {
-    border: 1px solid var(--line); border-radius: 4px; padding: .6rem;
-    color: var(--muted); font-size: .84rem; transition: all .15s;
-}
-.btn-close-till:hover { color: var(--text); border-color: var(--line-strong); }
-
 /* ---------- Cobro ---------- */
 .pay-total { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 1rem; }
 .segmented {
@@ -341,8 +314,6 @@ async function confirm() {
 .pay-chips { margin: -.3rem 0 .9rem; }
 .change { color: var(--ok); font-size: 1.05rem; font-weight: 700; margin-bottom: .9rem; }
 .short { color: var(--bad); font-size: 1rem; font-weight: 600; margin-bottom: .9rem; }
-.close-note { color: var(--muted); font-size: .84rem; margin-bottom: 1rem; }
-.close-note strong { color: var(--text); }
 
 /* ---------- Movil ---------- */
 @media (max-width: 760px) {

@@ -1,12 +1,23 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { usePos } from './store';
-import { money } from './money';
+import { money, toCents } from './money';
 import LoginScreen from './components/LoginScreen.vue';
 import TillScreen from './components/TillScreen.vue';
 import SaleScreen from './components/SaleScreen.vue';
 
 const pos = usePos();
+
+// El cierre de caja es administracion, no venta: vive en la barra, lejos
+// del boton de cobrar.
+const counting = ref(false);
+const counted = ref('');
+
+function closeTill() {
+    pos.closeTill(toCents(counted.value));
+    counting.value = false;
+    counted.value = '';
+}
 
 const unitName = computed(() =>
     pos.units.find((unit) => unit.id === pos.session?.operating_unit_id)?.name ?? null);
@@ -48,11 +59,30 @@ const statusLabel = {
 
             <div class="session">
                 <span v-if="pos.user" class="user-chip">{{ pos.user.name }}</span>
+                <button v-if="pos.screen === 'sale'" class="btn-topbar" @click="counting = true">Cerrar caja</button>
                 <button class="icon-btn" title="Salir" @click="pos.logout()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
                 </button>
             </div>
         </header>
+
+        <div v-if="counting" class="overlay" @click.self="counting = false">
+            <div class="sheet">
+                <div class="sheet-head">
+                    <h2>Cerrar caja</h2>
+                    <button class="icon-btn" @click="counting = false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+                <label class="field"><span>Efectivo contado (RD$)</span>
+                    <input v-model="counted" type="text" inputmode="decimal" placeholder="0.00" class="money">
+                </label>
+                <p class="close-note">Se cierra contra <strong class="money">{{ money(toCents(counted)) }}</strong>. Irreversible desde el POS.</p>
+                <button class="btn-primary" :disabled="pos.busy || counted === ''" @click="closeTill()">
+                    Cerrar contra lo contado
+                </button>
+            </div>
+        </div>
 
         <transition name="toast">
             <button v-if="pos.error" class="error-toast" @click="pos.error = null">
@@ -234,6 +264,16 @@ input, select { font: inherit; }
 }
 .btn-soft:hover { background: var(--panel-2); }
 .btn-danger { color: #fca5a5; border-color: rgba(248, 113, 113, .35); }
+
+.btn-topbar {
+    border: 1px solid var(--line-strong); border-radius: 4px;
+    padding: .45rem .75rem; font-size: .78rem; font-weight: 600;
+    color: var(--muted); white-space: nowrap; transition: all .15s;
+}
+.btn-topbar:hover { color: var(--text); background: var(--panel-2); }
+
+.close-note { color: var(--muted); font-size: .84rem; margin-bottom: 1rem; }
+.close-note strong { color: var(--text); }
 
 .btn-primary {
     width: 100%; display: flex; align-items: center; justify-content: center; gap: .5rem;
