@@ -192,6 +192,7 @@ it('builds the menu: category classified as Bebidas and its product', function (
             'name' => 'Cuba Libre',
             'price' => '450.50',
             'category_id' => $categoria->id,
+            'kind' => 'simple',
         ])
         ->assertRedirect();
 
@@ -277,4 +278,60 @@ it('still keeps vendor staff away from the owner operations', function (): void 
     $this->actingAs($staff)
         ->post("/panel/comercios/{$this->vendor->id}/productos", ['name' => 'X', 'price' => '1', 'category_id' => 1])
         ->assertForbidden();
+});
+
+it('links a simple product to an item and builds a recipe from the profile', function (): void {
+    // Insumos del comercio
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/insumos", ['name' => 'Presidente (unidad)', 'base_unit' => 'unidad'])
+        ->assertRedirect();
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/insumos", ['name' => 'Ron', 'base_unit' => 'ml'])
+        ->assertRedirect();
+
+    $cerveza = InventoryItem::query()->withoutGlobalScopes()->where('name', 'Presidente (unidad)')->sole();
+    $ron = InventoryItem::query()->withoutGlobalScopes()->where('name', 'Ron')->sole();
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/categorias", ['name' => 'Bar', 'tipo' => 'bebidas'])
+        ->assertRedirect();
+    $categoria = Category::query()->withoutGlobalScopes()->where('name', 'Bar')->sole();
+
+    // Simple VINCULADO: vende 1, descuenta 1.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos", [
+            'name' => 'Presidente', 'price' => '350', 'category_id' => $categoria->id,
+            'kind' => 'simple', 'inventory_item_id' => $cerveza->id,
+        ])
+        ->assertRedirect();
+
+    $simple = Product::query()->withoutGlobalScopes()->where('name', 'Presidente')->sole();
+    expect($simple->track_stock)->toBeTrue()
+        ->and($simple->inventory_item_id)->toBe($cerveza->id);
+
+    // Con RECETA: se crea y se arma el escandallo desde el perfil.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos", [
+            'name' => 'Cuba Libre', 'price' => '400', 'category_id' => $categoria->id, 'kind' => 'receta',
+        ])
+        ->assertRedirect();
+
+    $receta = Product::query()->withoutGlobalScopes()->where('name', 'Cuba Libre')->sole();
+    expect($receta->type)->toBe(ProductType::Recipe);
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$receta->id}/receta", [
+            'inventory_item_id' => $ron->id, 'quantity' => '60',
+        ])
+        ->assertRedirect();
+
+    $ingrediente = $receta->recipeItems()->withoutGlobalScopes()->sole();
+    expect((float) $ingrediente->quantity)->toBe(60.0);
+
+    // Y se puede quitar.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$receta->id}/receta/{$ingrediente->id}/eliminar")
+        ->assertRedirect();
+
+    expect($receta->recipeItems()->withoutGlobalScopes()->count())->toBe(0);
 });

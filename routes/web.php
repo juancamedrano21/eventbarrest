@@ -37,6 +37,8 @@ Route::middleware(['auth'])->prefix('panel')->name('panel.')->group(function ():
     Route::post('/comercios/{vendor}/categorias', [VendorCatalogController::class, 'storeCategory'])->name('vendors.categories.store');
     Route::post('/comercios/{vendor}/productos', [VendorCatalogController::class, 'storeProduct'])->name('vendors.products.store');
     Route::post('/comercios/{vendor}/productos/{product}', [VendorCatalogController::class, 'updateProduct'])->name('vendors.products.update');
+    Route::post('/comercios/{vendor}/productos/{product}/receta', [VendorCatalogController::class, 'storeRecipeItem'])->name('vendors.recipe.store');
+    Route::post('/comercios/{vendor}/productos/{product}/receta/{item}/eliminar', [VendorCatalogController::class, 'destroyRecipeItem'])->name('vendors.recipe.destroy');
     Route::post('/comercios/{vendor}/insumos', [VendorInventoryController::class, 'storeItem'])->name('vendors.items.store');
     Route::post('/comercios/{vendor}/compras', [VendorInventoryController::class, 'storePurchase'])->name('vendors.purchases.store');
 });

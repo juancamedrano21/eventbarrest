@@ -77,7 +77,11 @@ class VendorProfileController extends Controller
             'menuCategories' => app(VendorContext::class)->runAs(
                 $record,
                 fn () => Category::query()
-                    ->with(['products' => fn ($q) => $q->orderBy('name')])
+                    ->with([
+                        'products' => fn ($q) => $q->orderBy('name'),
+                        'products.inventoryItem',
+                        'products.recipeItems.inventoryItem',
+                    ])
                     ->orderBy('name')
                     ->get(),
             ),

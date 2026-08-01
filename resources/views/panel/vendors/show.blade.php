@@ -130,7 +130,15 @@
                         <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
                             <div class="min-w-0">
                                 <p class="truncate text-gray-800 {{ $product->active ? '' : 'line-through opacity-60' }}">{{ $product->name }}</p>
-                                <p class="text-xs text-gray-500">{{ $product->type->value === 'recipe' ? 'Con receta (la arma el encargado)' : 'Producto simple' }}</p>
+                                <p class="text-xs text-gray-500">
+                                    @if ($product->type->value === 'recipe')
+                                        Receta: {{ $product->recipeItems->count() }} ingrediente(s)
+                                    @elseif ($product->inventoryItem)
+                                        Descuenta: {{ $product->inventoryItem->name }}
+                                    @else
+                                        Sin control de inventario
+                                    @endif
+                                </p>
                             </div>
                             <form method="POST" action="{{ route('panel.vendors.products.update', [$vendor, $product]) }}" class="flex shrink-0 items-center gap-2">
                                 @csrf
@@ -145,6 +153,12 @@
                                     {{ $product->active ? 'Desactivar' : 'Activar' }}
                                 </button>
                             </form>
+                            @if ($product->type->value === 'recipe')
+                                <button type="button" class="shrink-0 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs text-sky-700 hover:bg-sky-100"
+                                    aria-haspopup="dialog" aria-expanded="false" aria-controls="modal-receta-{{ $product->id }}" data-hs-overlay="#modal-receta-{{ $product->id }}">
+                                    Receta
+                                </button>
+                            @endif
                         </li>
                     @empty
                         <li class="px-5 py-4 text-sm text-gray-500">Sin productos en esta categoría.</li>
@@ -156,6 +170,54 @@
                 El menú está vacío: crea la primera categoría (Alimentos o Bebidas) y añade sus productos.
             </div>
         @endforelse
+
+        {{-- Modales de receta (escandallo) por producto --}}
+        @foreach ($menuCategories as $categoria)
+            @foreach ($categoria->products->where('type.value', 'recipe') as $product)
+                <div id="modal-receta-{{ $product->id }}" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
+                    <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
+                        <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+                            <h3 class="mb-1 font-medium text-gray-800">Receta de {{ $product->name }}</h3>
+                            <p class="mb-4 text-xs text-gray-500">Lo que cada venta descuenta del inventario, en la unidad base de cada insumo.</p>
+
+                            <ul class="mb-4 divide-y divide-gray-200 rounded-lg border border-gray-200">
+                                @forelse ($product->recipeItems as $ingrediente)
+                                    <li class="flex items-center justify-between px-3 py-2 text-sm">
+                                        <span class="text-gray-800">{{ $ingrediente->inventoryItem?->name }}</span>
+                                        <span class="flex items-center gap-2">
+                                            <span class="text-gray-500">{{ number_format((float) $ingrediente->quantity, 3) }} {{ $ingrediente->inventoryItem?->base_unit->short() }}</span>
+                                            <form method="POST" action="{{ route('panel.vendors.recipe.destroy', [$vendor, $product, $ingrediente]) }}">
+                                                @csrf
+                                                <button type="submit" class="text-xs text-red-600 hover:text-red-700">Quitar</button>
+                                            </form>
+                                        </span>
+                                    </li>
+                                @empty
+                                    <li class="px-3 py-3 text-sm text-gray-500">Sin ingredientes: este producto aún no descuenta nada.</li>
+                                @endforelse
+                            </ul>
+
+                            <form method="POST" action="{{ route('panel.vendors.recipe.store', [$vendor, $product]) }}" class="flex gap-2">
+                                @csrf
+                                <select name="inventory_item_id" required class="grow rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                                    @forelse ($vendorItems as $id => $name)
+                                        <option value="{{ $id }}">{{ $name }}</option>
+                                    @empty
+                                        <option value="" disabled>Primero crea un insumo (pestaña Inventario)</option>
+                                    @endforelse
+                                </select>
+                                <input name="quantity" type="text" inputmode="decimal" placeholder="Cant." required class="w-24 rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                                <button type="submit" class="rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500">Añadir</button>
+                            </form>
+
+                            <div class="mt-4 flex justify-end">
+                                <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600" data-hs-overlay="#modal-receta-{{ $product->id }}">Cerrar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        @endforeach
     </div>
 
     {{-- Tab: Ventas --}}
@@ -421,7 +483,17 @@
                             <option value="" disabled>Primero crea una categoría</option>
                         @endforelse
                     </select>
-                    <p class="text-xs text-gray-500">Los productos con receta (escandallo) los arma el encargado desde su panel.</p>
+                    <select name="kind" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        <option value="simple">Simple — puede descontar UN insumo por venta</option>
+                        <option value="receta">Con receta — descuenta varios ingredientes (el escandallo se arma después)</option>
+                    </select>
+                    <select name="inventory_item_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                        <option value="">Sin insumo vinculado (solo para Simple)</option>
+                        @foreach ($vendorItems as $id => $name)
+                            <option value="{{ $id }}">{{ $name }}</option>
+                        @endforeach
+                    </select>
+                    <p class="text-xs text-gray-500">Simple + insumo: vende 1, descuenta 1 (ej. cerveza). Con receta: crea el producto y ábrele «Receta» en su fila para armar el escandallo.</p>
                 </div>
                 <div class="mt-5 flex justify-end gap-2">
                     <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600" data-hs-overlay="#modal-producto">Cancelar</button>

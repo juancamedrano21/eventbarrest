@@ -11,6 +11,7 @@ use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Enums\Permission;
+use App\Domains\Inventory\Models\InventoryItem;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
 use Illuminate\Http\RedirectResponse;
@@ -57,21 +58,73 @@ class VendorCatalogController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
             'category_id' => ['required', 'integer'],
+            'kind' => ['required', 'in:simple,receta'],
+            'inventory_item_id' => ['nullable', 'integer'],
         ]);
 
         app(VendorContext::class)->runAs($record, function () use ($data): void {
-            // Con el comercio activo, una categoría ajena no existe.
+            // Con el comercio activo, una categoría o insumo ajenos no existen.
             $category = Category::query()->findOrFail((int) $data['category_id']);
+
+            $esReceta = $data['kind'] === 'receta';
+            $itemId = null;
+
+            if (! $esReceta && filled($data['inventory_item_id'] ?? null)) {
+                $itemId = InventoryItem::query()
+                    ->findOrFail((int) $data['inventory_item_id'])->id;
+            }
 
             Product::create([
                 'category_id' => $category->id,
                 'name' => $data['name'],
-                'type' => ProductType::Simple,
+                'type' => $esReceta ? ProductType::Recipe : ProductType::Simple,
                 'price_cents' => (int) round(((float) $data['price']) * 100),
+                'track_stock' => $itemId !== null,
+                'inventory_item_id' => $itemId,
             ]);
         });
 
         return back()->with('status', 'Producto añadido al menú.');
+    }
+
+    public function storeRecipeItem(Request $request, int $vendor, int $product): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::CatalogManage);
+
+        $record = Vendor::query()->findOrFail($vendor);
+
+        $data = $request->validate([
+            'inventory_item_id' => ['required', 'integer'],
+            'quantity' => ['required', 'numeric', 'min:0.001'],
+        ]);
+
+        app(VendorContext::class)->runAs($record, function () use ($product, $data): void {
+            $target = Product::query()->findOrFail($product);
+
+            // Los guards del dominio rematan: producto tipo receta, insumo
+            // del MISMO comercio, cantidades positivas.
+            $target->recipeItems()->create([
+                'inventory_item_id' => (int) $data['inventory_item_id'],
+                'quantity' => round((float) $data['quantity'], 3),
+            ]);
+        });
+
+        return back()->with('status', 'Ingrediente añadido a la receta.');
+    }
+
+    public function destroyRecipeItem(Request $request, int $vendor, int $product, int $item): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::CatalogManage);
+
+        $record = Vendor::query()->findOrFail($vendor);
+
+        app(VendorContext::class)->runAs($record, function () use ($product, $item): void {
+            Product::query()->findOrFail($product)
+                ->recipeItems()->findOrFail($item)
+                ->delete();
+        });
+
+        return back()->with('status', 'Ingrediente retirado de la receta.');
     }
 
     public function updateProduct(Request $request, int $vendor, int $product): RedirectResponse
