@@ -14,6 +14,7 @@ use App\Http\Controllers\Business\SettingsController;
 use App\Http\Controllers\Business\TeamController;
 use App\Http\Controllers\EventPanel\DashboardController;
 use App\Http\Controllers\EventPanel\EventsController;
+use App\Http\Controllers\EventPanel\EventStockController;
 use App\Http\Controllers\EventPanel\SettingsController as EventPanelSettingsController;
 use App\Http\Controllers\EventPanel\SettlementController;
 use App\Http\Controllers\EventPanel\TeamController as EventPanelTeamController;
@@ -81,6 +82,9 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::get('/eventos/{event}/liquidacion', [SettlementController::class, 'show'])->name('events.settlement');
     Route::post('/eventos/{event}/liquidar', [SettlementController::class, 'store'])->name('events.settle');
     Route::post('/eventos/{event}/liquidacion/{settlement}/cobrada', [SettlementController::class, 'markPaid'])->name('events.settlement.paid');
+    Route::get('/eventos/{event}/mercancia', [EventStockController::class, 'show'])->name('events.stock');
+    Route::post('/eventos/{event}/mercancia/entregar', [EventStockController::class, 'allocate'])->name('events.stock.allocate');
+    Route::post('/eventos/{event}/mercancia/devolver', [EventStockController::class, 'returnStock'])->name('events.stock.return');
     Route::get('/comercios/{vendor}', [VendorProfileController::class, 'show'])->name('vendors.show');
     Route::get('/comercios/{vendor}/ventas/{order}', [VendorSalesController::class, 'show'])->name('vendors.sales.show');
     Route::post('/comercios/{vendor}/usuarios', [VendorProfileController::class, 'storeUser'])->name('vendors.users.store');

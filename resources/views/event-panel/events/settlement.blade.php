@@ -25,6 +25,9 @@
         </div>
 
         <div class="flex items-center gap-2">
+            {{-- El dinero y la mercancía son las dos mitades del cierre. --}}
+            <a href="{{ route('event-panel.events.stock', $event) }}"
+                class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 print:hidden">Ver la mercancía</a>
             <button type="button" onclick="window.print()"
                 class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Imprimir</button>
             @unless ($liquidado)

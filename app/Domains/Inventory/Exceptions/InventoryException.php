@@ -65,6 +65,16 @@ class InventoryException extends RuntimeException
         );
     }
 
+    public static function allocationNeedsQuantity(): self
+    {
+        return new self('Lo que se entrega o se devuelve tiene que ser una cantidad positiva.');
+    }
+
+    public static function allocationNeedsTwoUnits(): self
+    {
+        return new self('El origen y el puesto tienen que ser unidades distintas.');
+    }
+
     public static function transferAcrossVendors(): self
     {
         return new self('Entre comercios no hay traslados: cada comercio mueve su propio stock.');
