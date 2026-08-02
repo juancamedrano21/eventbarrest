@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers\EventVendor;
 
 use App\Domains\Identity\Enums\Permission;
-use App\Http\Controllers\EventVendor\Concerns\AuthorizesEventVendorPanel;
 use App\Http\Controllers\Concerns\HandlesVendorInventory;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\EventVendor\Concerns\AuthorizesEventVendorPanel;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 

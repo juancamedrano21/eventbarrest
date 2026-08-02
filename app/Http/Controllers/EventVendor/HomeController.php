@@ -14,8 +14,8 @@ use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Queries\NetSales;
 use App\Domains\Sales\Queries\ResolveItbisMode;
-use App\Http\Controllers\EventVendor\Concerns\AuthorizesEventVendorPanel;
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\EventVendor\Concerns\AuthorizesEventVendorPanel;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
