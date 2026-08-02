@@ -9,10 +9,12 @@ use App\Domains\EventManagement\Enums\VendorStatus;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Platform\Rules\ValidRnc;
+use App\Domains\Sales\Enums\ItbisMode;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /** El directorio de comercios del organizador, en el panel nuevo. */
@@ -67,6 +69,8 @@ class VendorsController extends Controller
             'vendor_type_id' => ['nullable', 'integer', 'exists:vendor_types,id'],
             'food_type_id' => ['nullable', 'integer', 'exists:food_types,id'],
             'logo' => ['nullable', 'image', 'max:2048'],
+            // Vacío = hereda la regla fiscal de la cuenta.
+            'itbis_mode' => ['nullable', Rule::enum(ItbisMode::class)],
         ]);
 
         $update = [
@@ -77,6 +81,9 @@ class VendorsController extends Controller
             'status' => VendorStatus::from($data['status']),
             'vendor_type_id' => $data['vendor_type_id'] ?? null,
             'food_type_id' => $data['food_type_id'] ?? null,
+            'itbis_mode' => filled($data['itbis_mode'] ?? null)
+                ? ItbisMode::from($data['itbis_mode'])
+                : null,
         ];
 
         if ($request->hasFile('logo')) {

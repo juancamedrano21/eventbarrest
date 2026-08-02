@@ -11,6 +11,7 @@ use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Platform\Models\FoodType;
 use App\Domains\Platform\Models\Tenant;
 use App\Domains\Platform\Models\VendorType;
+use App\Domains\Sales\Enums\ItbisMode;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use App\Models\User;
 use Database\Factories\VendorFactory;
@@ -38,6 +39,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $logo_path
  * @property int|null $vendor_type_id
  * @property int|null $food_type_id
+ * @property ItbisMode|null $itbis_mode
  */
 class Vendor extends Model
 {
@@ -55,12 +57,15 @@ class Vendor extends Model
         'logo_path',
         'vendor_type_id',
         'food_type_id',
+        'itbis_mode',
     ];
 
     protected function casts(): array
     {
         return [
             'status' => VendorStatus::class,
+            // Null a propósito: hereda la regla fiscal de su cuenta.
+            'itbis_mode' => ItbisMode::class,
         ];
     }
 

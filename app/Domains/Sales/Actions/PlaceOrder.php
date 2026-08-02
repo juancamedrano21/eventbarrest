@@ -11,6 +11,7 @@ use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Models\User;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -20,13 +21,14 @@ use Illuminate\Support\Facades\DB;
  * nombre y precio. Idempotente por client_ref: el POS offline puede reenviar
  * la misma orden mil veces y existe una sola.
  *
- * El precio al público ya incluye el ITBIS (18 %): el desglose se calcula
- * hacia adentro, LÍNEA a LÍNEA — un producto exento (agua, alimentos no
- * gravados) simplemente no aporta. La propina legal (10 %) es opcional y se
- * calcula sobre la base sin impuesto.
+ * El ITBIS (18 %) se calcula LÍNEA a LÍNEA — un producto exento (agua,
+ * alimentos no gravados) simplemente no aporta — según la modalidad del
+ * negocio: incluido en el precio (desglose hacia adentro, el total no
+ * crece) o por fuera (se suma al cobrar). La propina legal (10 %) es
+ * opcional y siempre se calcula sobre la base sin impuesto.
  *
- * La venta también congela la comisión del organizador: la participación
- * puede renegociarse mañana, lo cobrado hoy no se reescribe.
+ * La venta congela su modalidad y la comisión del organizador: ambas
+ * pueden cambiar mañana; lo cobrado hoy no se reescribe.
  */
 class PlaceOrder
 {
@@ -110,6 +112,15 @@ class PlaceOrder
         bool $withTip,
     ): Order {
         return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip): Order {
+            $unit = OperatingUnit::query()->withoutGlobalScopes()
+                ->whereKey($session->operating_unit_id)
+                ->first(['tenant_id', 'vendor_id', 'event_id']);
+
+            $modo = app(ResolveItbisMode::class)->forVendor(
+                $unit?->getAttribute('vendor_id'),
+                (int) $unit?->getAttribute('tenant_id'),
+            );
+
             $subtotal = 0;
             $itbis = 0;
             $prepared = [];
@@ -132,7 +143,7 @@ class PlaceOrder
                 $total = (int) round($product->price_cents * $quantity);
                 // El desglose es POR LÍNEA: los exentos no aportan y el
                 // redondeo por línea es el que irá al comprobante fiscal.
-                $lineItbis = $product->itbis_exempt ? 0 : (int) round($total * 18 / 118);
+                $lineItbis = $product->itbis_exempt ? 0 : $modo->itbisOf($total);
 
                 $subtotal += $total;
                 $itbis += $lineItbis;
@@ -141,7 +152,7 @@ class PlaceOrder
             }
 
             // Propina legal sobre la BASE, no sobre la base con impuesto.
-            $tip = $withTip ? (int) round(($subtotal - $itbis) * 0.10) : 0;
+            $tip = $withTip ? (int) round($modo->baseWithoutItbis($subtotal, $itbis) * 0.10) : 0;
 
             $order = new Order([
                 'client_ref' => $clientRef,
@@ -149,12 +160,13 @@ class PlaceOrder
                 'subtotal_cents' => $subtotal,
                 'itbis_cents' => $itbis,
                 'tip_cents' => $tip,
-                'total_cents' => $subtotal + $tip,
+                'total_cents' => $modo->totalOf($subtotal, $itbis) + $tip,
             ]);
             $order->operating_unit_id = $session->operating_unit_id;
             $order->cash_session_id = $session->id;
             $order->user_id = $user?->id;
-            $order->commission_bps = $this->commissionFor($session);
+            $order->commission_bps = $this->commissionFor($unit);
+            $order->itbis_mode = $modo;
             $order->save();
 
             foreach ($prepared as [$product, $quantity, $total, $lineItbis]) {
@@ -178,12 +190,8 @@ class PlaceOrder
      * orden. Null en el mundo negocio (sucursales sin evento). Sin scopes:
      * el guard decide con la verdad de las filas, no la vista del contexto.
      */
-    private function commissionFor(CashSession $session): ?int
+    private function commissionFor(?OperatingUnit $unit): ?int
     {
-        $unit = OperatingUnit::query()->withoutGlobalScopes()
-            ->whereKey($session->operating_unit_id)
-            ->first(['tenant_id', 'vendor_id', 'event_id']);
-
         if ($unit === null || $unit->event_id === null || $unit->getAttribute('vendor_id') === null) {
             return null;
         }

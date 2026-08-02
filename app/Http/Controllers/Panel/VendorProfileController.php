@@ -22,6 +22,7 @@ use App\Domains\Platform\Models\VendorType;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\Payment;
+use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
 use Illuminate\Http\RedirectResponse;
@@ -90,6 +91,8 @@ class VendorProfileController extends Controller
                 $record,
                 fn () => InventoryItem::query()->orderBy('name')->pluck('name', 'id'),
             ),
+            // Para el selector «Como la cuenta (…)» de la pestaña config.
+            'modoCuenta' => app(ResolveItbisMode::class)->forTenant((int) $record->tenant_id),
             'vendorTypes' => VendorType::query()->orderBy('name')->pluck('name', 'id'),
             'foodTypes' => FoodType::query()->orderBy('name')->pluck('name', 'id'),
             'vendor' => $record,

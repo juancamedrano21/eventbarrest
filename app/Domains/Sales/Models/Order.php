@@ -7,6 +7,7 @@ namespace App\Domains\Sales\Models;
 use App\Domains\EventManagement\Concerns\BelongsToVendor;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Eloquent\SalesHistoryBuilder;
+use App\Domains\Sales\Enums\ItbisMode;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
@@ -41,6 +42,7 @@ use Illuminate\Support\Carbon;
  * @property int $tip_cents
  * @property int $total_cents
  * @property int|null $commission_bps
+ * @property ItbisMode $itbis_mode
  * @property Carbon|null $paid_at
  * @property Carbon|null $voided_at
  * @property string|null $void_reason
@@ -63,6 +65,7 @@ class Order extends Model
             'tip_cents' => 'integer',
             'total_cents' => 'integer',
             'commission_bps' => 'integer',
+            'itbis_mode' => ItbisMode::class,
             'paid_at' => 'datetime',
             'voided_at' => 'datetime',
         ];

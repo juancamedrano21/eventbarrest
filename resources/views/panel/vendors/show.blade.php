@@ -261,6 +261,27 @@
                     </label>
                 </div>
                 <p class="text-xs text-gray-500">Suspender corta el acceso de todo su personal, incluido el POS.</p>
+
+                <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                    <p class="font-medium text-gray-800">Fiscalidad</p>
+                    <p class="mb-3 mt-0.5 text-xs text-gray-500">Cómo se relaciona el precio de carta con el ITBIS. Los productos exentos no gravan en ninguna de las dos modalidades.</p>
+                    <label class="block text-sm">
+                        <span class="mb-1 block text-xs text-gray-500">Modalidad de ITBIS</span>
+                        <select name="itbis_mode" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+                            <option value="" @selected(old('itbis_mode', $vendor->itbis_mode?->value) === null || old('itbis_mode', $vendor->itbis_mode?->value) === '')>
+                                Como la cuenta ({{ $modoCuenta->getLabel() }})
+                            </option>
+                            @foreach (\App\Domains\Sales\Enums\ItbisMode::cases() as $modo)
+                                <option value="{{ $modo->value }}" @selected(old('itbis_mode', $vendor->itbis_mode?->value) === $modo->value)>{{ $modo->getLabel() }}</option>
+                            @endforeach
+                        </select>
+                    </label>
+                    <p class="mt-2 text-xs text-gray-500">
+                        <span class="font-medium text-gray-700">Incluido:</span> el precio ya lleva el 18 % y el total no crece.
+                        <span class="font-medium text-gray-700">Se suma:</span> el precio es la base y el impuesto se añade al cobrar.
+                        Cambiarla NO reescribe precios ni ventas pasadas: revisa tu carta después de cambiarla.
+                    </p>
+                </div>
             </div>
             <div class="mt-6 flex justify-end">
                 <button type="submit" class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-500">Guardar configuración</button>

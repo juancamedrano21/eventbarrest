@@ -8,6 +8,7 @@ use App\Domains\Platform\Enums\TenantStatus;
 use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Platform\Models\Tenant;
 use App\Domains\Platform\Rules\ValidRnc;
+use App\Domains\Sales\Enums\ItbisMode;
 use Closure;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -69,6 +70,17 @@ class TenantForm
                     ->options(TenantStatus::class)
                     ->default(TenantStatus::Trial)
                     ->required(),
+                Select::make('itbis_mode')
+                    ->label('Modalidad de ITBIS')
+                    ->options(ItbisMode::class)
+                    ->default(ItbisMode::Included)
+                    ->required()
+                    ->helperText(fn (mixed $state): string => match (true) {
+                        $state instanceof ItbisMode => $state->description(),
+                        is_string($state) => ItbisMode::tryFrom($state)?->description() ?? '',
+                        default => 'Regla por defecto de la cuenta; cada comercio puede tener la suya.',
+                    })
+                    ->live(),
             ]);
     }
 }

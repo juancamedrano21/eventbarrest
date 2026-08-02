@@ -2,20 +2,26 @@ import { defineStore } from 'pinia';
 import { api, setToken, hasToken } from './api';
 import { db, kvGet, kvSet } from './db';
 
-// El precio ya incluye el ITBIS; el desglose y la propina espejan el calculo
-// del servidor (redondeo POR LINEA incluido): el servidor manda al sincronizar.
-// Los productos exentos (itbis_exempt) no aportan al desglose; un catalogo
-// cacheado sin el flag cuenta como gravado, igual que el default del servidor.
-function totals(cart, withTip) {
+// El desglose y la propina espejan el calculo del servidor (redondeo POR
+// LINEA incluido): el servidor manda al sincronizar. Los productos exentos
+// (itbis_exempt) no aportan; un catalogo cacheado sin el flag cuenta como
+// gravado, igual que el default del servidor. El modo lo fija el negocio:
+// 'included' extrae el 18 % del precio, 'added' lo suma al cobrar.
+function totals(cart, withTip, mode = 'included') {
+    const added = mode === 'added';
     let subtotal = 0;
     let itbis = 0;
     for (const line of cart) {
         const total = Math.round(line.price_cents * line.quantity);
         subtotal += total;
-        if (!line.itbis_exempt) itbis += Math.round((total * 18) / 118);
+        if (!line.itbis_exempt) {
+            itbis += added ? Math.round(total * 0.18) : Math.round((total * 18) / 118);
+        }
     }
-    const tip = withTip ? Math.round((subtotal - itbis) * 0.1) : 0;
-    return { subtotal, itbis, tip, total: subtotal + tip };
+    // La propina legal siempre sobre la base sin impuesto.
+    const base = added ? subtotal : subtotal - itbis;
+    const tip = withTip ? Math.round(base * 0.1) : 0;
+    return { subtotal, itbis, tip, total: (added ? subtotal + itbis : subtotal) + tip };
 }
 
 export const usePos = defineStore('pos', {
@@ -26,6 +32,7 @@ export const usePos = defineStore('pos', {
         session: null,
         categories: [],
         products: [],
+        itbisMode: 'included',
         cart: [],
         withTip: false,
         pending: 0,
@@ -41,7 +48,7 @@ export const usePos = defineStore('pos', {
     }),
 
     getters: {
-        totals: (state) => totals(state.cart, state.withTip),
+        totals: (state) => totals(state.cart, state.withTip, state.itbisMode),
     },
 
     actions: {
@@ -98,6 +105,7 @@ export const usePos = defineStore('pos', {
                 this.units = boot.units;
                 this.categories = catalog.categories;
                 this.products = catalog.products;
+                this.itbisMode = catalog.settings?.itbis_mode ?? 'included';
                 const saved = await kvGet('my_session_id');
                 const sessions = boot.open_sessions ?? [];
                 this.session = sessions.find((s) => s.id === saved)
@@ -112,6 +120,7 @@ export const usePos = defineStore('pos', {
                 if (cache?.catalog) {
                     this.categories = cache.catalog.categories;
                     this.products = cache.catalog.products;
+                    this.itbisMode = cache.catalog.settings?.itbis_mode ?? 'included';
                 }
                 if (cache?.session) this.session = cache.session;
                 if (!cache) {

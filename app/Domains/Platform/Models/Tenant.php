@@ -11,6 +11,7 @@ use App\Domains\Platform\Enums\TenantStatus;
 use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Platform\Exceptions\TenantBaseIsNotCreatableException;
 use App\Domains\Platform\Exceptions\TenantTypeIsImmutableException;
+use App\Domains\Sales\Enums\ItbisMode;
 use App\Models\User;
 use App\Support\Eloquent\HasChildModels;
 use Database\Factories\TenantFactory;
@@ -32,6 +33,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * @property string|null $rnc
  * @property TenantType $type
  * @property TenantStatus $status
+ * @property ItbisMode $itbis_mode regla fiscal por defecto de la cuenta
  */
 class Tenant extends Model
 {
@@ -50,6 +52,7 @@ class Tenant extends Model
         'name',
         'rnc',
         'status',
+        'itbis_mode',
     ];
 
     public static function childTypes(): array
@@ -65,6 +68,7 @@ class Tenant extends Model
         return [
             'type' => TenantType::class,
             'status' => TenantStatus::class,
+            'itbis_mode' => ItbisMode::class,
         ];
     }
 

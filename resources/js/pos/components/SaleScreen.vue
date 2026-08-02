@@ -133,7 +133,7 @@ async function confirm() {
 
                 <div class="totals">
                     <div class="trow"><span>Subtotal</span><span class="money">{{ money(pos.totals.subtotal) }}</span></div>
-                    <div class="trow"><span>ITBIS incluido</span><span class="money">{{ money(pos.totals.itbis) }}</span></div>
+                    <div class="trow"><span>{{ pos.itbisMode === 'added' ? 'ITBIS 18 %' : 'ITBIS incluido' }}</span><span class="money">{{ money(pos.totals.itbis) }}</span></div>
                     <div v-if="pos.totals.tip" class="trow"><span>Propina</span><span class="money">{{ money(pos.totals.tip) }}</span></div>
                     <div class="trow trow-total"><span>Total</span><strong class="money">{{ money(pos.totals.total) }}</strong></div>
                 </div>

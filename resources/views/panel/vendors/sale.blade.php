@@ -106,7 +106,7 @@
                             <span class="text-end text-[13px] font-semibold text-gray-800">RD$ {{ number_format($sale->subtotal_cents / 100, 2) }}</span>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
-                            <span class="text-[13px] text-gray-600">ITBIS incluido (18 %)</span>
+                            <span class="text-[13px] text-gray-600">{{ $sale->itbis_mode->value === 'added' ? 'ITBIS (18 %)' : 'ITBIS incluido (18 %)' }}</span>
                             <span class="text-end text-[13px] font-semibold text-gray-800">RD$ {{ number_format($sale->itbis_cents / 100, 2) }}</span>
                         </div>
                         @if ($sale->tip_cents > 0)
@@ -126,7 +126,14 @@
                             </div>
                         @endif
                     </div>
-                    <p class="mt-3 text-xs text-gray-500">El ITBIS va incluido en el precio y se desglosa línea a línea; la propina es sobre la base sin impuesto.</p>
+                    <p class="mt-3 text-xs text-gray-500">
+                        @if ($sale->itbis_mode->value === 'added')
+                            El precio de carta es la base y el ITBIS se sumó al cobrar, línea a línea;
+                        @else
+                            El ITBIS iba incluido en el precio y se desglosa línea a línea;
+                        @endif
+                        la propina es sobre la base sin impuesto.
+                    </p>
                 </div>
             </div>
         </div>

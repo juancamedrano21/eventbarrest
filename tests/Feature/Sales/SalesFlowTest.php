@@ -8,6 +8,9 @@ use App\Domains\Catalog\Enums\ProductType;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Actions\CreateEvent;
+use App\Domains\EventManagement\Actions\CreateVendor;
+use App\Domains\EventManagement\Actions\InviteVendorToEvent;
+use App\Domains\EventManagement\VendorContext;
 use App\Domains\Inventory\Actions\RegisterPurchase;
 use App\Domains\Inventory\Enums\MeasurementUnit;
 use App\Domains\Inventory\Models\InventoryItem;
@@ -21,9 +24,11 @@ use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
 use App\Domains\Sales\Actions\VoidOrder;
 use App\Domains\Sales\Enums\CashSessionStatus;
+use App\Domains\Sales\Enums\ItbisMode;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Sales\Exceptions\SalesException;
+use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\Payment;
 use App\Domains\Tenancy\TenantContext;
@@ -307,5 +312,79 @@ it('keeps the organizer from opening a till on a vendor outlet', function (): vo
         // Sin comercio activo (el organizador mira, no opera): denegado.
         expect(fn () => app(OpenCashSession::class)($outlet, null, 0))
             ->toThrow(SalesException::class);
+    });
+});
+
+it('adds the itbis on top when the business sells with tax outside the price', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        // La cuenta vende con el impuesto POR FUERA.
+        $this->tenant->update(['itbis_mode' => ItbisMode::Added]);
+
+        $categoria = Category::query()->where('name', 'Cócteles')->sole();
+        $agua = Product::create([
+            'category_id' => $categoria->id, 'name' => 'Agua',
+            'type' => ProductType::Simple, 'price_cents' => 10000,
+            'itbis_exempt' => true,
+        ]);
+
+        $order = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],  // 300.00 gravada
+            ['product_id' => $agua->id, 'quantity' => 1],              // 100.00 exenta
+        ], 'pos-0020', null, true);
+
+        // El precio es la BASE: el ITBIS de la Presidente se suma (18 %) y
+        // el agua no aporta. La propina va sobre el subtotal completo,
+        // porque aquí el subtotal ya es base sin impuesto.
+        expect($order->subtotal_cents)->toBe(40000)
+            ->and($order->itbis_cents)->toBe(5400)
+            ->and($order->lines->firstWhere('product_name', 'Agua')->itbis_cents)->toBe(0)
+            ->and($order->tip_cents)->toBe(4000)
+            ->and($order->total_cents)->toBe(40000 + 5400 + 4000)
+            ->and($order->itbis_mode)->toBe(ItbisMode::Added);
+
+        // Y se cobra por ese total, no por el subtotal.
+        app(PayOrder::class)($order, PaymentMethod::Card, 49400);
+        expect($order->fresh()->status)->toBe(OrderStatus::Paid);
+    });
+});
+
+it('lets a vendor override the account rule, and freezes it on the sale', function (): void {
+    $organizer = app(CreateTenant::class)('Bocao', null, TenantType::Organizer);
+
+    app(TenantContext::class)->runAs($organizer, function (): void {
+        $event = app(CreateEvent::class)('Bocao 2026', now()->addWeek(), now()->addWeeks(2));
+        $vendor = app(CreateVendor::class)('Tacos del Puerto');
+        app(InviteVendorToEvent::class)($event, $vendor, 0);
+        $puesto = outletFor($event, 'Puesto', OperatingUnitKind::Kitchen, $vendor);
+
+        // La cuenta incluye el ITBIS; este comercio lo cobra por fuera.
+        $vendor->update(['itbis_mode' => ItbisMode::Added]);
+
+        $order = app(VendorContext::class)->runAs($vendor, function () use ($puesto) {
+            $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+            $taco = Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 10000]);
+            $caja = app(OpenCashSession::class)($puesto, null, 0);
+
+            return app(PlaceOrder::class)($caja, [['product_id' => $taco->id, 'quantity' => 1]], 'pos-0021');
+        });
+
+        expect($order->itbis_cents)->toBe(1800)
+            ->and($order->total_cents)->toBe(11800)
+            ->and($order->itbis_mode)->toBe(ItbisMode::Added);
+
+        // El comercio vuelve a la regla de la cuenta: la venta de ayer no
+        // se reescribe, la de mañana usa la nueva.
+        $vendor->update(['itbis_mode' => null]);
+        expect($order->fresh()->itbis_mode)->toBe(ItbisMode::Added);
+
+        $siguiente = app(VendorContext::class)->runAs($vendor, function () use ($puesto) {
+            $taco = Product::query()->where('name', 'Taco')->sole();
+            $caja = CashSession::query()->where('operating_unit_id', $puesto->id)->sole();
+
+            return app(PlaceOrder::class)($caja, [['product_id' => $taco->id, 'quantity' => 1]], 'pos-0022');
+        });
+
+        expect($siguiente->itbis_mode)->toBe(ItbisMode::Included)
+            ->and($siguiente->total_cents)->toBe(10000);
     });
 });
