@@ -47,6 +47,134 @@
 
     {{-- Tab: Resumen --}}
     <div id="tab-resumen" role="tabpanel" aria-labelledby="tab-resumen-item">
+
+        {{-- Los números del comercio, últimos 30 días --}}
+        <div class="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs">
+                <p class="text-xs uppercase tracking-wide text-gray-500">Ventas · 30 días</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-800">RD$ {{ number_format(($bruto30 - $devuelto30) / 100, 2) }}</p>
+                @if ($devuelto30 > 0)
+                    <p class="mt-0.5 text-xs text-amber-700">− RD$ {{ number_format($devuelto30 / 100, 2) }} devuelto</p>
+                @endif
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs">
+                <p class="text-xs uppercase tracking-wide text-gray-500">Transacciones</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-800">{{ number_format($conteo30) }}</p>
+                <p class="mt-0.5 text-xs text-gray-500">Ticket promedio RD$ {{ number_format($ticketPromedio / 100, 2) }}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs">
+                <p class="text-xs uppercase tracking-wide text-gray-500">ITBIS del período</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-800">RD$ {{ number_format($itbis30 / 100, 2) }}</p>
+                <p class="mt-0.5 text-xs text-gray-500">{{ $modoVigente->getLabel() }}</p>
+            </div>
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs">
+                <p class="text-xs uppercase tracking-wide text-gray-500">Propinas</p>
+                <p class="mt-1 text-2xl font-semibold text-gray-800">RD$ {{ number_format($propinas30 / 100, 2) }}</p>
+                <p class="mt-0.5 text-xs text-gray-500">del personal, 10 % legal</p>
+            </div>
+        </div>
+
+        <div class="mb-6 grid gap-6 lg:grid-cols-3">
+            {{-- Serie diaria --}}
+            <div class="rounded-xl border border-gray-200 bg-white p-5 shadow-2xs lg:col-span-2">
+                <h2 class="mb-3 font-medium text-gray-800">Ventas por día <span class="ml-1 text-xs font-normal text-gray-500">últimos 14 días, netas</span></h2>
+                <div id="grafica-comercio" class="min-h-48"></div>
+            </div>
+
+            {{-- Más vendidos --}}
+            <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+                <header class="border-b border-gray-200 px-5 py-4">
+                    <h2 class="font-medium text-gray-800">Más vendidos <span class="ml-1 text-xs font-normal text-gray-500">30 días</span></h2>
+                </header>
+                <ul class="divide-y divide-gray-200">
+                    @forelse ($topProductos as $fila)
+                        <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                            <div class="min-w-0">
+                                <p class="truncate text-gray-800">{{ $fila->nombre }}</p>
+                                <p class="text-xs text-gray-500">{{ rtrim(rtrim(number_format((float) $fila->unidades, 3), '0'), '.') }} unidad(es)</p>
+                            </div>
+                            <span class="shrink-0 font-medium text-gray-800">RD$ {{ number_format($fila->importe / 100, 2) }}</span>
+                        </li>
+                    @empty
+                        <li class="px-5 py-8 text-center text-sm text-gray-500">Sin ventas en el período.</li>
+                    @endforelse
+                </ul>
+            </section>
+        </div>
+
+        <div class="mb-6 grid gap-6 lg:grid-cols-2">
+            {{-- Cómo pagan --}}
+            <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+                <header class="border-b border-gray-200 px-5 py-4">
+                    <h2 class="font-medium text-gray-800">Cómo pagan <span class="ml-1 text-xs font-normal text-gray-500">30 días</span></h2>
+                </header>
+                <ul class="divide-y divide-gray-200">
+                    @forelse ($porMetodo as $fila)
+                        {{-- OJO: nada de @php(...) inline en este archivo — se
+                             empareja con el primer @endphp ajeno y se traga
+                             las directivas que vengan después. --}}
+                        <li class="flex items-center justify-between px-5 py-3 text-sm">
+                            <span class="text-gray-800">{{ \App\Domains\Sales\Enums\PaymentMethod::tryFrom($fila->method)?->getLabel() ?? $fila->method }}</span>
+                            <span class="text-gray-500">{{ $fila->veces }} cobro(s)</span>
+                            <span class="font-medium text-gray-800">RD$ {{ number_format($fila->total / 100, 2) }}</span>
+                        </li>
+                    @empty
+                        <li class="px-5 py-8 text-center text-sm text-gray-500">Sin cobros en el período.</li>
+                    @endforelse
+                </ul>
+            </section>
+
+            {{-- Quién tocó el menú --}}
+            <section class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+                <header class="border-b border-gray-200 px-5 py-4">
+                    <h2 class="font-medium text-gray-800">Cambios en el menú</h2>
+                    <p class="mt-0.5 text-xs text-gray-500">Precios, estado y fiscalidad: quién, cuándo y desde qué valor.</p>
+                </header>
+                <ul class="divide-y divide-gray-200">
+                    @forelse ($actividad as $log)
+                        @php
+                            $antes = $log->properties['old'] ?? [];
+                            $ahora = $log->properties['attributes'] ?? [];
+                            $etiquetas = [
+                                'price_cents' => 'precio', 'name' => 'nombre', 'active' => 'estado',
+                                'itbis_exempt' => 'ITBIS', 'category_id' => 'categoría',
+                                'inventory_item_id' => 'insumo vinculado',
+                            ];
+                            $formatea = function (string $campo, $valor) {
+                                if ($valor === null || $valor === '') return '—';
+                                return match ($campo) {
+                                    'price_cents' => 'RD$ '.number_format(((int) $valor) / 100, 2),
+                                    'active' => $valor ? 'en venta' : 'pausado',
+                                    'itbis_exempt' => $valor ? 'exento' : 'gravado',
+                                    default => (string) $valor,
+                                };
+                            };
+                        @endphp
+                        <li class="px-5 py-3 text-sm">
+                            <p class="text-gray-800">
+                                <span class="font-medium">{{ $log->causer?->name ?? 'Sistema' }}</span>
+                                {{ $log->event === 'created' ? 'creó' : ($log->event === 'deleted' ? 'eliminó' : 'actualizó') }}
+                                <span class="font-medium">{{ $ahora['name'] ?? $antes['name'] ?? 'un producto' }}</span>
+                            </p>
+                            @foreach ($ahora as $campo => $valor)
+                                @if (isset($etiquetas[$campo]) && $log->event === 'updated')
+                                    <p class="text-xs text-gray-500">
+                                        {{ $etiquetas[$campo] }}:
+                                        <span class="text-gray-400 line-through">{{ $formatea($campo, $antes[$campo] ?? null) }}</span>
+                                        →
+                                        <span class="font-medium text-gray-700">{{ $formatea($campo, $valor) }}</span>
+                                    </p>
+                                @endif
+                            @endforeach
+                            <p class="mt-0.5 text-xs text-gray-400">{{ $log->created_at?->timezone($tz)->format('d/m/Y h:i a') }}</p>
+                        </li>
+                    @empty
+                        <li class="px-5 py-8 text-center text-sm text-gray-500">Sin cambios registrados todavía.</li>
+                    @endforelse
+                </ul>
+            </section>
+        </div>
+
 <div class="grid gap-6 lg:grid-cols-2">
         {{-- Eventos --}}
         <section class="rounded-xl border border-gray-200 bg-white shadow-2xs">
@@ -290,6 +418,25 @@
     </div>
 
 @include('vendors.tabs.modales')
+
+    <script>
+        window.addEventListener('load', function () {
+            if (typeof ApexCharts === 'undefined') return;
+
+            new ApexCharts(document.querySelector('#grafica-comercio'), {
+                chart: { type: 'area', height: 220, toolbar: { show: false }, fontFamily: 'inherit' },
+                series: [{ name: 'Ventas netas (RD$)', data: @json($serie->pluck('total')) }],
+                xaxis: { categories: @json($serie->pluck('dia')), labels: { style: { colors: '#6b7280', fontSize: '11px' } } },
+                yaxis: { labels: { style: { colors: '#6b7280', fontSize: '11px' }, formatter: (v) => 'RD$ ' + v.toLocaleString('es-DO') } },
+                colors: ['#0284c7'],
+                stroke: { curve: 'smooth', width: 2 },
+                fill: { type: 'gradient', gradient: { opacityFrom: 0.35, opacityTo: 0.05 } },
+                dataLabels: { enabled: false },
+                grid: { borderColor: '#e5e7eb', strokeDashArray: 3 },
+                tooltip: { y: { formatter: (v) => 'RD$ ' + v.toLocaleString('es-DO', { minimumFractionDigits: 2 }) } },
+            }).render();
+        });
+    </script>
 
     {{-- Modal: editar datos --}}
     <div id="modal-editar" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">

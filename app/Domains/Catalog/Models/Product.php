@@ -8,6 +8,7 @@ use App\Domains\Catalog\Enums\ProductType;
 use App\Domains\Catalog\Exceptions\CatalogException;
 use App\Domains\EventManagement\Concerns\BelongsToVendor;
 use App\Domains\Inventory\Models\InventoryItem;
+use App\Domains\Sales\Models\OrderLine;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Collection;
@@ -15,6 +16,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 /**
  * Lo que se vende. Un producto sencillo se despacha tal cual (y puede
@@ -44,6 +47,10 @@ class Product extends Model
 
     /** @use HasFactory<ProductFactory> */
     use HasFactory;
+
+    // Cambiar un precio es una decisión de negocio con consecuencias: queda
+    // registrado quién, cuándo y desde qué valor.
+    use LogsActivity;
 
     protected $fillable = [
         'category_id',
@@ -131,12 +138,40 @@ class Product extends Model
             }
         };
 
+        // Un producto que ya se vendió es parte de la historia: borrarlo
+        // dejaría ventas apuntando al vacío. Se desactiva, no se borra.
+        static::deleting(function (Product $product): void {
+            if ($product->orderLines()->withoutGlobalScopes()->exists()) {
+                throw CatalogException::productHasSales($product->name);
+            }
+        });
+
         static::creating($soloSimplesVinculan);
         static::updating(function (Product $product) use ($soloSimplesVinculan): void {
             if ($product->isDirty('inventory_item_id')) {
                 $soloSimplesVinculan($product);
             }
         });
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['name', 'price_cents', 'active', 'itbis_exempt', 'category_id', 'inventory_item_id'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs()
+            ->useLogName('catalogo');
+    }
+
+    /**
+     * Las líneas vendidas que lo mencionan. Congelan su nombre y su precio,
+     * pero apuntan aquí: por eso un producto vendido no se borra.
+     *
+     * @return HasMany<OrderLine, $this>
+     */
+    public function orderLines(): HasMany
+    {
+        return $this->hasMany(OrderLine::class);
     }
 
     /**

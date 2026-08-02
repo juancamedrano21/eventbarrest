@@ -27,6 +27,14 @@ class CatalogException extends RuntimeException
         );
     }
 
+    public static function productHasSales(string $product): self
+    {
+        return new self(
+            "[{$product}] ya tiene ventas registradas: no se borra, se desactiva. ".
+            'Borrarlo dejaría ventas apuntando a un producto inexistente.'
+        );
+    }
+
     public static function typeIsImmutable(): self
     {
         return new self(

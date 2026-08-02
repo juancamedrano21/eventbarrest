@@ -1,7 +1,11 @@
 {{-- Parcial compartido entre /panel (organizador) y /comercio (encargado):
      las acciones llegan en $urls, cada puerta pone las suyas. $puede acota
      por capacidades; sin él, todo permitido (el organizador ya autorizó). --}}
-@php($itbisVaAparte = ($modoVigente ?? null)?->value === 'added')
+{{-- Bloque, nunca @php(...) inline: el inline se empareja con el primer
+     @endphp del archivo y se traga las directivas siguientes. --}}
+@php
+    $itbisVaAparte = ($modoVigente ?? null)?->value === 'added';
+@endphp
 @if ($puede['catalogo'] ?? true)
 {{-- Modal: nueva categoría --}}
     <div id="modal-categoria" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">

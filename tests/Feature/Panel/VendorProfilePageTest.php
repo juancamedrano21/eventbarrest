@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Catalog\Enums\DispatchArea;
 use App\Domains\Catalog\Enums\ProductType;
+use App\Domains\Catalog\Exceptions\CatalogException;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Actions\CreateEvent;
@@ -31,6 +32,7 @@ use App\Domains\Tenancy\TenantContext;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Spatie\Activitylog\Models\Activity;
 
 /**
  * La primera pantalla del panel nuevo (Blade + Preline, ADR-006): el perfil
@@ -536,4 +538,59 @@ it('never wipes settings the submitted form does not carry', function (): void {
         ->assertRedirect();
 
     expect(Vendor::query()->withoutGlobalScopes()->findOrFail($this->vendor->id)->itbis_mode)->toBeNull();
+});
+
+it('logs who changed a price and shows it in the summary', function (): void {
+    $producto = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+        $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+
+        return Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 20000]);
+    }));
+
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/productos/{$producto->id}", ['price' => '275'])
+        ->assertRedirect();
+
+    // El log guarda el valor VIEJO: sin eso no se puede auditar nada.
+    $log = Activity::query()->where('subject_type', Product::class)->where('event', 'updated')->latest()->first();
+    expect($log)->not->toBeNull()
+        ->and($log->properties['old']['price_cents'])->toBe(20000)
+        ->and($log->properties['attributes']['price_cents'])->toBe(27500)
+        ->and($log->causer_id)->toBe($this->owner->id);
+
+    // Y el resumen lo cuenta en cristiano.
+    $this->actingAs($this->owner)
+        ->get("/panel/comercios/{$this->vendor->id}")
+        ->assertOk()
+        ->assertSee('Cambios en el menú')
+        ->assertSee('Ana')
+        ->assertSeeInOrder(['precio', '200.00', '275.00']);
+});
+
+it('refuses to delete a product that already has sales', function (): void {
+    [$taco, $sinVender] = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs($this->vendor, function () {
+        app(InviteVendorToEvent::class)($this->event, $this->vendor, 0);
+        $puesto = outletFor($this->event, 'Puesto', OperatingUnitKind::Kitchen, $this->vendor);
+        $cat = Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+        $taco = Product::create(['category_id' => $cat->id, 'name' => 'Taco', 'type' => ProductType::Simple, 'price_cents' => 25000]);
+        $otro = Product::create(['category_id' => $cat->id, 'name' => 'Nunca vendido', 'type' => ProductType::Simple, 'price_cents' => 10000]);
+
+        $caja = app(OpenCashSession::class)($puesto, null, 0);
+        $orden = app(PlaceOrder::class)($caja, [['product_id' => $taco->id, 'quantity' => 1]], 'borrar-001');
+        app(PayOrder::class)($orden, PaymentMethod::Cash, 25000);
+
+        return [$taco, $otro];
+    }));
+
+    // Vendido: es historia, se desactiva pero no se borra.
+    expect(fn () => $taco->delete())->toThrow(CatalogException::class);
+    expect(Product::query()->withoutGlobalScopes()->find($taco->id))->not->toBeNull();
+
+    // Sin ventas: se puede borrar sin dejar huérfanos.
+    app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs(
+        $this->vendor,
+        fn () => $sinVender->delete(),
+    ));
+
+    expect(Product::query()->withoutGlobalScopes()->find($sinVender->id))->toBeNull();
 });

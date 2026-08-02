@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Panel;
 
 use App\Domains\Catalog\Models\Category;
+use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Models\Event;
@@ -21,14 +22,18 @@ use App\Domains\Platform\Models\FoodType;
 use App\Domains\Platform\Models\VendorType;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Models\OrderLine;
 use App\Domains\Sales\Models\Payment;
+use App\Domains\Sales\Models\Refund;
 use App\Domains\Sales\Queries\NetSales;
 use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
+use Spatie\Activitylog\Models\Activity;
 
 /**
  * El perfil del comercio en el panel nuevo (Blade + Preline): la vista del
@@ -51,10 +56,90 @@ class VendorProfileController extends Controller
 
         // Netas de reembolsos: lo devuelto no es venta (se resta el día en
         // que salió de la gaveta, como en el arqueo).
-        $inicioHoy = today(config('app.business_timezone'))->utc();
+        $tz = (string) config('app.business_timezone');
+        $inicioHoy = today($tz)->utc();
+        $inicio30 = today($tz)->subDays(29)->utc();
+        $inicioSerie = today($tz)->subDays(13)->utc();
         $devuelto = app(NetSales::class);
 
+        $cobradas = fn () => Order::query()
+            ->where('vendor_id', $record->id)
+            ->where('status', OrderStatus::Paid->value);
+
+        // Agrupación por día LOCAL (RD), igual que el dashboard.
+        $diaLocal = DB::connection()->getDriverName() === 'sqlite'
+            ? sprintf("DATE(paid_at, '%+d minutes')", now($tz)->utcOffset())
+            : sprintf("DATE(CONVERT_TZ(paid_at, '+00:00', '%s'))", now($tz)->format('P'));
+
+        $ventasPorDia = $cobradas()
+            ->where('paid_at', '>=', $inicioSerie)
+            ->selectRaw("{$diaLocal} as dia, SUM(total_cents) as total")
+            ->groupBy('dia')
+            ->pluck('total', 'dia');
+
+        $devueltoPorDia = Refund::query()
+            ->where('refunds.vendor_id', $record->id)
+            ->where('refunds.created_at', '>=', $inicioSerie)
+            ->selectRaw(str_replace('paid_at', 'refunds.created_at', $diaLocal).' as dia, SUM(amount_cents) as total')
+            ->groupBy('dia')
+            ->pluck('total', 'dia');
+
+        $serie = collect(range(13, 0))->map(function (int $atras) use ($tz, $ventasPorDia, $devueltoPorDia) {
+            $dia = today($tz)->subDays($atras)->toDateString();
+
+            return [
+                'dia' => today($tz)->subDays($atras)->format('d M'),
+                'total' => round(((int) ($ventasPorDia[$dia] ?? 0) - (int) ($devueltoPorDia[$dia] ?? 0)) / 100, 2),
+            ];
+        });
+
+        // Lo vendido de verdad, por producto: de las líneas congeladas.
+        $lineasDeVentas = OrderLine::query()
+            ->join('orders as o', 'o.id', '=', 'order_lines.order_id')
+            ->where('o.vendor_id', $record->id)
+            ->where('o.status', OrderStatus::Paid->value)
+            ->where('o.paid_at', '>=', $inicio30);
+
+        $topProductos = (clone $lineasDeVentas)
+            ->selectRaw('order_lines.product_name as nombre, SUM(order_lines.quantity) as unidades, SUM(order_lines.total_cents) as importe')
+            ->groupBy('order_lines.product_name')
+            ->orderByDesc('importe')
+            ->limit(5)
+            ->toBase()
+            ->get();
+
+        $ordenes30 = (clone $cobradas())->where('paid_at', '>=', $inicio30);
+        $conteo30 = (clone $ordenes30)->count();
+        $bruto30 = (int) (clone $ordenes30)->sum('total_cents');
+
         return view('panel.vendors.show', [
+            'serie' => $serie,
+            'topProductos' => $topProductos,
+            'conteo30' => $conteo30,
+            'bruto30' => $bruto30,
+            'devuelto30' => $devuelto->refundedBetween((string) $inicio30, null, $record->id),
+            'ticketPromedio' => $conteo30 > 0 ? (int) round($bruto30 / $conteo30) : 0,
+            'itbis30' => (int) (clone $ordenes30)->sum('itbis_cents'),
+            'propinas30' => (int) (clone $ordenes30)->sum('tip_cents'),
+            'porMetodo' => Payment::query()
+                ->whereIn('order_id', (clone $ordenes30)->select('orders.id'))
+                ->selectRaw('method, COUNT(*) as veces, SUM(amount_cents) as total')
+                ->groupBy('method')
+                ->toBase()
+                ->get(),
+            // Quién tocó qué en el menú: precios, estado, fiscalidad.
+            'actividad' => Activity::query()
+                ->where('log_name', 'catalogo')
+                ->where('subject_type', Product::class)
+                ->whereIn('subject_id', Product::query()
+                    ->withoutGlobalScopes()
+                    ->where('vendor_id', $record->id)
+                    ->select('id'))
+                ->with('causer')
+                ->latest()
+                ->limit(12)
+                ->get(),
+            'tz' => $tz,
             'salesToday' => (int) Order::query()
                 ->where('vendor_id', $record->id)
                 ->where('status', OrderStatus::Paid->value)
