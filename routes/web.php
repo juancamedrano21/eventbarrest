@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Comercio\CatalogController as ComercioCatalogController;
 use App\Http\Controllers\Comercio\HomeController as ComercioHomeController;
 use App\Http\Controllers\Comercio\InventoryController as ComercioInventoryController;
@@ -26,7 +27,14 @@ Route::view('/pos', 'pos');
 
 // El panel NUEVO (Blade + Preline, ADR-006): convive con Filament hasta la
 // paridad. La autenticación es la misma sesión del panel clásico.
-Route::redirect('/login', '/app/login')->name('login');
+// La entrada única (ADR-007): una pantalla, y cada quien a SU puerta.
+Route::get('/entrar', [LoginController::class, 'show'])->name('login');
+Route::post('/entrar', [LoginController::class, 'store'])->name('login.store');
+Route::post('/salir', [LoginController::class, 'destroy'])->middleware('auth')->name('logout');
+
+// El nombre 'login' es el que usa el middleware auth para mandar de vuelta
+// a los invitados; /login queda como atajo humano.
+Route::redirect('/login', '/entrar');
 
 Route::middleware(['auth'])->prefix('panel')->name('panel.')->group(function (): void {
     Route::get('/', DashboardController::class)->name('home');

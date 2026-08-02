@@ -23,7 +23,7 @@
                     <a href="/pos" target="_blank" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">POS</a>
                 @endif
                 <span class="hidden text-sm text-gray-500 sm:block">{{ auth()->user()?->name }}</span>
-                <form method="POST" action="{{ route('filament.app.auth.logout') }}">
+                <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <button type="submit" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">Salir</button>
                 </form>
