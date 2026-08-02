@@ -84,6 +84,9 @@
                         @endif
                         <li class="mt-2 text-sm text-gray-600">Caja #{{ $sale->cash_session_id }} — {{ $sale->cashSession?->status?->value === 'open' ? 'abierta' : 'cerrada' }}</li>
                         <li class="text-sm text-gray-600">Cajero: {{ $sale->user?->name ?? '—' }}</li>
+                        @if ($sale->customer_name)
+                            <li class="mt-2 text-sm text-gray-600">A nombre de: <span class="text-gray-800">{{ $sale->customer_name }}</span></li>
+                        @endif
                         <li class="mt-2 font-mono text-[11px] text-gray-400" title="Referencia técnica de la sincronización">ref {{ $sale->client_ref }}</li>
                     </ul>
                 </div>

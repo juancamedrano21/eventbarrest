@@ -1,3 +1,4 @@
+import { nextTick } from 'vue';
 import { defineStore } from 'pinia';
 import { api, setToken, hasToken } from './api';
 import { db, kvGet, kvSet } from './db';
@@ -38,6 +39,8 @@ export const usePos = defineStore('pos', {
         loadingSales: false,
         salesLoaded: false,
         cart: [],
+        lastSale: null,
+        printJob: null,
         withTip: false,
         pending: 0,
         errored: 0,
@@ -220,6 +223,26 @@ export const usePos = defineStore('pos', {
             this.saveDraft();
         },
 
+        /**
+         * Manda un ticket al papel. El navegador es la impresora: no hay
+         * driver que instalar y funciona igual en la tableta de la barra y
+         * en el ordenador de la oficina.
+         */
+        async printTicket(ticket, kind = 'recibo', number = null) {
+            this.printJob = { ticket, kind, number };
+            await nextTick();
+
+            // Se limpia con afterprint y no justo despues de print(): en
+            // varios navegadores print() vuelve ANTES de que el usuario
+            // decida, y borrarlo antes imprimiria una hoja en blanco.
+            const limpiar = () => {
+                this.printJob = null;
+                window.removeEventListener('afterprint', limpiar);
+            };
+            window.addEventListener('afterprint', limpiar);
+            window.print();
+        },
+
         // Quitar la linea ENTERA, sin restar de una en una: en una orden de
         // ocho cervezas, tocar ocho veces el menos es un castigo.
         dropLine(productId) {
@@ -230,25 +253,50 @@ export const usePos = defineStore('pos', {
         // La venta se COBRA aqui, en el dispositivo: va a la bandeja local y
         // se sincroniza cuando haya senal. La referencia es un UUID: unica
         // aunque haya dos pestanas o se pierda el almacenamiento.
-        async charge(method, tenderedCents) {
+        async charge(method, tenderedCents, customerName = null) {
             if (this.closingTill || !this.session) {
                 this.error = 'La caja se esta cerrando: no se puede cobrar.';
                 return;
             }
+            const nombre = (customerName ?? '').trim() || null;
             const sale = {
                 client_ref: crypto.randomUUID(),
                 cash_session_id: this.session.id,
+                customer_name: nombre,
                 with_tip: this.withTip,
                 lines: this.cart.map((line) => ({ product_id: line.product_id, quantity: line.quantity })),
                 payment: { method, tendered_cents: tenderedCents },
                 display: { ...this.totals, method },
+                // El ticket LEGIBLE, congelado aqui: la reimpresion no
+                // depende ni del catalogo (un producto puede desaparecer)
+                // ni de la red (el turno sigue sin senal).
+                ticket: {
+                    customer_name: nombre,
+                    unit_name: this.units.find((unit) => unit.id === this.session.operating_unit_id)?.name ?? null,
+                    cashier: this.user?.name ?? null,
+                    method,
+                    tendered_cents: tenderedCents,
+                    change_cents: Math.max(0, tenderedCents - this.totals.total),
+                    ...this.totals,
+                    lines: this.cart.map((line) => ({
+                        product_id: line.product_id,
+                        product_name: line.name,
+                        quantity: line.quantity,
+                        unit_price_cents: line.price_cents,
+                        total_cents: line.price_cents * line.quantity,
+                    })),
+                },
                 status: 'pendiente',
                 created_at: Date.now(),
             };
             // Mismo saneo que kvSet: hoy la venta es toda primitivos, pero
             // el dia que una linea gane un campo anidado copiado por
             // referencia, seria un proxy reactivo y IndexedDB no los clona.
-            await db.outbox.add(JSON.parse(JSON.stringify(sale)));
+            const localId = await db.outbox.add(JSON.parse(JSON.stringify(sale)));
+            // Lo que la pantalla de exito enseña y lo que se imprime. El
+            // numero lo pone el SERVIDOR: sin senal todavia no existe, y el
+            // recibo lo dice en vez de inventarse uno.
+            this.lastSale = { ...JSON.parse(JSON.stringify(sale)), id: localId, number: null };
             this.cart = [];
             this.withTip = false;
             await kvSet('draft', null);
@@ -274,6 +322,7 @@ export const usePos = defineStore('pos', {
                     const result = await api.syncOrder({
                         cash_session_id: sale.cash_session_id,
                         client_ref: sale.client_ref,
+                        customer_name: sale.customer_name ?? null,
                         with_tip: sale.with_tip,
                         lines: sale.lines,
                         payment: sale.payment,
@@ -297,6 +346,11 @@ export const usePos = defineStore('pos', {
                         continue;
                     }
                     await db.outbox.update(sale.id, { status: 'sincronizada', server: result });
+                    // Si es la venta que el cajero tiene delante, el numero
+                    // aparece solo en cuanto el servidor lo asigna.
+                    if (this.lastSale?.id === sale.id) {
+                        this.lastSale = { ...this.lastSale, number: result.number, status: 'sincronizada' };
+                    }
                 } catch (error) {
                     if (!error?.status) {
                         break; // sin red: todo lo demas puede esperar

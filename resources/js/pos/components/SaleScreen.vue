@@ -9,6 +9,8 @@ const search = ref('');
 const paying = ref(false);
 const method = ref('cash');
 const tendered = ref('');
+const customer = ref('');
+const done = ref(false);
 
 const matchesSearch = (product) => search.value.trim() === ''
     || product.name.toLowerCase().includes(search.value.trim().toLowerCase());
@@ -70,6 +72,7 @@ function openPayment() {
     // El modal abre limpio: nada del cobro anterior se hereda.
     method.value = 'cash';
     tendered.value = '';
+    customer.value = '';
     paying.value = true;
 }
 
@@ -86,11 +89,23 @@ async function confirm() {
     try {
         // Tarjeta y transferencia van por el monto exacto; el vuelto es
         // cosa del efectivo. El cobro queda local y sincroniza solo.
-        await pos.charge(method.value, method.value === 'cash' ? tenderedCents.value : pos.totals.total);
+        await pos.charge(
+            method.value,
+            method.value === 'cash' ? tenderedCents.value : pos.totals.total,
+            customer.value,
+        );
         paying.value = false;
+        // La venta cobrada se confirma en pantalla: sin esto el cajero se
+        // queda sin saber si pasó, y el ticket vacío no es respuesta.
+        if (pos.lastSale) done.value = true;
     } finally {
         submitting.value = false;
     }
+}
+
+function printFrom(kind) {
+    if (! pos.lastSale) return;
+    pos.printTicket(pos.lastSale.ticket, kind, pos.lastSale.number);
 }
 </script>
 
@@ -218,6 +233,11 @@ async function confirm() {
 
                 <p class="pay-total money">{{ money(pos.totals.total) }}</p>
 
+                <label class="field"><span>A nombre de <em>(opcional)</em></span>
+                    <input v-model="customer" type="text" maxlength="60" placeholder="Para gritar cuando salga"
+                        autocapitalize="words" autocomplete="off">
+                </label>
+
                 <div class="segmented">
                     <button v-for="option in methods" :key="option.value"
                         :class="{ active: method === option.value }" @click="method = option.value">
@@ -243,6 +263,43 @@ async function confirm() {
                 <button class="btn-primary" :disabled="!canCharge || submitting" @click="confirm()">
                     {{ submitting ? 'Cobrando...' : 'Confirmar cobro' }}
                 </button>
+            </div>
+        </div>
+
+        <div v-if="done && pos.lastSale" class="overlay" @click.self="done = false">
+            <div class="sheet done-sheet">
+                <span class="done-mark">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+                <h2 class="done-title">Venta cobrada</h2>
+                <p class="done-total money">{{ money(pos.lastSale.ticket.total) }}</p>
+
+                <div class="done-facts">
+                    <div class="done-row">
+                        <span>Orden</span>
+                        <strong v-if="pos.lastSale.number">{{ pos.lastSale.number }}</strong>
+                        <em v-else class="done-pending">se asigna al sincronizar</em>
+                    </div>
+                    <div v-if="pos.lastSale.ticket.customer_name" class="done-row">
+                        <span>Para</span><strong>{{ pos.lastSale.ticket.customer_name }}</strong>
+                    </div>
+                    <div v-if="pos.lastSale.ticket.method === 'cash' && pos.lastSale.ticket.change_cents > 0" class="done-row">
+                        <span>Vuelto</span><strong class="money done-change">{{ money(pos.lastSale.ticket.change_cents) }}</strong>
+                    </div>
+                </div>
+
+                <div class="done-actions">
+                    <button class="btn-soft" @click="printFrom('comanda')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+                        Comanda
+                    </button>
+                    <button class="btn-soft" @click="printFrom('recibo')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+                        Recibo
+                    </button>
+                </div>
+
+                <button class="btn-primary" @click="done = false">Siguiente venta</button>
             </div>
         </div>
 
@@ -426,6 +483,30 @@ async function confirm() {
 .pay-chips { margin: -.3rem 0 .9rem; }
 .change { color: var(--ok); font-size: 1.05rem; font-weight: 700; margin-bottom: .9rem; }
 .short { color: var(--bad); font-size: 1rem; font-weight: 600; margin-bottom: .9rem; }
+
+/* ---------- Venta cobrada ---------- */
+.done-sheet { text-align: center; width: min(380px, 100%); }
+.done-mark {
+    display: grid; place-items: center; width: 54px; height: 54px; margin: 0 auto .8rem;
+    border-radius: 4px; background: var(--ok); color: #fff;
+}
+.done-mark svg { width: 28px; height: 28px; }
+.done-title { font-size: 1.05rem; margin-bottom: .2rem; }
+.done-total { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 1rem; }
+.done-facts {
+    display: flex; flex-direction: column; gap: .4rem;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: .8rem 0; margin-bottom: 1rem; text-align: left;
+}
+.done-row { display: flex; justify-content: space-between; gap: 1rem; font-size: .86rem; color: var(--muted); }
+.done-row strong { color: var(--text); }
+.done-pending { font-size: .8rem; }
+.done-change { color: var(--ok); font-size: 1rem; }
+.done-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: .8rem; }
+.done-actions .btn-soft {
+    display: flex; align-items: center; justify-content: center; gap: .4rem; padding: .7rem;
+}
+.done-actions svg { width: 16px; height: 16px; }
 
 /* ---------- Movil ---------- */
 @media (max-width: 900px) {

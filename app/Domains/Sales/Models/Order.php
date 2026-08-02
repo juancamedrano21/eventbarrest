@@ -61,7 +61,7 @@ class Order extends Model
     use BelongsToTenant;
     use BelongsToVendor;
 
-    protected $fillable = ['client_ref', 'status', 'subtotal_cents', 'itbis_cents', 'tip_cents', 'total_cents'];
+    protected $fillable = ['client_ref', 'customer_name', 'status', 'subtotal_cents', 'itbis_cents', 'tip_cents', 'total_cents'];
 
     protected function casts(): array
     {

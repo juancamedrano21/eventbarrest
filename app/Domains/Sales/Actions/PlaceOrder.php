@@ -43,6 +43,7 @@ class PlaceOrder
         ?User $user = null,
         bool $withTip = false,
         SalesChannel $channel = SalesChannel::Pos,
+        ?string $customerName = null,
     ): Order {
         if ($lines === []) {
             throw SalesException::orderNeedsLines();
@@ -69,7 +70,7 @@ class PlaceOrder
         }
 
         try {
-            return $this->create($session, $lines, $clientRef, $user, $withTip, $channel);
+            return $this->create($session, $lines, $clientRef, $user, $withTip, $channel, $customerName);
         } catch (UniqueConstraintViolationException $exception) {
             // Carrera del reenvío offline: otro request la creó primero. Si
             // lo que chocó fue el NÚMERO, el reintento del contador es la
@@ -114,6 +115,21 @@ class PlaceOrder
     /**
      * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
      */
+    /**
+     * Un nombre para gritar, no un campo de texto libre: se recorta a lo que
+     * cabe en la comanda y el vacío es null, no una cadena en blanco que
+     * luego imprima una línea sola.
+     */
+    private function nombreLimpio(?string $name): ?string
+    {
+        $limpio = trim((string) $name);
+
+        return $limpio === '' ? null : mb_substr($limpio, 0, 60);
+    }
+
+    /**
+     * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
+     */
     private function create(
         CashSession $session,
         array $lines,
@@ -121,8 +137,9 @@ class PlaceOrder
         ?User $user,
         bool $withTip,
         SalesChannel $channel,
+        ?string $customerName,
     ): Order {
-        return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip, $channel): Order {
+        return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip, $channel, $customerName): Order {
             $unit = OperatingUnit::query()->withoutGlobalScopes()
                 ->whereKey($session->operating_unit_id)
                 ->first(['tenant_id', 'vendor_id', 'event_id']);
@@ -167,6 +184,8 @@ class PlaceOrder
 
             $order = new Order([
                 'client_ref' => $clientRef,
+                // A nombre de quién: lo que se grita cuando el plato sale.
+                'customer_name' => $this->nombreLimpio($customerName),
                 'status' => OrderStatus::Open,
                 'subtotal_cents' => $subtotal,
                 'itbis_cents' => $itbis,

@@ -87,7 +87,12 @@
                                     {{ $orden->paid_at?->timezone($tz)->format('d/m/Y H:i') }}
                                 </td>
                                 <td class="px-5 py-3 text-gray-600">{{ $orden->operatingUnit?->name }}</td>
-                                <td class="px-5 py-3 text-gray-600">{{ $orden->user?->name ?? '—' }}</td>
+                                <td class="px-5 py-3 text-gray-600">
+                                    {{ $orden->user?->name ?? '—' }}
+                                    @if ($orden->customer_name)
+                                        <span class="block text-xs text-gray-400">para {{ $orden->customer_name }}</span>
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-right text-gray-500">
                                     {{ $orden->tip_cents > 0 ? $moneda($orden->tip_cents) : '—' }}
                                 </td>

@@ -6,6 +6,7 @@ import LoginScreen from './components/LoginScreen.vue';
 import TillScreen from './components/TillScreen.vue';
 import SaleScreen from './components/SaleScreen.vue';
 import SalesScreen from './components/SalesScreen.vue';
+import TicketPrint from './components/TicketPrint.vue';
 
 const pos = usePos();
 
@@ -150,6 +151,14 @@ const statusLabel = {
                 </p>
             </div>
         </div>
+
+        <!-- El ticket cuelga de <body> para que la hoja de impresion pueda
+             esconder todo lo demas con una sola regla. -->
+        <Teleport to="body">
+            <div v-if="pos.printJob" class="print-root">
+                <TicketPrint :ticket="pos.printJob.ticket" :kind="pos.printJob.kind" :number="pos.printJob.number" />
+            </div>
+        </Teleport>
 
         <LoginScreen v-if="pos.screen === 'login'" />
         <TillScreen v-else-if="pos.screen === 'till'" />

@@ -27,6 +27,24 @@ const puedeDevolver = computed(() => amountCents.value > 0
     && amountCents.value <= pendiente.value
     && reason.value.trim() !== '');
 
+// La venta del listado viene del servidor con sus lineas congeladas: se
+// reimprime tal cual se cobro, aunque el producto ya no exista en la carta.
+function reimprimir(sale, kind) {
+    pos.printTicket({
+        customer_name: sale.customer_name ?? null,
+        unit_name: pos.units.find((unit) => unit.id === pos.session?.operating_unit_id)?.name ?? null,
+        cashier: pos.user?.name ?? null,
+        method: sale.method,
+        subtotal_cents: sale.subtotal_cents,
+        itbis_cents: sale.itbis_cents,
+        tip_cents: sale.tip_cents,
+        total_cents: sale.total_cents,
+        change_cents: 0,
+        printed_at: sale.paid_at,
+        lines: sale.lines ?? [],
+    }, kind, sale.number);
+}
+
 function abrir(sale) {
     refunding.value = sale;
     // Lo habitual es devolver todo lo que queda: se ofrece cargado.
@@ -76,6 +94,7 @@ onMounted(() => pos.loadSales());
                             {{ sale.status === 'paid' ? 'Cobrada' : (sale.status === 'void' ? 'Anulada' : 'Abierta') }}
                         </span>
                         <template v-if="sale.method">{{ sale.method === 'cash' ? 'Efectivo' : (sale.method === 'card' ? 'Tarjeta' : 'Transferencia') }}</template>
+                        <span v-if="sale.customer_name" class="sale-customer">· {{ sale.customer_name }}</span>
                     </span>
                 </div>
 
@@ -86,10 +105,19 @@ onMounted(() => pos.loadSales());
                     </span>
                 </div>
 
-                <button v-if="pos.canRefund && sale.status === 'paid' && sale.refunded_cents < sale.total_cents"
-                    class="btn-soft btn-refund" @click="abrir(sale)">
-                    Reembolsar
-                </button>
+                <div class="sale-actions">
+                    <button class="btn-soft btn-print" title="Reimprimir el recibo" @click="reimprimir(sale, 'recibo')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>
+                        Recibo
+                    </button>
+                    <button class="btn-soft btn-print" title="Reimprimir la comanda" @click="reimprimir(sale, 'comanda')">
+                        Comanda
+                    </button>
+                    <button v-if="pos.canRefund && sale.status === 'paid' && sale.refunded_cents < sale.total_cents"
+                        class="btn-soft btn-refund" @click="abrir(sale)">
+                        Reembolsar
+                    </button>
+                </div>
             </li>
         </ul>
 
@@ -153,6 +181,10 @@ h1 { font-size: 1.15rem; }
 .sale-total { font-weight: 600; font-size: .92rem; }
 .sale-refunded { font-size: .72rem; color: var(--warn); }
 .btn-refund { flex-shrink: 0; }
+.sale-actions { display: flex; gap: .4rem; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+.btn-print { display: inline-flex; align-items: center; gap: .35rem; }
+.btn-print svg { width: 14px; height: 14px; }
+.sale-customer { color: var(--text); }
 
 .search-row { margin-bottom: .8rem; }
 .state-chip { border-radius: 4px; padding: .1rem .4rem; font-size: .68rem; font-weight: 700; margin-right: .35rem; }

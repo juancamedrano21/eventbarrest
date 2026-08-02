@@ -9,6 +9,7 @@ use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Enums\PaymentMethod;
+use App\Domains\Sales\Enums\SalesChannel;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
@@ -33,6 +34,7 @@ class PosOrderController extends Controller
             'cash_session_id' => ['required', 'integer'],
             'client_ref' => ['required', 'string', 'max:40'],
             'with_tip' => ['sometimes', 'boolean'],
+            'customer_name' => ['sometimes', 'nullable', 'string', 'max:60'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'integer'],
             'lines.*.quantity' => ['required', 'numeric'],
@@ -57,6 +59,8 @@ class PosOrderController extends Controller
                 $data['client_ref'],
                 $request->user(),
                 (bool) ($data['with_tip'] ?? false),
+                SalesChannel::Pos,
+                $data['customer_name'] ?? null,
             );
 
             // La señal de alta se captura AQUÍ: el cobro relee con lock y
@@ -105,6 +109,7 @@ class PosOrderController extends Controller
             'id' => $order->id,
             'number' => $order->publicNumber(),
             'client_ref' => $order->client_ref,
+            'customer_name' => $order->customer_name,
             'cash_session_id' => $order->cash_session_id,
             'status' => $order->status->value,
             'subtotal_cents' => $order->subtotal_cents,

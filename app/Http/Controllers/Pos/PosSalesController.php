@@ -9,6 +9,7 @@ use App\Domains\Sales\Actions\RefundOrder;
 use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Models\OrderLine;
 use App\Domains\Sales\Models\Refund;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -35,7 +36,10 @@ class PosSalesController extends Controller
 
         $orders = Order::query()
             ->where('cash_session_id', $session->id)
-            ->with(['payments', 'refunds'])
+            // Las líneas viajan para poder REIMPRIMIR desde el listado sin
+            // volver a preguntar: el cajero que reimprime suele estar en
+            // medio de un turno, no esperando una segunda petición.
+            ->with(['payments', 'refunds', 'lines'])
             ->orderByDesc('id')
             ->limit(100)
             ->get();
@@ -47,8 +51,21 @@ class PosSalesController extends Controller
                 'status' => $order->status->value,
                 'total_cents' => $order->total_cents,
                 'refunded_cents' => (int) $order->refunds->sum('amount_cents'),
+                'customer_name' => $order->customer_name,
                 'method' => $order->payments->first()?->method->value,
                 'paid_at' => $order->paid_at,
+                'subtotal_cents' => $order->subtotal_cents,
+                'itbis_cents' => $order->itbis_cents,
+                'tip_cents' => $order->tip_cents,
+                // ->all() y no ->values(): una colección anidada dentro de
+                // otra deja el tipo del map exterior sin resolver.
+                'lines' => $order->lines->map(fn (OrderLine $line): array => [
+                    'product_id' => $line->product_id,
+                    'product_name' => $line->product_name,
+                    'quantity' => (float) $line->quantity,
+                    'unit_price_cents' => (int) $line->unit_price_cents,
+                    'total_cents' => (int) $line->total_cents,
+                ])->all(),
             ])->values(),
         ]);
     }
