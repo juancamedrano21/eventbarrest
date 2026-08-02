@@ -67,19 +67,28 @@ class RefundOrder
                 throw SalesException::refundAboveRemaining($disponible);
             }
 
-            // La gaveta de la que sale el dinero tiene que estar abierta.
+            // La gaveta de la que sale el dinero tiene que estar abierta, y
+            // ser la de la MISMA unidad donde se vendió: si no, el arqueo
+            // del descuadre se le imputaría a un cajero que no vendió eso.
+            // (Comparar solo vendor_id no basta: en el mundo negocio ambos
+            // son null y el guard no protegería nada.)
             $session = CashSession::query()->whereKey($sessionId)->lockForUpdate()->first();
 
             if ($session === null || ! $session->isOpen()) {
                 throw SalesException::sessionNotOpen();
             }
 
-            if ($session->getAttribute('vendor_id') !== $order->getAttribute('vendor_id')) {
-                throw SalesException::unitOutsideVendor();
+            if ($session->operating_unit_id !== $order->operating_unit_id) {
+                throw SalesException::refundBelongsToAnotherUnit();
             }
 
+            // Se devuelve por donde se cobró: sacar efectivo de una venta
+            // con tarjeta vacía una gaveta donde ese dinero nunca entró.
+            $metodo = $method ?? $order->payments()->value('method') ?? PaymentMethod::Cash;
+            $this->assertMethodWasCharged($order, $metodo, $amountCents);
+
             $refund = new Refund([
-                'method' => $method ?? $order->payments()->value('method') ?? PaymentMethod::Cash,
+                'method' => $metodo,
                 'amount_cents' => $amountCents,
                 'reason' => trim($reason),
             ]);
@@ -90,5 +99,22 @@ class RefundOrder
 
             return $refund;
         }, 3);
+    }
+
+    /**
+     * No se devuelve por un método más de lo que entró por él: el arqueo
+     * de la gaveta depende de que el efectivo que sale haya entrado.
+     */
+    private function assertMethodWasCharged(Order $order, PaymentMethod $method, int $amountCents): void
+    {
+        $cobrado = (int) $order->payments()->where('method', $method->value)->sum('amount_cents');
+        $devuelto = (int) Refund::query()
+            ->where('order_id', $order->id)
+            ->where('method', $method->value)
+            ->sum('amount_cents');
+
+        if ($amountCents > $cobrado - $devuelto) {
+            throw SalesException::refundMethodMismatch($method->getLabel(), max(0, $cobrado - $devuelto));
+        }
     }
 }

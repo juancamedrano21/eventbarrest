@@ -36,6 +36,7 @@ export const usePos = defineStore('pos', {
         permissions: [],
         sales: [],
         loadingSales: false,
+        salesLoaded: false,
         cart: [],
         withTip: false,
         pending: 0,
@@ -321,7 +322,11 @@ export const usePos = defineStore('pos', {
             try {
                 const data = await api.sales(this.session.id);
                 this.sales = data.orders ?? [];
+                this.salesLoaded = true;
             } catch (error) {
+                // «No pude preguntar» no es «no vendiste nada»: la pantalla
+                // debe poder distinguirlo.
+                this.salesLoaded = false;
                 this.fail(error);
             } finally {
                 this.loadingSales = false;

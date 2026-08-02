@@ -22,6 +22,7 @@ use App\Domains\Platform\Models\VendorType;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\Payment;
+use App\Domains\Sales\Queries\NetSales;
 use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\Panel\Concerns\AuthorizesOrganizerPanel;
@@ -48,17 +49,23 @@ class VendorProfileController extends Controller
             ->where('vendor_id', $record->id)
             ->select('id');
 
+        // Netas de reembolsos: lo devuelto no es venta (se resta el día en
+        // que salió de la gaveta, como en el arqueo).
+        $inicioHoy = today(config('app.business_timezone'))->utc();
+        $devuelto = app(NetSales::class);
+
         return view('panel.vendors.show', [
-            // El día del NEGOCIO (RD), no el de UTC — igual que el dashboard.
             'salesToday' => (int) Order::query()
                 ->where('vendor_id', $record->id)
                 ->where('status', OrderStatus::Paid->value)
-                ->where('paid_at', '>=', today(config('app.business_timezone'))->utc())
-                ->sum('total_cents'),
+                ->where('paid_at', '>=', $inicioHoy)
+                ->sum('total_cents')
+                - $devuelto->refundedBetween((string) $inicioHoy, null, $record->id),
             'salesTotal' => (int) Order::query()
                 ->where('vendor_id', $record->id)
                 ->where('status', OrderStatus::Paid->value)
-                ->sum('total_cents'),
+                ->sum('total_cents')
+                - $devuelto->refundedBetween(null, null, $record->id),
             'recentOrders' => Order::query()
                 ->where('vendor_id', $record->id)
                 ->with('operatingUnit')

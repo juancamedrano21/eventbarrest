@@ -13,6 +13,7 @@ use App\Domains\Sales\Models\Refund;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Las ventas del turno vistas desde el POS, y la devolución de dinero.
@@ -60,7 +61,7 @@ class PosSalesController extends Controller
             'cash_session_id' => ['required', 'integer'],
             'amount_cents' => ['required', 'integer', 'min:1'],
             'reason' => ['required', 'string', 'max:255'],
-            'method' => ['nullable', 'string'],
+            'method' => ['nullable', Rule::enum(PaymentMethod::class)],
         ]);
 
         $refund = app(RefundOrder::class)(

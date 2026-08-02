@@ -21,7 +21,10 @@ use App\Domains\Platform\Models\Tenant;
 use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
+use App\Domains\Sales\Actions\RefundOrder;
 use App\Domains\Sales\Enums\PaymentMethod;
+use App\Domains\Sales\Models\CashSession;
+use App\Domains\Sales\Models\Order;
 use App\Domains\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
 
@@ -131,4 +134,28 @@ it('redirects vendor staff to their own door', function (): void {
     $staff = app(CreateTenantUser::class)($organizer, 'Caro', 'caro@x.test', 'Secreta-2026', Role::VendorManager, $vendor);
 
     $this->actingAs($staff)->get('/panel')->assertRedirect('/comercio');
+});
+
+it('never counts refunded money as sales nor charges commission on it', function (): void {
+    [$organizer, , $vendor] = festivalConVentaDeMil();
+
+    // Se devuelve la MITAD de la venta de RD$1,000.
+    app(TenantContext::class)->runAs($organizer, fn () => app(VendorContext::class)->runAs($vendor, function (): void {
+        $orden = Order::query()->where('client_ref', 'dash-001')->sole();
+        $caja = CashSession::query()->sole();
+
+        app(RefundOrder::class)($orden, $caja, 50000, 'Cliente devolvió la mitad');
+    }));
+
+    $owner = app(CreateTenantUser::class)($organizer, 'Ana', 'ana@x.test', 'Secreta-2026', Role::Owner);
+
+    $this->actingAs($owner)
+        ->get('/panel')
+        ->assertOk()
+        // Ventas netas: 1,000 − 500. Y la comisión sobre lo que quedó,
+        // no sobre lo devuelto: 10 % de 500, no de 1,000.
+        ->assertSee('500.00')
+        ->assertSee('50.00')
+        ->assertDontSee('1,000.00')
+        ->assertDontSee('100.00');
 });

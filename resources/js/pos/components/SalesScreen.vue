@@ -11,6 +11,12 @@ const reason = ref('');
 
 const motivos = ['Producto equivocado', 'Cliente se arrepintio', 'Cobro duplicado', 'Producto en mal estado'];
 
+const buscar = ref('');
+const visibles = computed(() => {
+    const q = buscar.value.trim().toLowerCase();
+    return q === '' ? pos.sales : pos.sales.filter((s) => s.number.toLowerCase().includes(q));
+});
+
 const pendiente = computed(() => refunding.value
     ? refunding.value.total_cents - refunding.value.refunded_cents
     : 0);
@@ -49,17 +55,27 @@ onMounted(() => pos.loadSales());
             </button>
         </div>
 
-        <div v-if="pos.sales.length === 0 && !pos.loadingSales" class="sales-empty">
-            <p>Sin ventas en esta caja todavia.</p>
+        <div class="search-row">
+            <input v-model="buscar" type="text" placeholder="Buscar por numero (P0041)" autocapitalize="characters">
+        </div>
+
+        <div v-if="!pos.salesLoaded && !pos.loadingSales" class="sales-empty">
+            <p>No se pudo cargar la lista: necesita senal.</p>
+            <button class="btn-soft" @click="pos.loadSales()">Reintentar</button>
+        </div>
+        <div v-else-if="visibles.length === 0 && !pos.loadingSales" class="sales-empty">
+            <p>{{ buscar.trim() ? 'Ninguna venta con ese numero.' : 'Sin ventas en esta caja todavia.' }}</p>
         </div>
 
         <ul class="sales-list">
-            <li v-for="sale in pos.sales" :key="sale.id" class="sale-row">
+            <li v-for="sale in visibles" :key="sale.id" class="sale-row">
                 <div class="sale-main">
                     <span class="sale-number">{{ sale.number }}</span>
                     <span class="sale-meta">
-                        {{ sale.status === 'paid' ? 'Cobrada' : (sale.status === 'void' ? 'Anulada' : 'Abierta') }}
-                        <template v-if="sale.method"> · {{ sale.method === 'cash' ? 'Efectivo' : (sale.method === 'card' ? 'Tarjeta' : 'Transferencia') }}</template>
+                        <span class="state-chip" :class="'state-' + sale.status">
+                            {{ sale.status === 'paid' ? 'Cobrada' : (sale.status === 'void' ? 'Anulada' : 'Abierta') }}
+                        </span>
+                        <template v-if="sale.method">{{ sale.method === 'cash' ? 'Efectivo' : (sale.method === 'card' ? 'Tarjeta' : 'Transferencia') }}</template>
                     </span>
                 </div>
 
@@ -102,6 +118,10 @@ onMounted(() => pos.loadSales());
                     </button>
                 </div>
 
+                <p v-if="amount !== '' && amountCents > pendiente" class="refund-warn">
+                    No se puede devolver mas de lo disponible.
+                </p>
+
                 <p class="refund-note">
                     La venta no se borra: queda con su reembolso anotado. El inventario no se repone.
                 </p>
@@ -134,6 +154,12 @@ h1 { font-size: 1.15rem; }
 .sale-refunded { font-size: .72rem; color: var(--warn); }
 .btn-refund { flex-shrink: 0; }
 
+.search-row { margin-bottom: .8rem; }
+.state-chip { border-radius: 4px; padding: .1rem .4rem; font-size: .68rem; font-weight: 700; margin-right: .35rem; }
+.state-paid { background: rgba(52, 211, 153, .12); color: #6ee7b7; }
+.state-void { background: rgba(248, 113, 113, .12); color: #fca5a5; }
+.state-open { background: rgba(251, 191, 36, .12); color: #fcd34d; }
+.refund-warn { color: var(--bad); font-size: .82rem; margin-bottom: .8rem; }
 .refund-available { color: var(--muted); font-size: .88rem; margin-bottom: 1rem; }
 .refund-chips { margin: -.3rem 0 1rem; }
 .refund-note { color: var(--muted); font-size: .78rem; margin-bottom: 1rem; line-height: 1.5; }

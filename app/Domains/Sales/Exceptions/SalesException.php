@@ -53,6 +53,23 @@ class SalesException extends RuntimeException
         return new self('Cada línea vende un producto del comercio de la unidad: no se cruzan comercios.', 'line_outside_vendor');
     }
 
+    public static function refundBelongsToAnotherUnit(): self
+    {
+        return new self(
+            'El reembolso sale de la caja de la unidad donde se vendió: abre la caja de ese punto de venta.',
+            'refund_wrong_unit',
+        );
+    }
+
+    public static function refundMethodMismatch(string $metodo, int $disponible): self
+    {
+        return new self(
+            "Por {$metodo} solo quedan RD$ ".number_format($disponible / 100, 2).
+            ' por devolver: se reembolsa por donde se cobró.',
+            'refund_method_mismatch',
+        );
+    }
+
     public static function refundNeedsAReason(): self
     {
         return new self('Un reembolso sin motivo no es auditable: escribe por qué se devuelve.', 'refund_needs_reason');

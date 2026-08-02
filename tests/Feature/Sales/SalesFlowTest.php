@@ -33,6 +33,7 @@ use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\Payment;
+use App\Domains\Sales\Models\Refund;
 use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Domains\Tenancy\TenantContext;
 use Illuminate\Support\Facades\DB;
@@ -566,5 +567,65 @@ it('keeps a refund frozen once written', function (): void {
         // Corregir un reembolso será otro asiento, nunca una edición.
         expect(fn () => $refund->update(['amount_cents' => 1]))->toThrow(SalesException::class)
             ->and(fn () => $refund->delete())->toThrow(SalesException::class);
+    });
+});
+
+it('refunds only through the method that was charged, and from the right drawer', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $conTarjeta = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0060');
+        app(PayOrder::class)($conTarjeta, PaymentMethod::Card, 30000);
+
+        // Sacar efectivo de una venta con tarjeta vaciaría una gaveta donde
+        // ese dinero nunca entró.
+        expect(fn () => app(RefundOrder::class)(
+            $conTarjeta->fresh(), $this->caja, 30000, 'Devolución', PaymentMethod::Cash,
+        ))->toThrow(SalesException::class);
+
+        // Por tarjeta sí, y solo hasta lo cobrado por tarjeta.
+        $refund = app(RefundOrder::class)(
+            $conTarjeta->fresh(), $this->caja, 30000, 'Devolución', PaymentMethod::Card,
+        );
+        expect($refund->method)->toBe(PaymentMethod::Card);
+
+        // El arqueo NO baja: lo devuelto no fue efectivo.
+        $cerrada = app(CloseCashSession::class)($this->caja, 500000);
+        expect($cerrada->expected_cents)->toBe(500000);
+    });
+});
+
+it('refuses to pay a refund out of another unit drawer', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $orden = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0061');
+        app(PayOrder::class)($orden, PaymentMethod::Cash, 30000);
+
+        // Otra sucursal de la MISMA cuenta: su cajero no carga con este
+        // descuadre (y en el mundo negocio ambos vendor_id son null, que
+        // era justo donde el guard viejo no protegía nada).
+        $otra = app(CreateBranch::class)('Sucursal Norte');
+        $cajaAjena = app(OpenCashSession::class)($otra, null, 0);
+
+        expect(fn () => app(RefundOrder::class)($orden->fresh(), $cajaAjena, 30000, 'Devolución'))
+            ->toThrow(SalesException::class);
+    });
+});
+
+it('keeps a refund frozen against a keyed mass update too', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $orden = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0062');
+        app(PayOrder::class)($orden, PaymentMethod::Cash, 30000);
+        $refund = app(RefundOrder::class)($orden->fresh(), $this->caja, 10000, 'Parcial');
+
+        expect(fn () => Refund::query()->whereKey($refund->id)->update(['amount_cents' => 1]))
+            ->toThrow(SalesException::class)
+            ->and(fn () => Refund::query()->whereKey($refund->id)->delete())
+            ->toThrow(SalesException::class);
+
+        expect(Refund::query()->withoutGlobalScopes()->findOrFail($refund->id)->amount_cents)->toBe(10000);
     });
 });

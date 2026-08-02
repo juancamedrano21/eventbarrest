@@ -151,7 +151,7 @@
                         @if ($sale->commission_bps !== null)
                             <div class="grid grid-cols-2 gap-2">
                                 <span class="text-[13px] text-teal-700">Tu comisión ({{ rtrim(rtrim(number_format($sale->commission_bps / 100, 2), '0'), '.') }} %)</span>
-                                <span class="text-end text-[13px] font-semibold text-teal-700">RD$ {{ number_format(round($sale->total_cents * $sale->commission_bps / 10000) / 100, 2) }}</span>
+                                <span class="text-end text-[13px] font-semibold text-teal-700">RD$ {{ number_format(round(($sale->total_cents - (int) $sale->refunds->sum('amount_cents')) * $sale->commission_bps / 10000) / 100, 2) }}</span>
                             </div>
                         @endif
                     </div>

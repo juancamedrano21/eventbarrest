@@ -52,6 +52,19 @@ class Refund extends Model
     }
 
     /**
+     * El builder deja pasar la escritura acotada a una clave (es la forma
+     * del save de modelo) y pregunta aquí: un reembolso escrito no se toca
+     * ni por esa vía. Corregirlo será otro asiento.
+     */
+    public function assertRowIsWritable(mixed $key): void
+    {
+        if ($key !== null && static::query()->withoutGlobalScopes()->getQuery()
+            ->where($this->getKeyName(), $key)->exists()) {
+            throw SalesException::paidOrdersAreHistory();
+        }
+    }
+
+    /**
      * @param  Builder  $query
      * @return SalesHistoryBuilder<*>
      */

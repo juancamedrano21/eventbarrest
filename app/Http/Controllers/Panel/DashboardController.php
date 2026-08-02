@@ -11,6 +11,8 @@ use App\Domains\Sales\Enums\CashSessionStatus;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Models\Refund;
+use App\Domains\Sales\Queries\NetSales;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
@@ -70,6 +72,11 @@ class DashboardController extends Controller
 
         $paid = fn () => Order::query()->where('orders.status', OrderStatus::Paid->value);
 
+        // Lo devuelto NO es venta, y tampoco genera comisión: se resta el
+        // día en que salió de la gaveta, que es como cuadra el arqueo.
+        $devueltoPorDia = $diaLocalRefunds = null;
+        $diaLocalRefunds = str_replace('paid_at', 'refunds.created_at', $diaLocal);
+
         $ventasPorDia = $paid()
             ->where('paid_at', '>=', $inicioSerie)
             ->selectRaw("{$diaLocal} as dia, SUM(total_cents) as total")
@@ -77,16 +84,31 @@ class DashboardController extends Controller
             ->orderBy('dia')
             ->pluck('total', 'dia');
 
-        $serie = collect(range(13, 0))->map(fn (int $atras) => [
-            'dia' => today($tz)->subDays($atras)->format('d M'),
-            'total' => round(((int) ($ventasPorDia[today($tz)->subDays($atras)->toDateString()] ?? 0)) / 100, 2),
-        ]);
+        $devueltoPorDia = Refund::query()
+            ->where('refunds.created_at', '>=', $inicioSerie)
+            ->selectRaw("{$diaLocalRefunds} as dia, SUM(amount_cents) as total")
+            ->groupBy('dia')
+            ->pluck('total', 'dia');
+
+        $serie = collect(range(13, 0))->map(function (int $atras) use ($tz, $ventasPorDia, $devueltoPorDia) {
+            $dia = today($tz)->subDays($atras)->toDateString();
+            $neto = (int) ($ventasPorDia[$dia] ?? 0) - (int) ($devueltoPorDia[$dia] ?? 0);
+
+            return [
+                'dia' => today($tz)->subDays($atras)->format('d M'),
+                'total' => round($neto / 100, 2),
+            ];
+        });
+
+        $devuelto = app(NetSales::class);
 
         return view('panel.dashboard', [
             'conReportes' => true,
             'esOrganizador' => $esOrganizador,
-            'salesToday' => (int) $paid()->where('paid_at', '>=', $inicioHoy)->sum('total_cents'),
-            'sales30' => (int) $paid()->where('paid_at', '>=', $inicio30)->sum('total_cents'),
+            'salesToday' => (int) $paid()->where('paid_at', '>=', $inicioHoy)->sum('total_cents')
+                - $devuelto->refundedBetween((string) $inicioHoy),
+            'sales30' => (int) $paid()->where('paid_at', '>=', $inicio30)->sum('total_cents')
+                - $devuelto->refundedBetween((string) $inicio30),
             'openSessions' => CashSession::query()->where('status', CashSessionStatus::Open->value)->count(),
             'vendorsCount' => $esOrganizador ? Vendor::query()->count() : null,
             'serie' => $serie,
@@ -94,27 +116,55 @@ class DashboardController extends Controller
                 ? $paid()
                     ->where('paid_at', '>=', $inicio30)
                     ->join('vendors as v', 'v.id', '=', 'orders.vendor_id')
-                    ->selectRaw('v.name as nombre, COUNT(*) as ordenes, SUM(orders.total_cents) as total')
+                    ->selectRaw('v.id as vendor_id, v.name as nombre, COUNT(*) as ordenes, SUM(orders.total_cents) as total')
                     ->groupBy('v.id', 'v.name')
                     ->orderByDesc('total')
+                    ->toBase()
                     ->get()
+                    ->map(fn (stdClass $fila): object => (object) [
+                        'nombre' => (string) $fila->nombre,
+                        'ordenes' => (int) $fila->ordenes,
+                        'total' => (int) $fila->total
+                            - $devuelto->refundedBetween((string) $inicio30, null, (int) $fila->vendor_id),
+                    ])
                 : collect(),
             // Desde la comisión CONGELADA en cada orden: renegociar o quitar
             // la participación no reescribe lo cobrado. La suma es entera y
             // exacta en cualquier motor; se divide y redondea UNA vez aquí.
+            // El reembolso descuenta la venta Y su comisión: cobrarle al
+            // comercio por dinero que devolvió sería cobro indebido. Se
+            // resta con el bps CONGELADO de la venta reembolsada.
             'porEvento' => $esOrganizador
                 ? $paid()
                     ->join('operating_units as u', 'u.id', '=', 'orders.operating_unit_id')
                     ->join('events as e', 'e.id', '=', 'u.event_id')
-                    ->selectRaw('e.name as nombre, SUM(orders.total_cents) as bruto, SUM(orders.total_cents * COALESCE(orders.commission_bps, 0)) as comision_bps')
+                    // Subconsulta AGREGADA, no join directo: una venta con
+                    // dos reembolsos duplicaría su propia fila y con ella
+                    // el bruto. Aquí cada orden entra una sola vez.
+                    ->leftJoinSub(
+                        Refund::query()->selectRaw('order_id, SUM(amount_cents) as devuelto')->groupBy('order_id'),
+                        'r',
+                        'r.order_id',
+                        '=',
+                        'orders.id',
+                    )
+                    ->selectRaw(
+                        'e.name as nombre, '
+                        .'SUM(orders.total_cents) as bruto, '
+                        .'SUM(orders.total_cents * COALESCE(orders.commission_bps, 0)) as comision_bps, '
+                        .'COALESCE(SUM(r.devuelto), 0) as devuelto, '
+                        .'COALESCE(SUM(r.devuelto * COALESCE(orders.commission_bps, 0)), 0) as devuelto_bps'
+                    )
                     ->groupBy('e.id', 'e.name')
                     ->orderByDesc('bruto')
                     ->toBase()
                     ->get()
                     ->map(fn (stdClass $fila): object => (object) [
                         'nombre' => (string) $fila->nombre,
-                        'bruto' => (int) $fila->bruto,
-                        'comision' => (int) round(((int) $fila->comision_bps) / 10000),
+                        'bruto' => (int) $fila->bruto - (int) $fila->devuelto,
+                        'comision' => (int) round(
+                            (((int) $fila->comision_bps) - ((int) $fila->devuelto_bps)) / 10000
+                        ),
                     ])
                 : collect(),
         ]);
