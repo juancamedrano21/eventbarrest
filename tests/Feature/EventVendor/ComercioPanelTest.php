@@ -71,11 +71,12 @@ it('bounces every audience to its own door', function (): void {
     $owner = app(CreateTenantUser::class)($this->organizer, 'Ana', 'ana@x.test', 'Secreta-2026', Role::Owner);
     $this->actingAs($owner)->get('/event-vendor')->assertRedirect('/event-panel');
 
-    // Cajera pura (su trabajo entero es el POS) → /pos.
+    // Cajera pura (su trabajo entero es el POS) → la caja de SU mundo.
+    // /pos la rechazaría por modalidad: es la del bar independiente.
     $cajera = app(CreateTenantUser::class)(
         $this->organizer, 'Lia', 'lia@x.test', 'Secreta-2026', Role::Cashier, $this->vendor,
     );
-    $this->actingAs($cajera)->get('/event-vendor')->assertRedirect('/pos');
+    $this->actingAs($cajera)->get('/event-vendor')->assertRedirect('/event-pos');
 });
 
 it('cuts access when the vendor is suspended', function (): void {

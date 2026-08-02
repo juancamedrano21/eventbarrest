@@ -137,6 +137,43 @@ enum Permission: string implements HasLabel
     }
 
     /**
+     * Lo que convierte a alguien en gestor de su comercio de evento: si no
+     * tiene ninguna de estas capacidades, no hay una sola pantalla de
+     * /event-vendor que le sirva.
+     *
+     * @return array<int, string>
+     */
+    public static function vendorManagement(): array
+    {
+        return [
+            self::CatalogManage->value,
+            self::InventoryManage->value,
+            self::InventoryTransfer->value,
+            self::InventoryAdjust->value,
+            self::ReportsViewUnit->value,
+        ];
+    }
+
+    /**
+     * Lo mismo para el mundo del negocio: a las capacidades de operación se
+     * suman las de cuenta, porque en un bar independiente no hay un nivel
+     * intermedio — quien administra sucursales, equipo o fiscalidad lo hace
+     * en la misma puerta donde se toca el menú.
+     *
+     * @return array<int, string>
+     */
+    public static function businessManagement(): array
+    {
+        return [
+            ...self::vendorManagement(),
+            self::BranchesManage->value,
+            self::UsersManage->value,
+            self::ReportsViewTenant->value,
+            self::FiscalManage->value,
+        ];
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function labeledOptionsForKind(RoleKind $kind): array

@@ -29,6 +29,21 @@ enum Role: string implements HasLabel
         return array_map(static fn (self $case): string => $case->value, self::cases());
     }
 
+    /**
+     * Los roles de sistema que solo tienen sentido donde hay festivales y
+     * comercios invitados. En la cuenta de un bar independiente no hay nada
+     * que puedan hacer, así que no se ofrecen.
+     *
+     * @return array<int, string>
+     */
+    public static function eventWorldOnly(): array
+    {
+        return [
+            self::EventManager->value,
+            self::VendorManager->value,
+        ];
+    }
+
     public function getLabel(): string
     {
         return match ($this) {

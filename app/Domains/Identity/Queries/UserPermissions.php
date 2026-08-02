@@ -37,4 +37,27 @@ class UserPermissions
             ->pluck('permissions.name')
             ->all());
     }
+
+    /**
+     * El rol de cada usuario de una cuenta, en UNA consulta: para una tabla
+     * de equipo, preguntarlo fila por fila serían tantos viajes como gente.
+     *
+     * @param  array<int, int>  $userIds
+     * @return Collection<int, string> id de usuario => nombre del rol
+     */
+    public function roleNamesFor(int $tenantId, array $userIds): Collection
+    {
+        if ($userIds === []) {
+            return collect();
+        }
+
+        return collect(DB::table('model_has_roles')
+            ->join('roles', 'roles.id', '=', 'model_has_roles.role_id')
+            ->whereIn('model_has_roles.model_id', $userIds)
+            ->where('model_has_roles.model_type', User::class)
+            ->where('model_has_roles.tenant_id', $tenantId)
+            ->where('roles.tenant_id', $tenantId)
+            ->pluck('roles.name', 'model_has_roles.model_id')
+            ->all());
+    }
 }

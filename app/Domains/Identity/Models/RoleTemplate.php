@@ -238,6 +238,24 @@ class RoleTemplate extends Model
     }
 
     /**
+     * Los roles que se pueden dar en una cuenta de negocio: los de cuenta,
+     * menos los que solo existen donde hay eventos y comercios invitados.
+     *
+     * @return array<string, string>
+     */
+    public static function optionsForBusinessStaff(): array
+    {
+        static::ensureSystemTemplates();
+
+        return static::query()
+            ->where('kind', '!=', RoleKind::Vendor->value)
+            ->whereNotIn('name', RoleEnum::eventWorldOnly())
+            ->orderBy('label')
+            ->pluck('label', 'name')
+            ->all();
+    }
+
+    /**
      * @return array<string, string>
      */
     public static function optionsForVendorStaff(): array

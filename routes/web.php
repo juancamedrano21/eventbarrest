@@ -4,6 +4,14 @@ declare(strict_types=1);
 
 use App\Domains\Identity\Queries\HomeForUser;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Business\BranchesController;
+use App\Http\Controllers\Business\CashController as BusinessCashController;
+use App\Http\Controllers\Business\HomeController as BusinessHomeController;
+use App\Http\Controllers\Business\InventoryController as BusinessInventoryController;
+use App\Http\Controllers\Business\MenuController as BusinessMenuController;
+use App\Http\Controllers\Business\SalesController as BusinessSalesController;
+use App\Http\Controllers\Business\SettingsController;
+use App\Http\Controllers\Business\TeamController;
 use App\Http\Controllers\EventPanel\DashboardController;
 use App\Http\Controllers\EventPanel\EventsController;
 use App\Http\Controllers\EventPanel\VendorCatalogController;
@@ -15,6 +23,7 @@ use App\Http\Controllers\EventVendor\CatalogController as ComercioCatalogControl
 use App\Http\Controllers\EventVendor\HomeController as ComercioHomeController;
 use App\Http\Controllers\EventVendor\InventoryController as ComercioInventoryController;
 use App\Http\Controllers\EventVendor\SalesController as ComercioSalesController;
+use App\Http\Middleware\EnsureBusinessUser;
 use App\Http\Middleware\EnsureEventVendorUser;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -86,4 +95,49 @@ Route::middleware(['auth', EnsureEventVendorUser::class])->prefix('event-vendor'
     Route::post('/productos/{product}/receta/{item}/eliminar', [ComercioCatalogController::class, 'destroyRecipeItem'])->name('recipe.destroy');
     Route::post('/insumos', [ComercioInventoryController::class, 'storeItem'])->name('items.store');
     Route::post('/compras', [ComercioInventoryController::class, 'storePurchase'])->name('purchases.store');
+});
+
+// La casa del bar o restaurante independiente (ADR-008): la modalidad
+// NEGOCIO. Sin comercios dentro — su estructura son sucursales, y su
+// catálogo es de la cuenta entera.
+//
+// A diferencia de /event-panel, la frontera de mundo vive en la PUERTA y no
+// repartida por los controladores: EnsureBusinessUser exige cuenta de
+// negocio, corta suspensiones y limpia el contexto de comercio.
+Route::middleware(['auth', EnsureBusinessUser::class])->prefix('business')->name('business.')->group(function (): void {
+    Route::get('/', BusinessHomeController::class)->name('home');
+
+    Route::get('/menu', [BusinessMenuController::class, 'index'])->name('menu');
+    Route::post('/categorias', [BusinessMenuController::class, 'storeCategory'])->name('categories.store');
+    Route::post('/categorias/{category}', [BusinessMenuController::class, 'updateCategory'])->name('categories.update');
+    Route::post('/productos', [BusinessMenuController::class, 'storeProduct'])->name('products.store');
+    Route::post('/productos/{product}', [BusinessMenuController::class, 'updateProduct'])->name('products.update');
+    Route::post('/productos/{product}/receta', [BusinessMenuController::class, 'storeRecipeItem'])->name('recipe.store');
+    Route::post('/productos/{product}/receta/{item}/eliminar', [BusinessMenuController::class, 'destroyRecipeItem'])->name('recipe.destroy');
+
+    Route::get('/inventario', [BusinessInventoryController::class, 'index'])->name('inventory');
+    Route::post('/insumos', [BusinessInventoryController::class, 'storeItem'])->name('items.store');
+    Route::post('/insumos/{item}', [BusinessInventoryController::class, 'updateItem'])->name('items.update');
+    Route::post('/compras', [BusinessInventoryController::class, 'storePurchase'])->name('purchases.store');
+    Route::post('/ajustes-de-stock', [BusinessInventoryController::class, 'storeAdjustment'])->name('adjustments.store');
+    Route::post('/mermas', [BusinessInventoryController::class, 'storeWaste'])->name('waste.store');
+    Route::post('/traslados', [BusinessInventoryController::class, 'storeTransfer'])->name('transfers.store');
+    Route::post('/existencias/{level}/umbral', [BusinessInventoryController::class, 'updateThreshold'])->name('thresholds.update');
+
+    Route::get('/ventas', [BusinessSalesController::class, 'index'])->name('sales.index');
+    Route::get('/ventas/{order}', [BusinessSalesController::class, 'show'])->name('sales.show');
+
+    Route::get('/caja', [BusinessCashController::class, 'index'])->name('cash.index');
+
+    Route::get('/sucursales', [BranchesController::class, 'index'])->name('branches.index');
+    Route::post('/sucursales', [BranchesController::class, 'store'])->name('branches.store');
+    Route::post('/sucursales/{branch}', [BranchesController::class, 'update'])->name('branches.update');
+
+    Route::get('/equipo', [TeamController::class, 'index'])->name('team.index');
+    Route::post('/equipo', [TeamController::class, 'store'])->name('team.store');
+    Route::post('/equipo/{user}', [TeamController::class, 'update'])->name('team.update');
+    Route::post('/equipo/{user}/eliminar', [TeamController::class, 'destroy'])->name('team.destroy');
+
+    Route::get('/ajustes', [SettingsController::class, 'edit'])->name('settings.edit');
+    Route::post('/ajustes', [SettingsController::class, 'update'])->name('settings.update');
 });

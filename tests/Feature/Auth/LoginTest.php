@@ -49,8 +49,10 @@ it('sends each audience to its own door', function (): void {
     $this->post('/salir');
 
     // Cajera: su trabajo entero es la caja, y entra POR USUARIO, no correo.
+    // La caja de SU mundo: /pos rechaza por modalidad al cajero de un
+    // comercio de evento, así que mandarlo allí era un callejón sin salida.
     $this->post('/entrar', ['usuario' => 'lia', 'password' => 'Secreta-2026'])
-        ->assertRedirect('/pos');
+        ->assertRedirect('/event-pos');
     $this->assertAuthenticatedAs($cajera);
 });
 

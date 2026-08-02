@@ -1,6 +1,15 @@
 @extends($layoutVenta ?? $panelLayout)
 
-@section('title', 'Orden '.$sale->publicNumber().' — '.$vendor->name)
+{{-- Una sola vista para tres puertas: el organizador, el comercio y el
+     negocio. Cambia quién la enmarca ($layoutVenta), a dónde vuelve
+     ($volver) y de quién es la venta ($titular). --}}
+{{-- Siempre en bloque: la forma corta de esta directiva se empareja con
+     el primer cierre del archivo y se traga lo de en medio. --}}
+@php
+    $titular = $titular ?? $vendor;
+@endphp
+
+@section('title', 'Orden '.$sale->publicNumber().' — '.$titular->name)
 
 @section('content')
     @php
@@ -16,9 +25,9 @@
     {{-- Miga y encabezado --}}
     <div class="mb-5 flex flex-wrap items-center justify-between gap-2">
         <div>
-            <a href="{{ $volver ?? route('event-panel.vendors.show', $vendor) }}" class="inline-flex items-center gap-x-1 text-sm text-gray-500 hover:text-gray-800">
+            <a href="{{ $volver ?? route('event-panel.vendors.show', $titular) }}" class="inline-flex items-center gap-x-1 text-sm text-gray-500 hover:text-gray-800">
                 <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                {{ $vendor->name }}
+                {{ $titular->name }}
             </a>
             <h1 class="mt-1 text-xl font-medium text-gray-800">
                 Orden <span class="font-mono">{{ $sale->publicNumber() }}</span>
@@ -68,7 +77,7 @@
                 <div>
                     <p class="mb-2 font-medium text-gray-800">Dónde se vendió</p>
                     <ul class="space-y-1">
-                        <li class="text-sm text-gray-800">{{ $vendor->name }}</li>
+                        <li class="text-sm text-gray-800">{{ $titular->name }}</li>
                         <li class="text-sm text-gray-600">{{ $sale->operatingUnit?->name }} · {{ $esEvento ? 'puesto de evento' : 'sucursal' }}</li>
                         @if ($esEvento && $sale->operatingUnit?->event)
                             <li class="text-sm text-gray-600">{{ $sale->operatingUnit->event->name }}</li>

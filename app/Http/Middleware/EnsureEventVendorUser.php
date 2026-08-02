@@ -63,8 +63,10 @@ class EnsureEventVendorUser
         ))->isNotEmpty();
 
         if (! $gestiona) {
+            // La caja de SU mundo: /pos rechaza por modalidad al cajero de
+            // un comercio de evento y lo dejaría sin ninguna puerta.
             return $user->canOperateThePos()
-                ? redirect('/pos')
+                ? redirect('/event-pos')
                 : abort(403, 'Tu rol no incluye la gestión del comercio.');
         }
 
