@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Sales\Models;
 
 use App\Domains\EventManagement\Concerns\BelongsToVendor;
+use App\Domains\EventManagement\Enums\CommissionBase;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Eloquent\SalesHistoryBuilder;
 use App\Domains\Sales\Enums\ItbisMode;
@@ -44,6 +45,7 @@ use Illuminate\Support\Str;
  * @property int $itbis_cents
  * @property int $tip_cents
  * @property int $total_cents
+ * @property CommissionBase|null $commission_base con qué regla se calculó su comisión
  * @property int|null $commission_bps
  * @property ItbisMode $itbis_mode
  * @property SalesChannel $channel
@@ -72,6 +74,7 @@ class Order extends Model
             'tip_cents' => 'integer',
             'total_cents' => 'integer',
             'commission_bps' => 'integer',
+            'commission_base' => CommissionBase::class,
             'itbis_mode' => ItbisMode::class,
             'channel' => SalesChannel::class,
             'order_number' => 'integer',

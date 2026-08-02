@@ -14,6 +14,8 @@ use App\Http\Controllers\Business\SettingsController;
 use App\Http\Controllers\Business\TeamController;
 use App\Http\Controllers\EventPanel\DashboardController;
 use App\Http\Controllers\EventPanel\EventsController;
+use App\Http\Controllers\EventPanel\SettingsController as EventPanelSettingsController;
+use App\Http\Controllers\EventPanel\SettlementController;
 use App\Http\Controllers\EventPanel\TeamController as EventPanelTeamController;
 use App\Http\Controllers\EventPanel\VendorCatalogController;
 use App\Http\Controllers\EventPanel\VendorInventoryController;
@@ -66,6 +68,8 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::get('/comercios', [VendorsController::class, 'index'])->name('vendors.index');
     Route::post('/comercios', [VendorsController::class, 'store'])->name('vendors.store');
     Route::post('/comercios/{vendor}/datos', [VendorsController::class, 'update'])->name('vendors.update');
+    Route::get('/ajustes', [EventPanelSettingsController::class, 'edit'])->name('settings.edit');
+    Route::post('/ajustes', [EventPanelSettingsController::class, 'update'])->name('settings.update');
     Route::get('/equipo', [EventPanelTeamController::class, 'index'])->name('team.index');
     Route::post('/equipo', [EventPanelTeamController::class, 'store'])->name('team.store');
     Route::post('/equipo/{user}', [EventPanelTeamController::class, 'update'])->name('team.update');
@@ -74,6 +78,9 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::post('/eventos', [EventsController::class, 'store'])->name('events.store');
     Route::get('/eventos/{event}', [EventsController::class, 'show'])->name('events.show');
     Route::post('/eventos/{event}', [EventsController::class, 'update'])->name('events.update');
+    Route::get('/eventos/{event}/liquidacion', [SettlementController::class, 'show'])->name('events.settlement');
+    Route::post('/eventos/{event}/liquidar', [SettlementController::class, 'store'])->name('events.settle');
+    Route::post('/eventos/{event}/liquidacion/{settlement}/cobrada', [SettlementController::class, 'markPaid'])->name('events.settlement.paid');
     Route::get('/comercios/{vendor}', [VendorProfileController::class, 'show'])->name('vendors.show');
     Route::get('/comercios/{vendor}/ventas/{order}', [VendorSalesController::class, 'show'])->name('vendors.sales.show');
     Route::post('/comercios/{vendor}/usuarios', [VendorProfileController::class, 'storeUser'])->name('vendors.users.store');

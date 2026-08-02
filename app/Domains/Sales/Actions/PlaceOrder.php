@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Sales\Actions;
 
 use App\Domains\Catalog\Models\Product;
+use App\Domains\EventManagement\Enums\CommissionBase;
 use App\Domains\EventManagement\Models\EventVendor;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Enums\OrderStatus;
@@ -113,9 +114,6 @@ class PlaceOrder
     }
 
     /**
-     * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
-     */
-    /**
      * Un nombre para gritar, no un campo de texto libre: se recorta a lo que
      * cabe en la comanda y el vacío es null, no una cadena en blanco que
      * luego imprima una línea sola.
@@ -196,6 +194,9 @@ class PlaceOrder
             $order->cash_session_id = $session->id;
             $order->user_id = $user?->id;
             $order->commission_bps = $this->commissionFor($unit);
+            // La BASE se congela igual que el porcentaje: cambiar el ajuste
+            // de la cuenta rige de aqui en adelante, nunca hacia atras.
+            $order->commission_base = $this->commissionBaseFor($unit);
             $order->itbis_mode = $modo;
             $order->channel = $channel;
 
@@ -228,6 +229,24 @@ class PlaceOrder
      * orden. Null en el mundo negocio (sucursales sin evento). Sin scopes:
      * el guard decide con la verdad de las filas, no la vista del contexto.
      */
+    /**
+     * Con qué regla se calcula la comisión de ESTA venta. Solo tiene sentido
+     * donde hay comisión: en el mundo del negocio no hay organizador que
+     * cobre nada.
+     */
+    private function commissionBaseFor(?OperatingUnit $unit): ?CommissionBase
+    {
+        if ($unit === null || $unit->event_id === null || $unit->getAttribute('vendor_id') === null) {
+            return null;
+        }
+
+        $valor = DB::table('tenants')
+            ->where('id', $unit->getAttribute('tenant_id'))
+            ->value('commission_base');
+
+        return CommissionBase::tryFrom((string) $valor) ?? CommissionBase::Total;
+    }
+
     private function commissionFor(?OperatingUnit $unit): ?int
     {
         if ($unit === null || $unit->event_id === null || $unit->getAttribute('vendor_id') === null) {

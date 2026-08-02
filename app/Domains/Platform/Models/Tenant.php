@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Platform\Models;
 
 use App\Domains\Business\Models\BusinessAccount;
+use App\Domains\EventManagement\Enums\CommissionBase;
 use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Domains\Platform\Eloquent\TenantBuilder;
 use App\Domains\Platform\Enums\TenantStatus;
@@ -53,6 +54,7 @@ class Tenant extends Model
         'rnc',
         'status',
         'itbis_mode',
+        'commission_base',
     ];
 
     public static function childTypes(): array
@@ -69,6 +71,7 @@ class Tenant extends Model
             'type' => TenantType::class,
             'status' => TenantStatus::class,
             'itbis_mode' => ItbisMode::class,
+            'commission_base' => CommissionBase::class,
         ];
     }
 

@@ -36,6 +36,32 @@ class VendorException extends RuntimeException
         return new self('El negocio indicado no pertenece a esta cuenta.');
     }
 
+    public static function eventAlreadySettled(): self
+    {
+        return new self('Ese evento ya está liquidado: su cuenta está cerrada.');
+    }
+
+    public static function eventHasOpenCashSessions(): self
+    {
+        return new self(
+            'Hay cajas abiertas en el evento. Ciérralas desde el POS antes de liquidar: '
+            .'mientras una siga abierta todavía puede entrar dinero.'
+        );
+    }
+
+    public static function eventHasOpenOrders(): self
+    {
+        return new self('Quedan órdenes sin cobrar en el evento: resuélvelas antes de liquidar.');
+    }
+
+    public static function settledEventIsClosedForRefunds(): self
+    {
+        return new self(
+            'Ese evento está liquidado y su cuenta ya se cerró. Para devolver algo hay que '
+            .'reabrirlo, y eso pide el permiso de liquidación.'
+        );
+    }
+
     public static function vendorIsNotInTheEvent(): self
     {
         return new self('Ese comercio no participa en el evento.');

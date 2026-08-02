@@ -13,8 +13,14 @@
                 <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $event->status->getLabel() }}</span>
             </div>
         </div>
-        <button type="button" data-hs-overlay="#modal-evento" aria-haspopup="dialog"
-            class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Editar evento</button>
+        <div class="flex items-center gap-2">
+            <a href="{{ route('event-panel.events.settlement', $event) }}"
+                class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">
+                {{ $event->status->value === 'settled' ? 'Ver liquidación' : 'Liquidación' }}
+            </a>
+            <button type="button" data-hs-overlay="#modal-evento" aria-haspopup="dialog"
+                class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Editar evento</button>
+        </div>
     </div>
 
     <div class="grid gap-6 lg:grid-cols-2">
@@ -90,11 +96,19 @@
                     <div>
                         <label for="ev-estado" class="mb-1.5 block text-sm text-gray-700">Estado</label>
                         <select id="ev-estado" name="status" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-sky-500 focus:ring-sky-500">
+                            {{-- «Liquidado» NO está aquí: liquidar calcula y congela el
+                                 estado de cuenta de cada comercio, y eso ocurre en su
+                                 propia pantalla. Ponerlo como rótulo dejaría un evento
+                                 marcado como liquidado sin una sola cuenta cerrada. --}}
                             @foreach (\App\Domains\EventManagement\Enums\EventStatus::cases() as $estado)
+                                @continue($estado === \App\Domains\EventManagement\Enums\EventStatus::Settled)
                                 <option value="{{ $estado->value }}" @selected($event->status === $estado)>{{ $estado->getLabel() }}</option>
                             @endforeach
+                            @if ($event->status === \App\Domains\EventManagement\Enums\EventStatus::Settled)
+                                <option value="settled" selected>Liquidado</option>
+                            @endif
                         </select>
-                        <p class="mt-1.5 text-xs text-gray-500">Liquidar es el corte financiero y pide su propio permiso. Cerrar exige que no queden cajas abiertas.</p>
+                        <p class="mt-1.5 text-xs text-gray-500">Cerrar exige que no queden cajas abiertas. Para liquidar, entra en la liquidación del evento.</p>
                     </div>
                 </div>
                 <div class="mt-5 flex justify-end gap-2">

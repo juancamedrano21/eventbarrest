@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domains\Sales\Actions;
 
+use App\Domains\EventManagement\Enums\EventStatus;
+use App\Domains\EventManagement\Exceptions\VendorException;
+use App\Domains\EventManagement\Models\Event;
+use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Sales\Exceptions\SalesException;
@@ -60,6 +64,11 @@ class RefundOrder
                 throw SalesException::onlyPaidOrdersAreRefundable();
             }
 
+            // Antes que el guard de la caja: al liquidar un evento sus cajas
+            // ya están cerradas, así que comprobarlo después diría «la caja
+            // no está abierta» y escondería el motivo real.
+            $this->assertEventIsNotSettled($order);
+
             $yaDevuelto = (int) Refund::query()->where('order_id', $order->id)->sum('amount_cents');
             $disponible = $order->total_cents - $yaDevuelto;
 
@@ -99,6 +108,30 @@ class RefundOrder
 
             return $refund;
         }, 3);
+    }
+
+    /**
+     * Liquidado es punto final. Se mira por la unidad de la venta, que es
+     * quien sabe de qué evento es — la orden no lo guarda.
+     */
+    private function assertEventIsNotSettled(Order $order): void
+    {
+        $eventId = OperatingUnit::query()->withoutGlobalScopes()
+            ->whereKey($order->operating_unit_id)
+            ->value('event_id');
+
+        if ($eventId === null) {
+            return; // mundo negocio: no hay evento que liquidar
+        }
+
+        // Con el modelo, no con value(): el builder de Eloquent aplica el
+        // cast y devuelve el enum, así que compararlo con la cadena daría
+        // siempre falso y el guard no protegería nada.
+        $evento = Event::query()->withoutGlobalScopes()->find($eventId);
+
+        if ($evento?->status === EventStatus::Settled) {
+            throw VendorException::settledEventIsClosedForRefunds();
+        }
     }
 
     /**

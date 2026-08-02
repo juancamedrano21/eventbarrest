@@ -86,6 +86,16 @@ class EventsController extends Controller
             $this->authorizeOrganizer($request, Permission::EventsSettle);
         }
 
+        // Liquidar NO es cambiar un rótulo: calcula y congela el estado de
+        // cuenta de cada comercio. Desde aquí solo se puede confirmar el
+        // estado que ya tiene, nunca entrar en él.
+        if ($estado === EventStatus::Settled && $record->status !== EventStatus::Settled) {
+            return back()->withErrors([
+                'status' => 'Para liquidar el evento entra en su liquidación: allí se calcula '
+                    .'y se cierra la cuenta de cada comercio.',
+            ]);
+        }
+
         // Cerrar con una caja abierta dejaría a un cajero a mitad de turno.
         if (in_array($estado, [EventStatus::Closed, EventStatus::Settled], true)
             && CashSession::query()
