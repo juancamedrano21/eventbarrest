@@ -10,18 +10,20 @@
 
     {{-- Pestañas: solo las que el rol puede usar --}}
     @php
-        $tabs = ['resumen' => 'Resumen', 'menu' => 'Menú'];
-        if ($puede['ventas']) $tabs['ventas'] = 'Ventas';
-        $tabs['inventario'] = 'Inventario';
+        $bajoMinimo = $stockLevels->filter->isLow()->count();
+        $tabs = [
+            'resumen' => ['label' => 'Resumen', 'icon' => 'M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z'],
+            'menu' => ['label' => 'Menú', 'icon' => 'M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25', 'badge' => $menuCategories->sum(fn ($c) => $c->products->count())],
+        ];
+
+        if ($puede['ventas']) {
+            $tabs['ventas'] = ['label' => 'Ventas', 'icon' => 'M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z', 'badge' => $recentOrders->count()];
+        }
+
+        $tabs['inventario'] = ['label' => 'Inventario', 'icon' => 'M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z', 'badge' => $bajoMinimo > 0 ? $bajoMinimo : null, 'tono' => 'alerta'];
     @endphp
-    <nav class="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200" role="tablist" aria-orientation="horizontal">
-        @foreach ($tabs as $id => $label)
-            <button type="button" id="tab-{{ $id }}-item" data-hs-tab="#tab-{{ $id }}" aria-controls="tab-{{ $id }}" role="tab"
-                class="{{ $loop->first ? 'active ' : '' }}hs-tab-active:border-sky-600 hs-tab-active:text-sky-600 whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm text-gray-500 hover:text-gray-700">
-                {{ $label }}
-            </button>
-        @endforeach
-    </nav>
+
+    @include('vendors.tabs.nav', ['tabs' => $tabs])
 
     {{-- Tab: Resumen --}}
     <div id="tab-resumen" role="tabpanel" aria-labelledby="tab-resumen-item">
@@ -64,4 +66,6 @@
     @include('vendors.tabs.inventario')
 
     @include('vendors.tabs.modales')
+
+    @include('vendors.tabs.persistencia')
 @endsection
