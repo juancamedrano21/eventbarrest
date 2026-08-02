@@ -106,3 +106,10 @@ it('sends guests to the login screen', function (): void {
     $this->get('/panel')->assertRedirect('/entrar');
     $this->get('/comercio')->assertRedirect('/entrar');
 });
+
+it('turns the root into a signpost, not a welcome page', function (): void {
+    $this->get('/')->assertRedirect('/entrar');
+
+    $owner = app(CreateTenantUser::class)($this->organizer, 'Ana', 'ana@x.test', 'Secreta-2026', Role::Owner);
+    $this->actingAs($owner)->get('/')->assertRedirect('/panel');
+});

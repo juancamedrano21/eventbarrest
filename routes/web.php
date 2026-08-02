@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Domains\Identity\Queries\HomeForUser;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Comercio\CatalogController as ComercioCatalogController;
 use App\Http\Controllers\Comercio\HomeController as ComercioHomeController;
@@ -15,10 +16,17 @@ use App\Http\Controllers\Panel\VendorProfileController;
 use App\Http\Controllers\Panel\VendorSalesController;
 use App\Http\Controllers\Panel\VendorsController;
 use App\Http\Middleware\EnsureComercioUser;
+use App\Models\User;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
+// La raíz no es un panel: es un desvío. Con sesión, a la puerta de cada
+// quien (ADR-007); sin ella, a entrar. El día que haya sitio público de
+// marketing, ese ocupa la raíz y el desvío se vuelve un enlace «Entrar».
+Route::get('/', function (Request $request) {
+    $user = $request->user();
+
+    return redirect($user instanceof User ? app(HomeForUser::class)($user) : '/entrar');
 });
 
 // La pantalla del POS: cascaron publico, el estado vive en el dispositivo
