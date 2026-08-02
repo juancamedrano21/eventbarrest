@@ -19,7 +19,7 @@ it('lets a tenant user into the business panel', function (): void {
 });
 
 it('keeps tenant users out of the platform panel', function (): void {
-    $this->actingAs($this->owner)->get('/admin')->assertForbidden();
+    $this->actingAs($this->owner)->get('/saas-admin')->assertForbidden();
 });
 
 it('keeps platform staff out of the business panel', function (): void {

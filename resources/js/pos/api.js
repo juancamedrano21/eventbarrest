@@ -43,7 +43,15 @@ async function request(method, path, body = null) {
 }
 
 export const api = {
-    login: (username, password, device) => request('POST', '/login', { username, password, device_name: device }),
+    // La modalidad de la puerta por la que entra: el servidor rechaza al
+    // cajero del mundo equivocado en vez de dejarlo en un POS que no es
+    // el suyo.
+    login: (username, password, device) => request('POST', '/login', {
+        username,
+        password,
+        device_name: device,
+        modalidad: document.getElementById('pos')?.dataset.modalidad ?? 'business',
+    }),
     logout: () => request('POST', '/logout'),
     bootstrap: () => request('GET', '/bootstrap'),
     catalog: () => request('GET', '/catalog'),

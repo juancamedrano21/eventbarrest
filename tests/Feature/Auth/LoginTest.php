@@ -39,13 +39,13 @@ it('sends each audience to its own door', function (): void {
 
     // Equipo de la cuenta → el panel.
     $this->post('/entrar', ['usuario' => 'ana@x.test', 'password' => 'Secreta-2026'])
-        ->assertRedirect('/panel');
+        ->assertRedirect('/event-panel');
     $this->assertAuthenticatedAs($owner);
     $this->post('/salir')->assertRedirect('/entrar');
 
     // Encargada del comercio → su casa.
     $this->post('/entrar', ['usuario' => 'caro@x.test', 'password' => 'Secreta-2026'])
-        ->assertRedirect('/comercio');
+        ->assertRedirect('/event-vendor');
     $this->post('/salir');
 
     // Cajera: su trabajo entero es la caja, y entra POR USUARIO, no correo.
@@ -99,17 +99,17 @@ it('closes the door on a suspended account', function (): void {
 it('takes a logged in user to their door instead of the form', function (): void {
     $owner = app(CreateTenantUser::class)($this->organizer, 'Ana', 'ana@x.test', 'Secreta-2026', Role::Owner);
 
-    $this->actingAs($owner)->get('/entrar')->assertRedirect('/panel');
+    $this->actingAs($owner)->get('/entrar')->assertRedirect('/event-panel');
 });
 
 it('sends guests to the login screen', function (): void {
-    $this->get('/panel')->assertRedirect('/entrar');
-    $this->get('/comercio')->assertRedirect('/entrar');
+    $this->get('/event-panel')->assertRedirect('/entrar');
+    $this->get('/event-vendor')->assertRedirect('/entrar');
 });
 
 it('turns the root into a signpost, not a welcome page', function (): void {
     $this->get('/')->assertRedirect('/entrar');
 
     $owner = app(CreateTenantUser::class)($this->organizer, 'Ana', 'ana@x.test', 'Secreta-2026', Role::Owner);
-    $this->actingAs($owner)->get('/')->assertRedirect('/panel');
+    $this->actingAs($owner)->get('/')->assertRedirect('/event-panel');
 });

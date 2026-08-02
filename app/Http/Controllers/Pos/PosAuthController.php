@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Pos;
 
+use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +26,8 @@ class PosAuthController extends Controller
             'username' => ['required', 'string', 'max:30'],
             'password' => ['required', 'string'],
             'device_name' => ['required', 'string', 'max:80'],
+            // La puerta por la que entra: event-pos o pos.
+            'modalidad' => ['nullable', 'in:event,business'],
         ]);
 
         $user = User::query()->where('username', mb_strtolower(trim($data['username'])))->first();
@@ -41,6 +44,20 @@ class PosAuthController extends Controller
         if ($user === null || ! $passwordOk || ! $user->canOperateThePos()) {
             throw ValidationException::withMessages([
                 'username' => 'Credenciales incorrectas.',
+            ]);
+        }
+
+        // Cada modalidad tiene su POS: el cajero de un festival no entra
+        // por la puerta del negocio ni al revés. Mensaje explícito —aquí
+        // ya está autenticado, no hay nada que enumerar— para que sepa a
+        // qué app ir en vez de pensar que su clave falla.
+        $suModalidad = $user->tenant instanceof OrganizerAccount ? 'event' : 'business';
+
+        if (filled($data['modalidad'] ?? null) && $data['modalidad'] !== $suModalidad) {
+            throw ValidationException::withMessages([
+                'username' => $suModalidad === 'event'
+                    ? 'Tu caja es de un evento: entra por el POS de eventos.'
+                    : 'Tu caja es de un negocio: entra por el POS del negocio.',
             ]);
         }
 

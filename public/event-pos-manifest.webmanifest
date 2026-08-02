@@ -1,7 +1,7 @@
 {
-    "name": "EventBarRest POS",
-    "short_name": "POS",
-    "start_url": "/pos",
+    "name": "EventBarRest POS · Eventos",
+    "short_name": "POS Eventos",
+    "start_url": "/event-pos",
     "display": "standalone",
     "background_color": "#090e1a",
     "theme_color": "#090e1a",

@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace App\Providers\Filament;
 
 use App\Domains\Tenancy\Middleware\SetTenantContext;
-use App\Http\Middleware\RedirectVendorStaffToComercio;
+use App\Http\Middleware\RedirectVendorStaffToEventVendor;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -62,7 +62,7 @@ class AppPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
                 SetTenantContext::class,
-                RedirectVendorStaffToComercio::class,
+                RedirectVendorStaffToEventVendor::class,
             ], isPersistent: true);
     }
 }

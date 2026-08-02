@@ -26,11 +26,11 @@ class HomeForUser
     public function __invoke(User $user): string
     {
         if ($user->isPlatformStaff()) {
-            return '/admin';
+            return '/saas-admin';
         }
 
         if (! $user->worksForAVendor()) {
-            return '/panel';
+            return '/event-panel';
         }
 
         $permisos = app(UserPermissions::class)->namesFor($user);
@@ -41,10 +41,10 @@ class HomeForUser
         ))->isNotEmpty();
 
         if ($gestiona) {
-            return '/comercio';
+            return '/event-vendor';
         }
 
         // Su trabajo entero ocurre en la caja.
-        return $user->canOperateThePos() ? '/pos' : '/comercio';
+        return $user->canOperateThePos() ? '/pos' : '/event-vendor';
     }
 }

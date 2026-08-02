@@ -172,7 +172,7 @@ it('keeps regular platform users out of the admin panel screens', function (): v
     $tenant = app(CreateTenant::class)('Bar del Puerto');
     $owner = app(CreateTenantUser::class)($tenant, 'Ana', 'ana@bar.test', 'Secreta-2026', Role::Owner);
 
-    expect($this->actingAs($owner)->get('/admin/role-templates')->getStatusCode())->toBe(403);
+    expect($this->actingAs($owner)->get('/saas-admin/role-templates')->getStatusCode())->toBe(403);
 });
 
 // ── Correcciones de la revisión adversarial ──────────────────────────────

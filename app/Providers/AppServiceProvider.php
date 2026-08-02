@@ -32,7 +32,7 @@ class AppServiceProvider extends ServiceProvider
             View::addNamespace('paneltheme', resource_path('panel-theme/views'));
             View::share('panelLayout', 'paneltheme::layout');
         } else {
-            View::share('panelLayout', 'panel.layout');
+            View::share('panelLayout', 'event-panel.layout');
         }
 
         // El login del POS es la única puerta pública de la API: 5 intentos

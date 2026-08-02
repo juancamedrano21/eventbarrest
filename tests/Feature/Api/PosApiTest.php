@@ -306,3 +306,22 @@ it('lists the shift sales and refunds only with the extra permission', function 
         ->assertOk()
         ->assertJsonPath('orders.0.refunded_cents', 40000);
 });
+
+it('keeps each modality at its own POS door', function (): void {
+    // La cajera del festival por la puerta del negocio: rebotada con un
+    // mensaje que le dice a dónde ir, no un «credenciales incorrectas».
+    $this->postJson('/api/pos/login', [
+        'username' => 'caro',
+        'password' => 'Secreta-2026',
+        'device_name' => 'tablet-1',
+        'modalidad' => 'business',
+    ])->assertStatus(422)->assertSee('POS de eventos', false);
+
+    // Y por la suya, entra.
+    $this->postJson('/api/pos/login', [
+        'username' => 'caro',
+        'password' => 'Secreta-2026',
+        'device_name' => 'tablet-1',
+        'modalidad' => 'event',
+    ])->assertCreated();
+});
