@@ -88,8 +88,11 @@ reglas de los mundos no viven en código compartido.
 | `/event-vendor` | Personal del comercio del evento | Blade + Preline | Vigente |
 | `/event-pos` | Cajero de un puesto de evento | PWA Vue | Vigente |
 | `/pos` | Cajero de una sucursal | PWA Vue | Vigente |
-| `/business` | Bar/restaurante independiente | Blade + Preline | **Pendiente** |
-| `/app` | Filament de cuentas | Filament 5 | **En apagado** (se apaga al alcanzar paridad `/event-vendor`) |
+| `/business` | Bar/restaurante independiente | Blade + Preline | Vigente |
+
+El panel Filament de cuentas (`/app`) se apagó el 2 de agosto de 2026, cuando
+`/business` le quitó su última razón de existir. Ver
+[ADR-008](adr/ADR-008-business-la-casa-del-negocio.md).
 
 Reglas que hay que conocer antes de tocar nada de esto:
 
@@ -120,10 +123,12 @@ capacidades, no por nombre de rol**:
 3. Usuario de comercio con algún permiso de gestión → `/event-vendor`.
 4. El resto, si puede operar la caja → `/pos`.
 
-Los rebotes los ejecutan tres middlewares: `EnsureEventVendorUser` (puerta del
-comercio, entrada positiva por capacidades), `RedirectVendorStaffToEventVendor`
-(saca al personal de comercio del dashboard de `/app`) y `EnsurePosCapability`
-(la puerta de **cada** petición del POS, no solo del login).
+Los rebotes los ejecutan tres middlewares, todos con entrada POSITIVA por
+capacidades: `EnsureEventVendorUser` (puerta del comercio de evento),
+`EnsureBusinessUser` (puerta del negocio, que además limpia el contexto de
+comercio para que `VendorScope` no esconda el catálogo del bar) y
+`EnsurePosCapability` (la puerta de **cada** petición del POS, no solo del
+login).
 
 ## Módulos del monolito
 
@@ -288,8 +293,8 @@ Detalles que importan:
 
 | Experiencia | Tecnología | Por qué |
 |---|---|---|
-| `/saas-admin` (y el `/app` heredado) | **Filament 5** (Livewire) | Herramienta interna: la maquinaria CRUD gratis vale más que el control visual |
-| `/event-panel`, `/event-vendor` | **Blade + Preline 4** (Tailwind 4), sin framework reactivo | Control visual total con el patrón que el equipo ya domina. Petición → controlador → vista. Ver [ADR-006](adr/ADR-006-panel-app-blade-preline.md) |
+| `/saas-admin` | **Filament 5** (Livewire) | Herramienta interna: la maquinaria CRUD gratis vale más que el control visual. Es el único panel Filament que queda |
+| `/event-panel`, `/event-vendor`, `/business` | **Blade + Preline 4** (Tailwind 4), sin framework reactivo | Control visual total con el patrón que el equipo ya domina. Petición → controlador → vista. Ver [ADR-006](adr/ADR-006-panel-app-blade-preline.md) |
 | `/pos`, `/event-pos` | **PWA: Vue 3 + Pinia + Dexie + service worker** | Offline-first es imposible con render de servidor. Ver [ADR-003](adr/ADR-003-pos-offline.md) y [05](05-pos-offline-sync.md) |
 
 Nota: **Alpine no está instalado.** ADR-006 lo dejaba como opción para estado

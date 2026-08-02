@@ -14,11 +14,15 @@ tienen reglas distintas, tienen pantallas distintas.
 | `/event-panel` | Organizador del evento | Blade + Preline Pro | Claro, denso en datos |
 | `/event-vendor` | Encargado del comercio | Blade + Preline | Claro, una sola casa, sin sidebar |
 | `/event-pos` · `/pos` | Cajero | PWA Vue offline-first | Oscuro, plano, táctil |
-| `/business` | Bar/restaurante propio | Blade + Preline | Pendiente de construir |
+| `/business` | Bar/restaurante propio | Blade + Preline | Claro, con sidebar de ocho secciones |
 
-`/app` (el panel Filament de cuentas) sigue montado, pero está en vía muerta:
-es el «panel clásico» del que se migra. Cuando `/event-panel` y `/event-vendor`
-alcancen paridad, se apaga.
+`/app`, el panel Filament de cuentas, **se apagó** el 2 de agosto de 2026
+([ADR-008](adr/ADR-008-business-la-casa-del-negocio.md)).
+
+`/business` no usa la indirección `$panelLayout` de `/event-panel`: extiende un
+layout propio y fijo. Ese salto apunta al tema Pro, que vive fuera de git, así
+que las pantallas se verían distintas en la máquina de quien lo tiene y en CI.
+Su gráfica de 14 días se dibuja con CSS, sin librería externa.
 
 ## Base visual de las puertas web: Preline Pro
 

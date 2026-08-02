@@ -22,8 +22,12 @@ que reconoce quién eres y te lleva a tu sitio.
 | `/event-panel` | Organizador del evento | Sus eventos, sus comercios, sus ventas y su comisión |
 | `/event-vendor` | Encargado de un comercio del evento | Su menú, su inventario, sus ventas |
 | `/event-pos` | Cajero de un puesto de evento | Vender y cobrar |
+| `/business` | Bar o restaurante independiente | Resumen, menú, inventario, ventas, caja, sucursales, equipo y ajustes |
 | `/pos` | Cajero de una sucursal | Vender y cobrar |
-| `/business` | Bar o restaurante independiente | **Pendiente de construir** |
+
+El panel viejo de Filament (`/app`) **ya no existe**: su última razón de ser
+era el mundo del negocio, y ese mundo tiene su casa desde el 2 de agosto de
+2026 (ver [ADR-008](adr/ADR-008-business-la-casa-del-negocio.md)).
 
 Los dos POS son dos aplicaciones instalables distintas (nombre, icono y
 arranque propios) que comparten el mismo motor offline. El login rechaza al
@@ -62,6 +66,16 @@ mes, gráfica diaria, desglose por comercio y **su comisión por evento**.
 Cada comercio tiene su perfil con los mismos números, sus productos más
 vendidos, cómo le pagan y quién le tocó los precios.
 
+El bar independiente tiene el suyo, con una diferencia importante: **la
+propina no cuenta como venta**. El 10 % legal viaja dentro del total cobrado,
+pero es del personal, así que el resumen lo separa — venta, propina y
+devuelto, que siempre suman lo cobrado. Un reembolso se reparte en la misma
+proporción: devolver media venta devuelve media propina.
+
+**Cuadrar el turno sin abrir el POS.** Los arqueos por sucursal —lo que debía
+haber en la gaveta, lo que se contó y la diferencia— tienen por fin pantalla.
+Solo para mirar: abrir y cerrar una caja sigue ocurriendo junto al dinero.
+
 ## Reglas que el sistema no deja romper
 
 Estas no son recomendaciones: están en el código y hay pruebas que fallan
@@ -83,10 +97,12 @@ si alguien las rompe.
 ## Lo que falta
 
 **Para operar de verdad:**
-- `/business`: la casa del bar independiente (sucursales, su menú, su
-  inventario). Hoy ese mundo vive en el panel viejo de Filament.
-- Apagar `/app` cuando lo anterior esté listo.
 - Liquidación de eventos: el estado de cuenta por comercio y el corte.
+- Precio o carta por sucursal: hoy el menú es de la cuenta entera, un solo
+  «Mojito» a un solo precio para todos los locales. Cambiarlo es esquema
+  nuevo, no una pantalla.
+- Acotar a un gerente a su sucursal: no existe vínculo usuario↔sucursal, así
+  que hoy quien entra ve todas.
 
 **Fiscalidad DGII** (ver [doc 06](06-fiscal-rd.md)): secuencias NCF, foliado
 offline por bloques, nota de crédito para los reembolsos, exportes 606/607

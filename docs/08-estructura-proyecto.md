@@ -50,9 +50,9 @@ enlaces la comparten, así que no pueden contradecirse.
 |---|---|---|
 | `/entrar`, `/salir` | Login propio (Blade) | todos |
 | `/saas-admin` | Panel Filament de plataforma | staff (`users.is_platform_admin`) |
-| `/app` | Panel Filament del tenant | cuentas, en paridad con el panel nuevo |
 | `/event-panel` | Panel Blade del organizador | equipo del organizador |
 | `/event-vendor` | Panel Blade del comercio | personal del comercio (ADR-007) |
+| `/business` | Panel Blade del negocio | equipo del bar independiente (ADR-008) |
 | `/pos`, `/event-pos` | La PWA, dos manifests | cajeros |
 | `/api/pos/*` | API del POS (Sanctum) | dispositivos |
 
@@ -237,5 +237,5 @@ en CI. Ahí mismo viven `TenantIsolationTest`, `IdentityIsolationTest` y
 - `Domains/Fiscal`: NCF, bloques, e-CF (ADR-004). Sin empezar.
 - Colas de verdad: Horizon está instalado y no hay un solo job encolado.
 - Versionar la API del POS antes de que haya dispositivos en la calle.
-- Paridad del panel Blade con Filament `/app`, para poder retirar el segundo (ADR-006).
+- Precio o carta por sucursal: hoy el menú es de la cuenta entera (ADR-008).
 - Adaptadores SUNMI (`payments`/`printing`) y Capacitor: fase 3 (ADR-005).

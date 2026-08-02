@@ -91,8 +91,10 @@ a dónde va cada quien — por **capacidades**, no por nombre de rol.
 | `/event-vendor` | Personal del comercio | Blade + Preline | Construida (hito 1) |
 | `/event-pos` | Cajero de un puesto de evento | PWA Vue offline | Construida |
 | `/pos` | Cajero de una sucursal | PWA Vue offline | Construida |
-| `/business` | Bar o restaurante independiente | Blade + Preline | **Pendiente** |
-| `/app` | — | Filament | **Legado**: se apaga al alcanzar paridad |
+| `/business` | Bar o restaurante independiente | Blade + Preline | Construida |
+
+`/app`, el panel Filament de cuentas, **se apagó** el 2 de agosto de 2026
+([ADR-008](docs/adr/ADR-008-business-la-casa-del-negocio.md)).
 
 El comercio de un usuario es **implícito por su usuario, jamás elegido por URL**: por eso
 `/event-vendor` es singular y no lleva id. Los dos POS tienen URL, manifiesto e identidad

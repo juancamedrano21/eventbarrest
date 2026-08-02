@@ -167,7 +167,7 @@ no se acumulan), y **no se puede degradar al último dueño** de una cuenta.
 |---|---|
 | `/entrar` | Todos. Acepta correo o nombre de usuario; 5 intentos por identidad+IP; un solo mensaje de error. Al entrar, `HomeForUser` manda a cada quien a lo suyo. |
 | `/saas-admin` | Solo `is_platform_admin`. |
-| `/app` (Filament heredado) | Cuenta no suspendida, comercio no suspendido y **no** ser alguien que solo opera el POS. El personal de comercio que caiga en su dashboard rebota a `/event-vendor`. |
+| `/business` | Equipo de una cuenta de NEGOCIO con al menos un permiso de gestión (los de `/event-vendor` más `branches.manage`, `users.manage`, `reports.view_tenant` o `fiscal.manage`). Cada pantalla exige el suyo: `branches.manage` para sucursales, `users.manage` para el equipo, `fiscal.manage` para la regla de ITBIS, `reports.view_unit` para el dinero. Quien solo opera caja rebota al POS. |
 | `/event-panel` | Equipo de la cuenta del organizador. Cada acción exige su permiso: `vendors.manage` para comercios, `events.manage` para eventos, `event_outlets.manage` para puestos, `users.manage` para dar de alta gente, `catalog.manage` e `inventory.manage` para tocar el comercio. El dashboard abre para todos pero **sin números** salvo con `reports.view_tenant`. |
 | `/event-vendor` | Personal de un comercio con al menos un permiso de gestión (`catalog.manage`, `inventory.manage`, `inventory.transfer`, `inventory.adjust` o `reports.view_unit`). Entrada positiva, fail-closed: quien no los tenga rebota al POS si puede operarlo, y si no, 403. |
 | `/pos` y `/event-pos` | Cáscara pública: la pantalla no autoriza nada. Todo se decide en la API. |
