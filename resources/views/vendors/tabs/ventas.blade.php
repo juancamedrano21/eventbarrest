@@ -20,7 +20,7 @@
                 <tbody class="divide-y divide-gray-200">
                     @forelse ($recentOrders as $order)
                         <tr class="hover:bg-gray-50">
-                            <td class="px-5 py-3 font-mono text-xs"><a href="{{ $urls['venta']($order) }}" class="text-sky-700 hover:underline">{{ Str::limit($order->client_ref, 14) }}</a></td>
+                            <td class="px-5 py-3"><a href="{{ $urls['venta']($order) }}" class="font-mono text-sm font-medium text-sky-700 hover:underline">{{ $order->publicNumber() }}</a></td>
                             <td class="px-5 py-3 text-gray-600">{{ $order->operatingUnit?->name }}</td>
                             <td class="px-5 py-3"><span class="rounded-full px-2.5 py-0.5 text-xs {{ $order->status->value === 'paid' ? 'bg-teal-100 text-teal-800' : ($order->status->value === 'void' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600') }}">{{ $order->status->getLabel() }}</span></td>
                             <td class="px-5 py-3 text-right text-gray-800">RD$ {{ number_format($order->total_cents / 100, 2) }}</td>

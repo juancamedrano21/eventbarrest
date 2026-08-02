@@ -99,6 +99,7 @@ class PosOrderController extends Controller
 
         return response()->json([
             'id' => $order->id,
+            'number' => $order->publicNumber(),
             'client_ref' => $order->client_ref,
             'cash_session_id' => $order->cash_session_id,
             'status' => $order->status->value,

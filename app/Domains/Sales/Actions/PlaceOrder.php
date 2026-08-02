@@ -8,6 +8,7 @@ use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Models\EventVendor;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Enums\OrderStatus;
+use App\Domains\Sales\Enums\SalesChannel;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
@@ -41,6 +42,7 @@ class PlaceOrder
         string $clientRef,
         ?User $user = null,
         bool $withTip = false,
+        SalesChannel $channel = SalesChannel::Pos,
     ): Order {
         if ($lines === []) {
             throw SalesException::orderNeedsLines();
@@ -67,7 +69,7 @@ class PlaceOrder
         }
 
         try {
-            return $this->create($session, $lines, $clientRef, $user, $withTip);
+            return $this->create($session, $lines, $clientRef, $user, $withTip, $channel);
         } catch (UniqueConstraintViolationException) {
             // Carrera del reenvío offline: otro request la creó primero.
             return Order::query()
@@ -110,8 +112,9 @@ class PlaceOrder
         string $clientRef,
         ?User $user,
         bool $withTip,
+        SalesChannel $channel,
     ): Order {
-        return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip): Order {
+        return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip, $channel): Order {
             $unit = OperatingUnit::query()->withoutGlobalScopes()
                 ->whereKey($session->operating_unit_id)
                 ->first(['tenant_id', 'vendor_id', 'event_id']);
@@ -167,6 +170,14 @@ class PlaceOrder
             $order->user_id = $user?->id;
             $order->commission_bps = $this->commissionFor($unit);
             $order->itbis_mode = $modo;
+            $order->channel = $channel;
+
+            // El número que el cliente dicta: serie POR COMERCIO (por
+            // cuenta si no hay comercio), tomada con lock aquí dentro.
+            $tenantId = (int) $unit?->getAttribute('tenant_id');
+            $vendorId = $unit?->getAttribute('vendor_id');
+            $order->number_scope = $vendorId ?? 0;
+            $order->order_number = app(NextOrderNumber::class)($tenantId, $vendorId);
             $order->save();
 
             foreach ($prepared as [$product, $quantity, $total, $lineItbis]) {

@@ -1,6 +1,6 @@
 @extends($layoutVenta ?? $panelLayout)
 
-@section('title', 'Detalle de la venta — '.$vendor->name)
+@section('title', 'Orden '.$sale->publicNumber().' — '.$vendor->name)
 
 @section('content')
     @php
@@ -42,8 +42,9 @@
                     </p>
                 </div>
                 <div>
-                    <p class="mb-1 text-xs text-gray-500">Referencia</p>
-                    <p class="font-mono text-[13px] font-medium text-gray-800" title="{{ $sale->client_ref }}">{{ Str::limit($sale->client_ref, 14) }}</p>
+                    <p class="mb-1 text-xs text-gray-500">Orden</p>
+                    <p class="font-mono text-[13px] font-medium text-gray-800">{{ $sale->publicNumber() }}</p>
+                    <p class="mt-0.5 text-[11px] text-gray-400">{{ $sale->channel->getLabel() }}</p>
                 </div>
                 <div>
                     <p class="mb-1 text-xs text-gray-500">{{ $sale->status->value === 'paid' ? 'Cobrada' : 'Creada' }}</p>
@@ -71,6 +72,7 @@
                         @endif
                         <li class="mt-2 text-sm text-gray-600">Caja #{{ $sale->cash_session_id }} — {{ $sale->cashSession?->status?->value === 'open' ? 'abierta' : 'cerrada' }}</li>
                         <li class="text-sm text-gray-600">Cajero: {{ $sale->user?->name ?? '—' }}</li>
+                        <li class="mt-2 font-mono text-[11px] text-gray-400" title="Referencia técnica de la sincronización">ref {{ $sale->client_ref }}</li>
                     </ul>
                 </div>
 

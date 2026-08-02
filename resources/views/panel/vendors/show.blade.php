@@ -116,7 +116,7 @@
                         <tr>
                             <td class="px-5 py-3 font-mono text-xs">
                                 @if ($payment->order !== null)
-                                    <a href="{{ route('panel.vendors.sales.show', [$vendor, $payment->order_id]) }}" class="text-sky-700 hover:underline">{{ Str::limit($payment->order->client_ref, 14) }}</a>
+                                    <a href="{{ route('panel.vendors.sales.show', [$vendor, $payment->order_id]) }}" class="text-sky-700 hover:underline">{{ $payment->order->publicNumber() }}</a>
                                 @else
                                     —
                                 @endif

@@ -147,7 +147,9 @@ it('shows the tabs and the sales numbers of the vendor', function (): void {
         ->assertOk()
         ->assertSee('Transacciones')
         ->assertSee('Configuraciones')
-        ->assertSee('perfil-001')
+        // La venta se lista por su número legible, no por el UUID técnico.
+        ->assertSee('P0001')
+        ->assertDontSee('perfil-001')
         ->assertSee('500.00');
 });
 

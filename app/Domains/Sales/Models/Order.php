@@ -9,6 +9,7 @@ use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Eloquent\SalesHistoryBuilder;
 use App\Domains\Sales\Enums\ItbisMode;
 use App\Domains\Sales\Enums\OrderStatus;
+use App\Domains\Sales\Enums\SalesChannel;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
 use App\Models\User;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Una venta. Los totales viven en centavos y el ITBIS se suma de las
@@ -44,6 +46,9 @@ use Illuminate\Support\Carbon;
  * @property int $total_cents
  * @property int|null $commission_bps
  * @property ItbisMode $itbis_mode
+ * @property SalesChannel $channel
+ * @property int|null $order_number
+ * @property int $number_scope
  * @property Carbon|null $paid_at
  * @property Carbon|null $voided_at
  * @property string|null $void_reason
@@ -67,6 +72,8 @@ class Order extends Model
             'total_cents' => 'integer',
             'commission_bps' => 'integer',
             'itbis_mode' => ItbisMode::class,
+            'channel' => SalesChannel::class,
+            'order_number' => 'integer',
             'paid_at' => 'datetime',
             'voided_at' => 'datetime',
         ];
@@ -111,6 +118,20 @@ class Order extends Model
         static::deleting(function (): void {
             throw SalesException::paidOrdersAreHistory();
         });
+    }
+
+    /**
+     * El número que el cliente dicta: la letra del canal y la serie del
+     * comercio, con al menos cuatro dígitos (P0041). Las ventas anteriores
+     * al número muestran su referencia técnica acortada.
+     */
+    public function publicNumber(): string
+    {
+        if ($this->order_number === null) {
+            return Str::limit($this->client_ref, 8, '');
+        }
+
+        return $this->channel->letter().str_pad((string) $this->order_number, 4, '0', STR_PAD_LEFT);
     }
 
     /**

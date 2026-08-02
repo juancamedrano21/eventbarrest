@@ -102,7 +102,7 @@ const statusLabel = {
                 <div v-for="row in pos.reviewRows" :key="row.id" class="review-row">
                     <div class="review-info">
                         <div class="review-title">
-                            <strong>{{ row.client_ref.slice(0, 8) }}</strong>
+                            <strong>{{ row.server?.number ?? row.client_ref.slice(0, 8) }}</strong>
                             <span class="review-chip" :class="'chip-' + row.status">{{ statusLabel[row.status] ?? row.status }}</span>
                         </div>
                         <span class="review-sub">{{ row.lines.length }} linea(s) · {{ money(row.display?.total ?? 0) }}</span>

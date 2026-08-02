@@ -27,6 +27,7 @@ use App\Domains\Sales\Enums\CashSessionStatus;
 use App\Domains\Sales\Enums\ItbisMode;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Enums\PaymentMethod;
+use App\Domains\Sales\Enums\SalesChannel;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
@@ -433,4 +434,58 @@ it('never inherits the fiscal rule of another account', function (): void {
     // El id de un comercio de OTRA cuenta no dicta la regla de esta.
     expect(app(ResolveItbisMode::class)->forVendor($ajeno->id, $this->tenant->id))
         ->toBe(ItbisMode::Included);
+});
+
+it('numbers sales with a per-vendor series prefixed by its channel', function (): void {
+    $organizer = app(CreateTenant::class)('Bocao', null, TenantType::Organizer);
+
+    app(TenantContext::class)->runAs($organizer, function (): void {
+        $event = app(CreateEvent::class)('Bocao 2026', now()->addWeek(), now()->addWeeks(2));
+        $uno = app(CreateVendor::class)('Tacos');
+        $dos = app(CreateVendor::class)('Cervezas');
+        app(InviteVendorToEvent::class)($event, $uno, 0);
+        app(InviteVendorToEvent::class)($event, $dos, 0);
+
+        $vender = function ($vendor, $ref, $channel = null) use ($event) {
+            return app(VendorContext::class)->runAs($vendor, function () use ($vendor, $event, $ref, $channel) {
+                $puesto = $vendor->operatingUnits()->first()
+                    ?? outletFor($event, 'Puesto '.$vendor->name, OperatingUnitKind::Kitchen, $vendor);
+                $cat = Category::query()->firstOr(fn () => null)
+                    ?? Category::create(['name' => 'Comida', 'dispatch' => DispatchArea::Kitchen]);
+                $producto = Product::query()->first()
+                    ?? Product::create(['category_id' => $cat->id, 'name' => 'Item', 'type' => ProductType::Simple, 'price_cents' => 10000]);
+                $caja = CashSession::query()->where('operating_unit_id', $puesto->id)->first()
+                    ?? app(OpenCashSession::class)($puesto, null, 0);
+
+                return app(PlaceOrder::class)(
+                    $caja, [['product_id' => $producto->id, 'quantity' => 1]], $ref, null, false,
+                    $channel ?? SalesChannel::Pos,
+                );
+            });
+        };
+
+        // Cada comercio lleva SU serie desde el 1: el vecino no le consume
+        // números y el mismo número puede existir en ambos.
+        expect($vender($uno, 'n-1')->publicNumber())->toBe('P0001')
+            ->and($vender($uno, 'n-2')->publicNumber())->toBe('P0002')
+            ->and($vender($dos, 'n-3')->publicNumber())->toBe('P0001');
+
+        // La letra dice el origen, pero la serie es una sola por comercio.
+        expect($vender($uno, 'n-4', SalesChannel::Mobile)->publicNumber())->toBe('M0003');
+    });
+});
+
+it('numbers branch sales per account when there is no vendor', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $primera = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0030');
+        $segunda = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0031');
+
+        expect($primera->publicNumber())->toBe('P0001')
+            ->and($segunda->publicNumber())->toBe('P0002')
+            ->and($primera->number_scope)->toBe(0);
+    });
 });
