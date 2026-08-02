@@ -30,9 +30,14 @@ class HomeForUser
 
         // El bar independiente: una sola casa, sin comercios dentro.
         if ($user->tenant instanceof BusinessAccount) {
-            return $permisos->intersect(Permission::businessManagement())->isNotEmpty()
-                ? '/business'
-                : ($user->canOperateThePos() ? '/pos' : '/business');
+            if ($permisos->intersect(Permission::businessManagement())->isNotEmpty()) {
+                return '/business';
+            }
+
+            // Sin gestión y sin caja no hay ninguna pantalla que darle. Se le
+            // manda a la entrada, que sabe decírselo, en vez de a una puerta
+            // que el guard cerraría con un 403 sin salida.
+            return $user->canOperateThePos() ? '/pos' : '/entrar';
         }
 
         if (! $user->worksForAVendor()) {
@@ -45,6 +50,6 @@ class HomeForUser
 
         // Su trabajo entero ocurre en la caja, y la caja de este mundo es la
         // de eventos: /pos rechazaría a este cajero por modalidad.
-        return $user->canOperateThePos() ? '/event-pos' : '/event-vendor';
+        return $user->canOperateThePos() ? '/event-pos' : '/entrar';
     }
 }

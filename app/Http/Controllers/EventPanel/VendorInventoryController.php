@@ -41,4 +41,40 @@ class VendorInventoryController extends Controller
 
         return back()->with('status', 'Compra registrada: el stock y el costo promedio ya la reflejan.');
     }
+
+    public function storeAdjustment(Request $request, int $vendor): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::InventoryAdjust);
+
+        $this->adjustStock($request, Vendor::query()->findOrFail($vendor));
+
+        return back()->with('status', 'Ajuste registrado.');
+    }
+
+    public function storeWaste(Request $request, int $vendor): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::InventoryAdjust);
+
+        $this->registerWaste($request, Vendor::query()->findOrFail($vendor));
+
+        return back()->with('status', 'Merma registrada.');
+    }
+
+    public function storeTransfer(Request $request, int $vendor): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::InventoryTransfer);
+
+        $this->transferStock($request, Vendor::query()->findOrFail($vendor));
+
+        return back()->with('status', 'Traslado registrado en los dos puestos.');
+    }
+
+    public function updateThreshold(Request $request, int $vendor, int $level): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::InventoryManage);
+
+        $this->changeThreshold($request, Vendor::query()->findOrFail($vendor), $level);
+
+        return back()->with('status', 'Umbral de alerta actualizado.');
+    }
 }

@@ -16,7 +16,8 @@ use Illuminate\Http\Request;
  */
 trait AuthorizesOrganizerPanel
 {
-    protected function authorizeOrganizer(Request $request, Permission $permission): void
+    /** Devuelve la cuenta ya comprobada, para quien la necesite. */
+    protected function authorizeOrganizer(Request $request, Permission $permission): OrganizerAccount
     {
         $user = $request->user();
 
@@ -27,5 +28,7 @@ trait AuthorizesOrganizerPanel
             && $user->can($permission->value),
             403,
         );
+
+        return $user->tenant;
     }
 }

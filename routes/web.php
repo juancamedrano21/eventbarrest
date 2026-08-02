@@ -14,6 +14,7 @@ use App\Http\Controllers\Business\SettingsController;
 use App\Http\Controllers\Business\TeamController;
 use App\Http\Controllers\EventPanel\DashboardController;
 use App\Http\Controllers\EventPanel\EventsController;
+use App\Http\Controllers\EventPanel\TeamController as EventPanelTeamController;
 use App\Http\Controllers\EventPanel\VendorCatalogController;
 use App\Http\Controllers\EventPanel\VendorInventoryController;
 use App\Http\Controllers\EventPanel\VendorProfileController;
@@ -65,6 +66,10 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::get('/comercios', [VendorsController::class, 'index'])->name('vendors.index');
     Route::post('/comercios', [VendorsController::class, 'store'])->name('vendors.store');
     Route::post('/comercios/{vendor}/datos', [VendorsController::class, 'update'])->name('vendors.update');
+    Route::get('/equipo', [EventPanelTeamController::class, 'index'])->name('team.index');
+    Route::post('/equipo', [EventPanelTeamController::class, 'store'])->name('team.store');
+    Route::post('/equipo/{user}', [EventPanelTeamController::class, 'update'])->name('team.update');
+    Route::post('/equipo/{user}/eliminar', [EventPanelTeamController::class, 'destroy'])->name('team.destroy');
     Route::get('/eventos', [EventsController::class, 'index'])->name('events.index');
     Route::post('/eventos', [EventsController::class, 'store'])->name('events.store');
     Route::get('/eventos/{event}', [EventsController::class, 'show'])->name('events.show');
@@ -85,6 +90,12 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::post('/comercios/{vendor}/productos/{product}/receta/{item}/eliminar', [VendorCatalogController::class, 'destroyRecipeItem'])->name('vendors.recipe.destroy');
     Route::post('/comercios/{vendor}/insumos', [VendorInventoryController::class, 'storeItem'])->name('vendors.items.store');
     Route::post('/comercios/{vendor}/compras', [VendorInventoryController::class, 'storePurchase'])->name('vendors.purchases.store');
+    Route::post('/comercios/{vendor}/ajustes-de-stock', [VendorInventoryController::class, 'storeAdjustment'])->name('vendors.adjustments.store');
+    Route::post('/comercios/{vendor}/mermas', [VendorInventoryController::class, 'storeWaste'])->name('vendors.waste.store');
+    Route::post('/comercios/{vendor}/traslados', [VendorInventoryController::class, 'storeTransfer'])->name('vendors.transfers.store');
+    Route::post('/comercios/{vendor}/existencias/{level}/umbral', [VendorInventoryController::class, 'updateThreshold'])->name('vendors.thresholds.update');
+    Route::post('/comercios/{vendor}/usuarios/{user}/datos', [VendorProfileController::class, 'updateUser'])->name('vendors.users.update');
+    Route::post('/comercios/{vendor}/usuarios/{user}/eliminar', [VendorProfileController::class, 'destroyUser'])->name('vendors.users.destroy');
 });
 
 // La puerta del personal del comercio (ADR-007): su comercio es implícito
@@ -100,6 +111,10 @@ Route::middleware(['auth', EnsureEventVendorUser::class])->prefix('event-vendor'
     Route::post('/productos/{product}/receta/{item}/eliminar', [ComercioCatalogController::class, 'destroyRecipeItem'])->name('recipe.destroy');
     Route::post('/insumos', [ComercioInventoryController::class, 'storeItem'])->name('items.store');
     Route::post('/compras', [ComercioInventoryController::class, 'storePurchase'])->name('purchases.store');
+    Route::post('/ajustes-de-stock', [ComercioInventoryController::class, 'storeAdjustment'])->name('adjustments.store');
+    Route::post('/mermas', [ComercioInventoryController::class, 'storeWaste'])->name('waste.store');
+    Route::post('/traslados', [ComercioInventoryController::class, 'storeTransfer'])->name('transfers.store');
+    Route::post('/existencias/{level}/umbral', [ComercioInventoryController::class, 'updateThreshold'])->name('thresholds.update');
 });
 
 // La casa del bar o restaurante independiente (ADR-008): la modalidad

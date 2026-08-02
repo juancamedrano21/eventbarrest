@@ -13,11 +13,14 @@ use App\Domains\EventManagement\Actions\UpdateEventOutlet;
 use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
+use App\Domains\EventManagement\Models\EventVendor;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\AssignTenantRole;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Permission;
+use App\Domains\Identity\Exceptions\LastOwnerException;
+use App\Domains\Identity\Exceptions\RoleTemplateException;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
@@ -40,6 +43,7 @@ use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Spatie\Activitylog\Models\Activity;
@@ -318,6 +322,17 @@ class VendorProfileController extends Controller
             'commission' => ['required', 'numeric', 'min:0', 'max:100'],
         ], [], ['commission' => 'comisión']);
 
+        // RENEGOCIAR, no invitar: la acción de dominio es crear-o-actualizar,
+        // así que sin esta comprobación esta URL daría de alta al comercio en
+        // un evento al que nadie lo invitó — y lo metería en su liquidación.
+        abort_unless(
+            EventVendor::query()
+                ->where('event_id', $event)
+                ->where('vendor_id', $record->id)
+                ->exists(),
+            404,
+        );
+
         app(InviteVendorToEvent::class)(
             Event::query()->findOrFail($event),
             $record,
@@ -393,12 +408,7 @@ class VendorProfileController extends Controller
     {
         $this->authorizeOrganizer($request, Permission::UsersManage);
 
-        $record = Vendor::query()->findOrFail($vendor);
-
-        $target = User::query()
-            ->where('tenant_id', $record->tenant_id)
-            ->where('vendor_id', $record->id)
-            ->findOrFail($user);
+        $target = $this->usuarioDelComercio($vendor, $user);
 
         $data = $request->validate([
             'role' => ['required', 'string', Rule::in(array_keys(RoleTemplate::optionsForVendorStaff()))],
@@ -406,8 +416,73 @@ class VendorProfileController extends Controller
 
         // El actor va para que aplique el techo antiescalada, y la Action
         // revoca los tokens del POS si el rol nuevo ya no puede operar caja.
-        app(AssignTenantRole::class)($target, $data['role'], $request->user());
+        try {
+            app(AssignTenantRole::class)($target, $data['role'], $request->user());
+        } catch (LastOwnerException|RoleTemplateException|VendorException $e) {
+            return back()->withErrors(['role' => $e->getMessage()]);
+        }
 
         return back()->with('status', 'Rol actualizado.');
+    }
+
+    /** Corregir nombre, correo, usuario del POS o contraseña. */
+    public function updateUser(Request $request, int $vendor, int $user): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::UsersManage);
+
+        $target = $this->usuarioDelComercio($vendor, $user);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'username' => ['nullable', 'string', 'max:30', 'regex:/^[a-z0-9._-]+$/i',
+                Rule::unique('users', 'username')->ignore($target->id)],
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($target->id)],
+            'password' => ['nullable', 'string', 'min:8'],
+        ], [
+            'username.regex' => 'El usuario del POS solo admite letras, números, punto, guion y guion bajo.',
+        ], ['name' => 'nombre', 'password' => 'contraseña']);
+
+        $target->name = $data['name'];
+        $target->email = $data['email'];
+        $target->username = $data['username'] ?? null;
+
+        if (filled($data['password'] ?? null)) {
+            $target->password = Hash::make($data['password']);
+        }
+
+        $target->save();
+
+        return back()->with('status', 'Usuario actualizado.');
+    }
+
+    public function destroyUser(Request $request, int $vendor, int $user): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::UsersManage);
+
+        $target = $this->usuarioDelComercio($vendor, $user);
+
+        if ($target->id === $request->user()?->id) {
+            return back()->withErrors(['user' => 'No puedes eliminar tu propia cuenta.']);
+        }
+
+        $target->delete();
+
+        return back()->with('status', 'Usuario eliminado.');
+    }
+
+    /**
+     * Alguien de ESTE comercio. `User` no lleva scope de cuenta —el login
+     * ocurre antes de que haya una—, así que las dos fronteras, la de la
+     * cuenta y la del comercio, se ponen a mano.
+     */
+    private function usuarioDelComercio(int $vendor, int $user): User
+    {
+        $record = Vendor::query()->findOrFail($vendor);
+
+        return User::query()
+            ->where('tenant_id', $record->tenant_id)
+            ->where('vendor_id', $record->id)
+            ->where('is_platform_admin', false)
+            ->findOrFail($user);
     }
 }

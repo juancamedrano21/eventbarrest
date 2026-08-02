@@ -12,6 +12,7 @@ use App\Domains\Sales\Queries\SalesSummary;
 use App\Http\Controllers\Business\Concerns\AuthorizesBusinessPanel;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 /**
@@ -29,15 +30,33 @@ class SalesController extends Controller
     {
         $this->negocioDe($request, Permission::ReportsViewUnit->value);
 
-        $sucursal = $request->integer('sucursal') ?: null;
-        $desde = $request->date('desde');
-        $hasta = $request->date('hasta');
+        // Sin validar, una fecha a mano en la URL revienta en Carbon::parse.
+        $filtros = $request->validate([
+            'sucursal' => ['nullable', 'integer'],
+            'desde' => ['nullable', 'date'],
+            'hasta' => ['nullable', 'date', 'after_or_equal:desde'],
+        ], [], ['desde' => 'fecha desde', 'hasta' => 'fecha hasta']);
 
+        $sucursal = (int) ($filtros['sucursal'] ?? 0) ?: null;
         $tz = (string) config('app.business_timezone');
-        $desdeUtc = $desde !== null ? (string) $desde->startOfDay()->setTimezone('UTC') : null;
+
+        // El día del negocio empieza a medianoche EN RD, no en UTC. Sin esto
+        // la franja de más venta de un bar —de las ocho a las doce— se le
+        // atribuiría al día siguiente, y el resumen de portada, que sí corta
+        // en hora local, contradiría a este listado sobre el mismo día.
+        $desde = filled($filtros['desde'] ?? null)
+            ? Carbon::parse($filtros['desde'], $tz)->startOfDay()
+            : null;
+        $hasta = filled($filtros['hasta'] ?? null)
+            ? Carbon::parse($filtros['hasta'], $tz)->startOfDay()
+            : null;
+
+        $desdeUtc = $desde?->copy()->utc()->toDateTimeString();
         // Rango cerrado por la izquierda y abierto por la derecha: «hasta el
-        // 5» incluye el día 5 entero.
-        $hastaUtc = $hasta !== null ? (string) $hasta->addDay()->startOfDay()->setTimezone('UTC') : null;
+        // 5» incluye el día 5 entero. Sobre una COPIA: Carbon es mutable, y
+        // mutarlo aquí repintaría el formulario con un día de más — y lo
+        // correría otro día en cada reenvío.
+        $hastaUtc = $hasta?->copy()->addDay()->utc()->toDateTimeString();
 
         $ordenes = Order::query()
             ->when($sucursal !== null, fn ($q) => $q->where('operating_unit_id', $sucursal))

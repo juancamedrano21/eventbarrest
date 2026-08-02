@@ -34,7 +34,7 @@ php artisan migrate --seed
 
 El seeder crea el usuario de plataforma `admin@eventbarrest.test` con contraseña
 `password` (configurable con `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` en `.env`;
-fuera de local el seeder **exige** una contraseña propia). Entra en `/admin`.
+fuera de local el seeder **exige** una contraseña propia). Entra en `/saas-admin`.
 
 ## Assets: servimos por vhost, no por `artisan serve`
 
@@ -50,7 +50,9 @@ Eso ejecuta `npm run build`, republica los assets de Filament (`filament:assets`
 y limpia las cachés. `composer run dev` (Vite con recarga en caliente) solo aplica
 si trabajas contra `php artisan serve`; con vhost, usa siempre el build.
 
-Paneles: `/admin` (super admin de la plataforma) · `/app` (negocio/tenant).
+Puertas: `/saas-admin` (plataforma) · `/event-panel` y `/event-vendor` (mundo
+de los eventos) · `/business` (bar o restaurante independiente) · `/pos` y
+`/event-pos` (las cajas). Todas se entra por `/entrar`.
 Colas: `php artisan horizon` (dashboard en `/horizon`, abierto solo en local hasta
 que el dominio Identity traiga los roles de plataforma).
 
@@ -78,7 +80,7 @@ vendor/bin/pest             # tests (incluye la suite TenantIsolation)
 No hay una modalidad que se active dentro de una cuenta. Hay **dos tipos de cuenta**,
 y son dos mundos cerrados que no comparten datos:
 
-| `tenants.type` | Quién | Estructura operativa | Qué ve en `/app` |
+| `tenants.type` | Quién | Estructura operativa | Su puerta |
 |---|---|---|---|
 | `business` | Bar, restaurante, discoteca | **Sucursales** | Sucursales |
 | `organizer` | Productora de festivales | **Eventos** → sus puntos de venta | Eventos |
@@ -126,10 +128,13 @@ qué catálogo ve el POS y por qué impresora salen las comandas.
 
 | Panel | Quién entra | Qué exige |
 |---|---|---|
-| `/admin` | Staff de la plataforma | `is_platform_admin` |
-| `/app` | Equipo de un negocio | pertenecer a un tenant **no suspendido** |
+| `/saas-admin` | Staff de la plataforma | `is_platform_admin` |
+| `/business` | Equipo de un bar independiente | cuenta de negocio **no suspendida** y algún permiso de gestión |
+| `/event-panel` | Equipo de un organizador | cuenta de organizador **no suspendida** |
+| `/event-vendor` | Personal de un comercio de evento | su comercio **no suspendido** y algún permiso de gestión |
 
-El staff de plataforma **no** entra en `/app`: no pertenece a ningún negocio.
+El staff de plataforma **no** entra en las puertas de cliente: no pertenece a
+ninguna cuenta.
 Para asistir a un tenant se usará suplantación auditada, no un acceso directo.
 
 Los roles son **por cuenta** (spatie/permission en modo teams, con `tenant_id`
@@ -154,10 +159,10 @@ el festival con los negocios ya dados de alta, pero no da de alta negocios nuevo
 Tras añadir un permiso al catálogo, las cuentas existentes lo reciben con
 `php artisan identity:provision-roles`.
 
-**Onboarding de un negocio nuevo:** en `/admin` se crea el negocio (sus roles se
+**Onboarding de un negocio nuevo:** en `/saas-admin` se crea el negocio (sus roles se
 aprovisionan solos) y, en su pestaña *Equipo*, se le da su primer **dueño**. Sin
-dueño nadie puede entrar en `/app`. Después el dueño gestiona su equipo desde el
-panel del negocio.
+dueño nadie puede entrar. Después el dueño gestiona su equipo desde su propia
+puerta — `/business/equipo` en un bar, `/event-panel/equipo` en un organizador.
 
 Tras añadir un permiso o rol nuevo al catálogo, los negocios ya existentes se
 actualizan con:

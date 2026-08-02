@@ -29,9 +29,27 @@ class LoginController extends Controller
     {
         $user = $request->user();
 
-        return $user instanceof User
-            ? redirect(app(HomeForUser::class)($user))
-            : view('auth.login');
+        if (! $user instanceof User) {
+            return view('auth.login');
+        }
+
+        $destino = app(HomeForUser::class)($user);
+
+        // HomeForUser devuelve esta misma pantalla cuando un rol no abre
+        // ninguna puerta. Redirigir aquí sería un bucle: se le dice qué pasa
+        // y se cierra la sesión, que es lo único que puede hacer por sí solo.
+        if ($destino === '/entrar') {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return view('auth.login')->with(
+                'aviso',
+                'Tu usuario no tiene ninguna pantalla asignada todavía. Pídele a quien administra la cuenta que te dé un rol.',
+            );
+        }
+
+        return redirect($destino);
     }
 
     public function store(Request $request): RedirectResponse

@@ -10,8 +10,11 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Actions\CreateVendor;
 use App\Domains\EventManagement\VendorContext;
+use App\Domains\Identity\Actions\ApplyRoleTemplates;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
+use App\Domains\Identity\Enums\RoleKind;
+use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Identity\Queries\UserPermissions;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
@@ -401,4 +404,94 @@ it('does not reach another account data, not even by id', function (): void {
         ->assertNotFound();
 
     expect($ajena->fresh()->name)->toBe('Sucursal Ajena');
+});
+
+// ───────────────── Lo que la revisión adversarial encontró ─────────────────
+
+it('never silently promotes someone whose role is no longer offered', function (): void {
+    // Un usuario con un rol del mundo eventos heredado: su rol no está entre
+    // los ofrecidos, así que ninguna opción del desplegable quedaba marcada
+    // y el navegador enviaba la PRIMERA de la lista — «Administrador».
+    $eva = app(CreateTenantUser::class)(
+        $this->negocio, 'Eva', 'eva@bar.test', 'Secreta-2026', Role::EventManager,
+    );
+
+    $html = $this->actingAs($this->dueno)->get('/business/equipo')->assertOk()->getContent();
+
+    // Su rol vigente aparece y sale seleccionado.
+    expect($html)->toContain('value="event_manager" selected');
+
+    // Y guardar sin tocar el rol lo respeta, en vez de ascenderla.
+    $this->actingAs($this->dueno)
+        ->post("/business/equipo/{$eva->id}", [
+            'name' => 'Eva Ramírez', 'email' => 'eva@bar.test',
+            'password' => '', 'role' => Role::EventManager->value,
+        ])
+        ->assertRedirect();
+
+    expect(app(UserPermissions::class)->namesFor($eva->fresh())->contains('users.manage'))->toBeFalse()
+        ->and($eva->fresh()->name)->toBe('Eva Ramírez');
+});
+
+it('explains that the last owner cannot be demoted instead of crashing', function (): void {
+    $this->actingAs($this->dueno)
+        ->from('/business/equipo')
+        ->post("/business/equipo/{$this->dueno->id}", [
+            'name' => 'Juan', 'email' => 'juan@bar.test',
+            'password' => '', 'role' => Role::Warehouse->value,
+        ])
+        ->assertSessionHasErrors('role');
+
+    expect(app(UserPermissions::class)->namesFor($this->dueno->fresh())->contains('users.manage'))->toBeTrue();
+});
+
+it('404s a recipe ingredient from another account instead of erroring', function (): void {
+    $receta = app(TenantContext::class)->runAs($this->negocio, function () {
+        $c = Category::create(['name' => 'Cócteles', 'dispatch' => DispatchArea::Bar]);
+
+        return Product::create([
+            'category_id' => $c->id, 'name' => 'Mojito',
+            'type' => ProductType::Recipe, 'price_cents' => 45000,
+        ]);
+    });
+
+    $otro = app(CreateTenant::class)('Otro Bar', null, TenantType::Business);
+    $ajeno = app(TenantContext::class)->runAs(
+        $otro,
+        fn () => InventoryItem::create(['name' => 'Ron ajeno', 'base_unit' => 'ml', 'cost_cents' => 5]),
+    );
+
+    $this->actingAs($this->dueno)
+        ->post("/business/productos/{$receta->id}/receta", [
+            'inventory_item_id' => $ajeno->id, 'quantity' => '60',
+        ])
+        ->assertNotFound();
+});
+
+it('explains itself instead of looping when a role opens no door at all', function (): void {
+    // Un rol con permisos que no abren NINGUNA puerta: ni gestión del
+    // negocio ni caja. Antes se le mandaba a /business, que le respondía
+    // 403; y mandarlo al login habría sido un bucle, porque el login
+    // redirige a HomeForUser.
+    $plantilla = RoleTemplate::query()->create([
+        'label' => 'Terminales',
+        'description' => 'Solo administra dispositivos del POS.',
+        'permissions' => ['pos_devices.manage'],
+    ]);
+    $plantilla->forceFill([
+        'name' => 'terminales',
+        'kind' => RoleKind::Account->value,
+    ])->save();
+    app(ApplyRoleTemplates::class)();
+
+    $nadie = app(CreateTenantUser::class)(
+        $this->negocio, 'Nadie', 'nadie@bar.test', 'Secreta-2026', 'terminales',
+    );
+
+    $this->actingAs($nadie)
+        ->get('/entrar')
+        ->assertOk()
+        ->assertSee('no tiene ninguna pantalla asignada', false);
+
+    $this->assertGuest();
 });

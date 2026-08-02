@@ -80,7 +80,9 @@ class EventsController extends Controller
 
         $estado = EventStatus::from($data['status']);
 
-        if ($estado === EventStatus::Settled && $record->status !== EventStatus::Settled) {
+        // El permiso se pide en los DOS sentidos: deshacer un corte
+        // financiero es al menos tan delicado como hacerlo.
+        if ($estado === EventStatus::Settled || $record->status === EventStatus::Settled) {
             $this->authorizeOrganizer($request, Permission::EventsSettle);
         }
 

@@ -46,7 +46,11 @@
                 <p class="mt-1 text-2xl font-semibold {{ $mes->devuelto > 0 ? 'text-red-600' : 'text-gray-900' }}">
                     RD$ {{ number_format($mes->devuelto / 100, 2) }}
                 </p>
-                <p class="mt-1 text-xs text-gray-500">ITBIS del período RD$ {{ number_format($itbis30 / 100, 2) }}</p>
+                {{-- Bruto a propósito: es lo facturado. Las devoluciones se
+                     corrigen con notas de crédito, que aún no existen. --}}
+                <p class="mt-1 text-xs text-gray-500" title="Lo facturado, antes de notas de crédito">
+                    ITBIS facturado RD$ {{ number_format($itbis30 / 100, 2) }}
+                </p>
             </div>
         </div>
 

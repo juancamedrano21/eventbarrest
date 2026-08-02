@@ -143,7 +143,9 @@
                                 <label for="e-rol-{{ $fila['user']->id }}" class="mb-1.5 block text-sm text-gray-700">Rol</label>
                                 <select id="e-rol-{{ $fila['user']->id }}" name="role" required @disabled($fila['esUltimoDueno'])
                                     class="block w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none disabled:bg-gray-50 disabled:text-gray-500">
-                                    @foreach ($roles as $valor => $etiqueta)
+                                    {{-- Los de ESTE usuario: incluyen el suyo aunque ya no se
+                                         ofrezca, para que ninguna opción quede sin marcar. --}}
+                                    @foreach ($fila['roles'] as $valor => $etiqueta)
                                         <option value="{{ $valor }}" @selected($fila['rolNombre'] === $valor)>{{ $etiqueta }}</option>
                                     @endforeach
                                 </select>

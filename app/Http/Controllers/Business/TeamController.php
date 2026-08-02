@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Business;
 
+use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Identity\Actions\AssignTenantRole;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Enums\Role;
+use App\Domains\Identity\Exceptions\LastOwnerException;
+use App\Domains\Identity\Exceptions\RoleTemplateException;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Identity\Queries\TenantOwners;
 use App\Domains\Identity\Queries\UserPermissions;
@@ -54,6 +57,13 @@ class TeamController extends Controller
             'equipo' => $equipo->map(fn (User $u): array => [
                 'user' => $u,
                 'rolNombre' => $rolDe[$u->id] ?? null,
+                // El desplegable de cada usuario incluye SU rol vigente aunque
+                // ya no se ofrezca (un rol del mundo eventos heredado, o uno a
+                // medida que el superadmin retiró). Si ninguna opción queda
+                // seleccionada, el navegador envía la primera de la lista —que
+                // ordenada por etiqueta es «Administrador»— y guardar sin
+                // tocar nada ascendería a esa persona en silencio.
+                'roles' => $this->rolesPara($roles, $rolDe[$u->id] ?? null),
                 'rol' => $roles[$rolDe[$u->id] ?? ''] ?? RoleTemplate::labelFor((string) ($rolDe[$u->id] ?? '')) ?? '—',
                 // El último dueño no se degrada ni se borra: dejaría la
                 // cuenta sin nadie que pueda dar de alta a nadie.
@@ -62,6 +72,23 @@ class TeamController extends Controller
             ]),
             'roles' => $roles,
         ]);
+    }
+
+    /**
+     * Los roles ofrecibles a alguien, con el suyo incluido aunque ya no se
+     * ofrezca. Sin esto, un desplegable sin opción seleccionada envía la
+     * primera de la lista y guardar sin tocar nada cambiaría el rol.
+     *
+     * @param  array<string, string>  $ofrecidos
+     * @return array<string, string>
+     */
+    private function rolesPara(array $ofrecidos, ?string $vigente): array
+    {
+        if ($vigente === null || array_key_exists($vigente, $ofrecidos)) {
+            return $ofrecidos;
+        }
+
+        return [$vigente => RoleTemplate::labelFor($vigente) ?? $vigente] + $ofrecidos;
     }
 
     public function store(Request $request): RedirectResponse
@@ -79,17 +106,22 @@ class TeamController extends Controller
         ], ['name' => 'nombre', 'password' => 'contraseña', 'role' => 'rol']);
 
         // El actor va para que aplique el techo antiescalada: nadie concede
-        // un rol con más permisos de los que tiene.
-        app(CreateTenantUser::class)(
-            $negocio,
-            $data['name'],
-            $data['email'],
-            $data['password'],
-            $data['role'],
-            null,
-            $this->actor(),
-            $data['username'] ?? null,
-        );
+        // un rol con más permisos de los que tiene. Que lo intente es un
+        // error de formulario, no un fallo del servidor.
+        try {
+            app(CreateTenantUser::class)(
+                $negocio,
+                $data['name'],
+                $data['email'],
+                $data['password'],
+                $data['role'],
+                null,
+                $this->actor(),
+                $data['username'] ?? null,
+            );
+        } catch (RoleTemplateException|VendorException $e) {
+            return back()->withErrors(['role' => $e->getMessage()]);
+        }
 
         return back()->with('status', 'Usuario creado.');
     }
@@ -104,20 +136,34 @@ class TeamController extends Controller
         // una—, así que la frontera se comprueba a mano.
         abort_unless((int) $user->tenant_id === (int) $negocio->id && ! $user->is_platform_admin, 404);
 
+        $rolVigente = app(UserPermissions::class)
+            ->roleNamesFor((int) $negocio->id, [$user->id])[$user->id] ?? null;
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'username' => ['nullable', 'string', 'max:30', 'regex:/^[a-z0-9._-]+$/i',
                 Rule::unique('users', 'username')->ignore($user->id)],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'password' => ['nullable', 'string', 'min:8'],
-            'role' => ['required', 'string', Rule::in(array_keys(RoleTemplate::optionsForBusinessStaff()))],
+            // Se admite dejarle el rol que ya tiene aunque no esté entre los
+            // ofrecidos: guardar el correo de alguien no debería obligar a
+            // cambiarle el rol.
+            'role' => ['required', 'string', Rule::in(array_keys(
+                $this->rolesPara(RoleTemplate::optionsForBusinessStaff(), $rolVigente),
+            ))],
         ], [
             'username.regex' => 'El usuario del POS solo admite letras, números, punto, guion y guion bajo.',
         ], ['name' => 'nombre', 'password' => 'contraseña', 'role' => 'rol']);
 
         // El rol PRIMERO: si degradar al último dueño va a fallar, que falle
-        // antes de haber escrito nada más.
-        app(AssignTenantRole::class)($user, $data['role'], $this->actor());
+        // antes de haber escrito nada más. Es una regla que el dueño puede
+        // resolver —nombrar otro dueño—, así que se le cuenta en su panel en
+        // vez de reventar en un 500.
+        try {
+            app(AssignTenantRole::class)($user, $data['role'], $this->actor());
+        } catch (LastOwnerException|RoleTemplateException|VendorException $e) {
+            return back()->withErrors(['role' => $e->getMessage()]);
+        }
 
         $user->name = $data['name'];
         $user->email = $data['email'];

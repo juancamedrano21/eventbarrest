@@ -25,9 +25,14 @@ trait HandlesVendorCatalog
     protected function createCategory(Request $request, Vendor $record): void
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255',
+                Rule::unique('categories', 'name')
+                    ->where('tenant_id', $record->tenant_id)
+                    ->where('vendor_id', $record->id)],
             'tipo' => ['required', 'in:alimentos,bebidas'],
-        ]);
+        ], [
+            'name.unique' => 'Ya existe una categoría con ese nombre en este comercio.',
+        ], ['name' => 'nombre']);
 
         app(VendorContext::class)->runAs($record, fn () => Category::create([
             'name' => $data['name'],
@@ -40,14 +45,21 @@ trait HandlesVendorCatalog
     protected function createProduct(Request $request, Vendor $record): void
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            // Único dentro del comercio, como en la edición: sin esta regla
+            // el índice de la base lo rechazaba con un 500 en la cara.
+            'name' => ['required', 'string', 'max:255',
+                Rule::unique('products', 'name')
+                    ->where('tenant_id', $record->tenant_id)
+                    ->where('vendor_id', $record->id)],
             'price' => ['required', 'numeric', 'min:0'],
             'category_id' => ['required', 'integer'],
             'kind' => ['required', 'in:simple,receta'],
             'inventory_item_id' => ['nullable', 'integer'],
             // Gravado si no se dice lo contrario: el default fiscal seguro.
             'itbis' => ['nullable', 'in:gravado,exento'],
-        ]);
+        ], [
+            'name.unique' => 'Ya existe un producto con ese nombre en este comercio.',
+        ], ['name' => 'nombre', 'price' => 'precio']);
 
         app(VendorContext::class)->runAs($record, function () use ($data): void {
             // Con el comercio activo, una categoría o insumo ajenos no existen.

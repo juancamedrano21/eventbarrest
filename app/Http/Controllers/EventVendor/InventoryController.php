@@ -35,4 +35,32 @@ class InventoryController extends Controller
 
         return back()->with('status', 'Compra registrada: el stock y el costo promedio ya la reflejan.');
     }
+
+    public function storeAdjustment(Request $request): RedirectResponse
+    {
+        $this->adjustStock($request, $this->comercioDe($request, Permission::InventoryAdjust));
+
+        return back()->with('status', 'Ajuste registrado.');
+    }
+
+    public function storeWaste(Request $request): RedirectResponse
+    {
+        $this->registerWaste($request, $this->comercioDe($request, Permission::InventoryAdjust));
+
+        return back()->with('status', 'Merma registrada.');
+    }
+
+    public function storeTransfer(Request $request): RedirectResponse
+    {
+        $this->transferStock($request, $this->comercioDe($request, Permission::InventoryTransfer));
+
+        return back()->with('status', 'Traslado registrado en los dos puestos.');
+    }
+
+    public function updateThreshold(Request $request, int $level): RedirectResponse
+    {
+        $this->changeThreshold($request, $this->comercioDe($request, Permission::InventoryManage), $level);
+
+        return back()->with('status', 'Umbral de alerta actualizado.');
+    }
 }

@@ -173,10 +173,13 @@ trait HandlesBusinessCatalog
             'quantity' => ['required', 'numeric', 'min:0.001'],
         ], [], ['quantity' => 'cantidad']);
 
-        // Los guards del dominio rematan: producto tipo receta, insumo de la
-        // misma cuenta, cantidades positivas.
+        // Se resuelve con el scope para que un insumo ajeno dé 404, como en
+        // el resto de la puerta. El guard del dominio queda de red debajo,
+        // pero llegar hasta él sería un 500 en vez de un «no existe».
+        $item = InventoryItem::query()->findOrFail((int) $data['inventory_item_id']);
+
         $product->recipeItems()->create([
-            'inventory_item_id' => (int) $data['inventory_item_id'],
+            'inventory_item_id' => $item->id,
             'quantity' => round((float) $data['quantity'], 3),
         ]);
     }
