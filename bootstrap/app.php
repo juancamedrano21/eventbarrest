@@ -24,9 +24,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // llega sin equipo de permisos y responde 403 aunque la pantalla se
         // hubiera abierto bien.
         //
-        // Ojo: esto NO cubre las rutas del panel — Filament les arma su propio
-        // stack sin el grupo web. El panel lo cubre por su lado, con
-        // authMiddleware(..., isPersistent: true) en AppPanelProvider.
+        // Ojo: esto NO cubre las rutas de Filament — se arma su propio stack
+        // sin el grupo web. /saas-admin lo cubre por su lado, con
+        // authMiddleware(..., isPersistent: true) en AdminPanelProvider.
         $middleware->web(append: [
             SetTenantContext::class,
         ]);

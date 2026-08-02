@@ -163,21 +163,13 @@ class User extends Authenticatable implements FilamentUser
         return $this->is_platform_admin === true;
     }
 
+    /**
+     * Solo queda un panel Filament, el de la plataforma. Los paneles de
+     * cliente son Blade y su acceso lo decide el middleware de cada puerta.
+     */
     public function canAccessPanel(Panel $panel): bool
     {
-        return match ($panel->getId()) {
-            // El panel de plataforma es solo para el staff del SaaS.
-            'admin' => $this->isPlatformStaff(),
-            // El panel del negocio exige pertenecer a un tenant que no esté
-            // suspendido: suspender corta el acceso de todo su equipo.
-            // El cajero queda fuera a propósito: su trabajo ocurre en el POS,
-            // y aquí solo vería un panel sin una sola pantalla.
-            'app' => $this->tenant !== null
-                && $this->tenant->status !== TenantStatus::Suspended
-                && ! $this->vendorIsSuspended()
-                && ! $this->onlyOperatesThePos(),
-            default => false,
-        };
+        return $panel->getId() === 'admin' && $this->isPlatformStaff();
     }
 
     /**

@@ -6,17 +6,13 @@ use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Enums\Role;
 use App\Domains\Platform\Actions\CreateTenant;
-use App\Filament\App\Resources\Users\Pages\EditUser;
-use App\Filament\App\Resources\Users\Pages\ListUsers;
 use App\Models\User;
-use Filament\Facades\Filament;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Livewire\Livewire;
 
 /**
  * User no lleva BelongsToTenant a propósito (el login ocurre sin contexto),
- * así que su aislamiento no lo da el global scope: lo dan el middleware y el
- * Resource. Esta suite es el contrato de esa garantía.
+ * así que su aislamiento no lo da el global scope: lo dan el middleware y la
+ * comprobación explícita de cada pantalla. Esta suite es el contrato de esa
+ * garantía, y se pega por HTTP contra la puerta que administra el equipo.
  */
 beforeEach(function (): void {
     $this->barA = app(CreateTenant::class)('Bar A');
@@ -24,38 +20,43 @@ beforeEach(function (): void {
 
     $this->ownerA = app(CreateTenantUser::class)($this->barA, 'Ana', 'ana@a.test', 'Secreta-2026', Role::Owner);
     $this->ownerB = app(CreateTenantUser::class)($this->barB, 'Beto', 'beto@b.test', 'Secreta-2026', Role::Owner);
-    $this->cashierA = app(CreateTenantUser::class)($this->barA, 'Carla', 'carla@a.test', 'Secreta-2026', Role::Cashier);
+    $this->cashierA = app(CreateTenantUser::class)(
+        $this->barA, 'Carla', 'carla@a.test', 'Secreta-2026', Role::Cashier, null, null, 'carla',
+    );
 
-    // Los tests de Livewire montan el componente sin pasar por el middleware,
-    // así que el equipo de permisos se fija a mano. El camino HTTP completo
-    // (con SetTenantContext) se cubre en Feature/App/TenantPanelAccessTest.
     actAsTenantPermissions($this->barA->id);
 });
 
 it('scopes the team list to the users own tenant', function (): void {
-    $this->actingAs($this->ownerA);
-    Filament::setCurrentPanel('app');
-
-    Livewire::test(ListUsers::class)
-        ->assertCanSeeTableRecords([$this->ownerA, $this->cashierA])
-        ->assertCanNotSeeTableRecords([$this->ownerB]);
+    $this->actingAs($this->ownerA)
+        ->get('/business/equipo')
+        ->assertOk()
+        ->assertSee('ana@a.test')
+        ->assertSee('carla@a.test')
+        ->assertDontSee('beto@b.test');
 });
 
 it('hides platform staff from the tenant team list', function (): void {
-    $staff = User::factory()->platformAdmin()->create(['name' => 'Soporte']);
+    $staff = User::factory()->platformAdmin()->create([
+        'name' => 'Soporte', 'email' => 'soporte@plataforma.test',
+    ]);
 
-    $this->actingAs($this->ownerA);
-    Filament::setCurrentPanel('app');
-
-    Livewire::test(ListUsers::class)->assertCanNotSeeTableRecords([$staff]);
+    $this->actingAs($this->ownerA)
+        ->get('/business/equipo')
+        ->assertOk()
+        ->assertDontSee($staff->email);
 });
 
-it('refuses to open another tenants user for editing', function (): void {
-    $this->actingAs($this->ownerA);
-    Filament::setCurrentPanel('app');
+it('refuses to touch another tenants user, even by id', function (): void {
+    $this->actingAs($this->ownerA)
+        ->post("/business/equipo/{$this->ownerB->id}", [
+            'name' => 'Robado', 'email' => 'beto@b.test',
+            'password' => '', 'role' => Role::Warehouse->value,
+        ])
+        ->assertNotFound();
 
-    Livewire::test(EditUser::class, ['record' => $this->ownerB->getRouteKey()]);
-})->throws(ModelNotFoundException::class);
+    expect($this->ownerB->fresh()->name)->toBe('Beto');
+});
 
 it('grants roles only within the tenant that issued them', function (): void {
     // El mismo nombre de rol existe en ambos negocios: la asignación de A
@@ -77,8 +78,6 @@ it('gives each role the permissions of the matrix', function (): void {
 });
 
 it('keeps a cashier out of the team screen entirely', function (): void {
-    $this->actingAs($this->cashierA);
-    Filament::setCurrentPanel('app');
-
-    Livewire::test(ListUsers::class)->assertForbidden();
+    // Su trabajo ocurre en la caja: se le manda allí, no a un 403 seco.
+    $this->actingAs($this->cashierA)->get('/business/equipo')->assertRedirect('/pos');
 });

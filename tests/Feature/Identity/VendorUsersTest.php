@@ -103,7 +103,7 @@ it('blocks panel access for staff of a suspended vendor', function (): void {
         fn () => $this->vendor->update(['status' => VendorStatus::Suspended]),
     );
 
-    expect($this->actingAs($user)->get('/app')->getStatusCode())->toBe(403);
+    expect($this->actingAs($user)->get('/event-vendor')->getStatusCode())->toBe(403);
 });
 
 it('refuses to delete a vendor that still has users', function (): void {

@@ -148,5 +148,5 @@ it('fails closed when the vendor of a signed-in user cannot be resolved', functi
     $ajeno = app(TenantContext::class)->runAs($otra, fn () => app(CreateVendor::class)('Ajeno'));
     DB::table('users')->where('id', $user->id)->update(['vendor_id' => $ajeno->id]);
 
-    expect($this->actingAs($user->fresh())->get('/app/products')->getStatusCode())->toBe(403);
+    expect($this->actingAs($user->fresh())->get('/event-vendor')->getStatusCode())->toBe(403);
 });

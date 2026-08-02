@@ -209,7 +209,3 @@ it('lets staff of a draft vendor in: only suspension cuts access', function (): 
 
     $this->actingAs($this->encargada)->get('/event-vendor')->assertOk();
 });
-
-it('bounces vendor staff from the old Filament dashboard to their door', function (): void {
-    $this->actingAs($this->encargada)->get('/app')->assertRedirect('/event-vendor');
-});

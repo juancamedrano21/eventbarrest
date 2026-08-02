@@ -75,5 +75,6 @@ function signInTo(object $test, $user, $tenant): void
     app(ContextResolver::class)->forUser($user);
     app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-    Filament::setCurrentPanel('app');
+    // Los tests de Livewire que quedan son los del panel de plataforma.
+    Filament::setCurrentPanel('admin');
 }

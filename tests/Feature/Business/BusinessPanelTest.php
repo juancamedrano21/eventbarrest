@@ -12,6 +12,7 @@ use App\Domains\EventManagement\Actions\CreateVendor;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
+use App\Domains\Identity\Queries\UserPermissions;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Operations\Enums\OperatingUnitKind;
@@ -313,6 +314,56 @@ it('adds a teammate and never offers roles from the events world', function (): 
 
     expect($marta->tenant_id)->toBe($this->negocio->id)
         ->and($marta->vendor_id)->toBeNull();
+});
+
+it('refuses a duplicate email and a weak password', function (): void {
+    $this->actingAs($this->dueno)
+        ->from('/business/equipo')
+        ->post('/business/equipo', [
+            'name' => 'Otro Juan', 'email' => 'juan@bar.test',
+            'password' => 'Secreta-2026', 'role' => Role::UnitManager->value,
+        ])
+        ->assertSessionHasErrors('email');
+
+    $this->actingAs($this->dueno)
+        ->from('/business/equipo')
+        ->post('/business/equipo', [
+            'name' => 'Marta', 'email' => 'marta@bar.test',
+            'password' => 'corta', 'role' => Role::UnitManager->value,
+        ])
+        ->assertSessionHasErrors('password');
+});
+
+it('keeps the password when the field is left empty on edit', function (): void {
+    $marta = app(CreateTenantUser::class)(
+        $this->negocio, 'Marta', 'marta@bar.test', 'Secreta-2026', Role::UnitManager,
+    );
+    $antes = $marta->password;
+
+    $this->actingAs($this->dueno)
+        ->post("/business/equipo/{$marta->id}", [
+            'name' => 'Marta Pérez', 'email' => 'marta@bar.test',
+            'password' => '', 'role' => Role::Warehouse->value,
+        ])
+        ->assertRedirect();
+
+    expect($marta->fresh()->password)->toBe($antes)
+        ->and($marta->fresh()->name)->toBe('Marta Pérez');
+});
+
+it('allows demoting an owner once another one exists', function (): void {
+    $segunda = app(CreateTenantUser::class)(
+        $this->negocio, 'Sara', 'sara@bar.test', 'Secreta-2026', Role::Owner,
+    );
+
+    $this->actingAs($this->dueno)
+        ->post("/business/equipo/{$segunda->id}", [
+            'name' => 'Sara', 'email' => 'sara@bar.test',
+            'password' => '', 'role' => Role::UnitManager->value,
+        ])
+        ->assertRedirect();
+
+    expect(app(UserPermissions::class)->namesFor($segunda->fresh())->contains('users.manage'))->toBeFalse();
 });
 
 it('never lets the last owner be deleted or demoted', function (): void {

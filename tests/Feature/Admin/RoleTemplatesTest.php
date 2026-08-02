@@ -239,7 +239,9 @@ it('keeps a cashier clone with another name out of the management panel', functi
     $tenant = app(CreateTenant::class)('Bar del Puerto');
     $barra = app(CreateTenantUser::class)($tenant, 'Bea', 'bea@bar.test', 'Secreta-2026', 'barra');
 
-    expect($this->actingAs($barra)->get('/app')->getStatusCode())->toBe(403);
+    // No entra al panel de gestión, y como su trabajo entero es la caja se
+    // le manda allí en vez de darle un 403 sin salida.
+    $this->actingAs($barra)->get('/business')->assertRedirect('/pos');
 });
 
 it('re-seeds a missing system template instead of giving up forever', function (): void {
