@@ -32,7 +32,7 @@
     {{-- Modal: nuevo producto --}}
     <div id="modal-producto" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="m-3 mt-14 sm:mx-auto sm:w-full sm:max-w-md">
-            <form method="POST" action="{{ $urls['productos'] }}" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+            <form method="POST" action="{{ $urls['productos'] }}" enctype="multipart/form-data" class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
                 @csrf
                 <h3 class="mb-4 font-medium text-gray-800">Nuevo producto del menú</h3>
                 <div class="space-y-3">
@@ -60,6 +60,12 @@
                         @endforeach
                     </select>
                     <p class="text-xs text-gray-500">Simple + insumo: vende 1, descuenta 1 (ej. cerveza). Con receta: crea el producto y ábrele «Receta» en su fila para armar el escandallo.</p>
+                    <div>
+                        <label for="np-foto" class="mb-1.5 block text-sm text-gray-700">Foto <span class="text-gray-400">(opcional)</span></label>
+                        <input id="np-foto" name="image" type="file" accept="image/jpeg,image/png,image/webp"
+                            class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:text-gray-700 hover:file:bg-gray-200">
+                        <p class="mt-1.5 text-xs text-gray-500">JPG, PNG o WebP, hasta 4 MB. Es lo que ve el cajero en el POS.</p>
+                    </div>
                 </div>
                 <div class="mt-5 flex justify-end gap-2">
                     <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600" data-hs-overlay="#modal-producto">Cancelar</button>

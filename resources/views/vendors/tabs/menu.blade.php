@@ -118,7 +118,7 @@
                                 // tecleado; los demás muestran su estado real.
                                 $conError = $errors->any() && old('_modal') === 'modal-item-'.$product->id;
                             @endphp
-                            <form method="POST" action="{{ $urls['producto']($product) }}">
+                            <form method="POST" action="{{ $urls['producto']($product) }}" enctype="multipart/form-data">
                                 @csrf
                                 <input type="hidden" name="_modal" value="modal-item-{{ $product->id }}">
                                 <div class="space-y-4 px-5 py-5">
@@ -163,6 +163,23 @@
                                                 <option value="1" @selected($conError ? old('itbis_exempt') === '1' : $product->itbis_exempt)>Exento — no desglosa impuesto</option>
                                             </select>
                                         </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="mb-1.5 block text-xs font-medium text-gray-700">Foto</label>
+                                        <div class="flex items-center gap-3">
+                                            @if ($product->imageUrl())
+                                                <img src="{{ $product->imageUrl() }}" alt="" class="size-14 shrink-0 rounded object-cover">
+                                            @endif
+                                            <input name="image" type="file" accept="image/jpeg,image/png,image/webp"
+                                                class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:text-gray-700 hover:file:bg-gray-200">
+                                        </div>
+                                        @if ($product->imageUrl())
+                                            <label class="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                                                <input type="checkbox" name="remove_image" value="1" class="rounded border-gray-300">
+                                                Quitar la foto actual
+                                            </label>
+                                        @endif
                                     </div>
 
                                     @if ($product->type->value !== 'recipe')

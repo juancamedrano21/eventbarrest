@@ -9,6 +9,7 @@ use App\Domains\Catalog\Enums\ProductType;
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
 use App\Domains\Inventory\Models\InventoryItem;
+use App\Http\Controllers\Concerns\HandlesProductImage;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -27,6 +28,8 @@ use Illuminate\Validation\Rule;
  */
 trait HandlesBusinessCatalog
 {
+    use HandlesProductImage;
+
     protected function createCategory(Request $request, int $tenantId): void
     {
         $data = $request->validate([
@@ -83,9 +86,11 @@ trait HandlesBusinessCatalog
             'inventory_item_id' => ['nullable', 'integer'],
             // Gravado si no se dice lo contrario: el default fiscal seguro.
             'itbis' => ['nullable', 'in:gravado,exento'],
+            'image' => $this->reglasDeImagen(),
         ], [
             'name.unique' => 'Ya existe un producto con ese nombre en el menú.',
-        ], ['name' => 'nombre', 'price' => 'precio']);
+            'image.max' => 'La foto no puede pesar más de 4 MB.',
+        ], ['name' => 'nombre', 'price' => 'precio', 'image' => 'foto']);
 
         // El scope de la cuenta hace el 404 de lo ajeno.
         $category = Category::query()->findOrFail((int) $data['category_id']);
@@ -105,6 +110,7 @@ trait HandlesBusinessCatalog
             'track_stock' => $itemId !== null,
             'inventory_item_id' => $itemId,
             'itbis_exempt' => ($data['itbis'] ?? 'gravado') === 'exento',
+            ...$this->imagenDe($request),
         ]);
     }
 
@@ -121,9 +127,11 @@ trait HandlesBusinessCatalog
             'itbis_exempt' => ['nullable', 'boolean'],
             'category_id' => ['nullable', 'integer'],
             'inventory_item_id' => ['nullable', 'integer'],
+            'image' => $this->reglasDeImagen(),
         ], [
             'name.unique' => 'Ya existe un producto con ese nombre en el menú.',
-        ], ['name' => 'nombre', 'price' => 'precio']);
+            'image.max' => 'La foto no puede pesar más de 4 MB.',
+        ], ['name' => 'nombre', 'price' => 'precio', 'image' => 'foto']);
 
         // Solo lo que llega se escribe: el modal de edición no muestra todos
         // los campos, y guardarlos todos borraría en silencio lo que no ve.
@@ -160,6 +168,8 @@ trait HandlesBusinessCatalog
             $attrs['inventory_item_id'] = $itemId;
             $attrs['track_stock'] = $itemId !== null;
         }
+
+        $attrs = [...$attrs, ...$this->imagenDe($request, $product)];
 
         if ($attrs !== []) {
             $product->update($attrs);

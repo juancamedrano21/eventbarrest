@@ -152,7 +152,7 @@
 
     <div id="modal-producto" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
         <div class="hs-overlay-open:opacity-100 hs-overlay-open:duration-300 opacity-0 transition-all m-3 mt-16 sm:mx-auto sm:w-full sm:max-w-lg">
-            <form method="POST" action="{{ route('business.products.store') }}" class="rounded-xl border border-gray-200 bg-white shadow-lg">
+            <form method="POST" action="{{ route('business.products.store') }}" enctype="multipart/form-data" class="rounded-xl border border-gray-200 bg-white shadow-lg">
                 @csrf
                 <div class="border-b border-gray-200 px-5 py-3"><h3 class="font-medium text-gray-900">Nuevo producto</h3></div>
                 <div class="space-y-4 p-5">
@@ -202,6 +202,12 @@
                         </select>
                         <p class="mt-1.5 text-xs text-gray-500">Para recetas se ignora: el escandallo se arma después, insumo a insumo.</p>
                     </div>
+                    <div>
+                        <label for="p-foto" class="mb-1.5 block text-sm text-gray-700">Foto <span class="text-gray-400">(opcional)</span></label>
+                        <input id="p-foto" name="image" type="file" accept="image/jpeg,image/png,image/webp"
+                            class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:text-gray-700 hover:file:bg-gray-200">
+                        <p class="mt-1.5 text-xs text-gray-500">JPG, PNG o WebP, hasta 4 MB. Es lo que ve el cajero en el POS.</p>
+                    </div>
                 </div>
                 <div class="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
                     <button type="button" data-hs-overlay="#modal-producto" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Cancelar</button>
@@ -238,7 +244,7 @@
                         @endif
                     </div>
 
-                    <form method="POST" action="{{ route('business.products.update', $producto) }}">
+                    <form method="POST" action="{{ route('business.products.update', $producto) }}" enctype="multipart/form-data">
                         @csrf
                         <input type="hidden" name="_modal" value="modal-item-{{ $producto->id }}">
                         <div class="space-y-4 p-5">
@@ -275,6 +281,22 @@
                                     </select>
                                 </div>
                             @endif
+                            <div>
+                                <label for="ep-foto-{{ $producto->id }}" class="mb-1.5 block text-sm text-gray-700">Foto</label>
+                                <div class="flex items-center gap-3">
+                                    @if ($producto->imageUrl())
+                                        <img src="{{ $producto->imageUrl() }}" alt="" class="size-14 shrink-0 rounded object-cover">
+                                    @endif
+                                    <input id="ep-foto-{{ $producto->id }}" name="image" type="file" accept="image/jpeg,image/png,image/webp"
+                                        class="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:text-gray-700 hover:file:bg-gray-200">
+                                </div>
+                                @if ($producto->imageUrl())
+                                    <label class="mt-2 flex items-center gap-2 text-xs text-gray-600">
+                                        <input type="checkbox" name="remove_image" value="1" class="rounded border-gray-300">
+                                        Quitar la foto actual
+                                    </label>
+                                @endif
+                            </div>
                             <div class="flex flex-wrap gap-5">
                                 <label class="flex items-center gap-2 text-sm text-gray-700">
                                     <input type="hidden" name="active" value="0">

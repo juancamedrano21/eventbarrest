@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -56,12 +57,22 @@ class Product extends Model
         'category_id',
         'inventory_item_id',
         'name',
+        'image_path',
         'type',
         'price_cents',
         'track_stock',
         'active',
         'itbis_exempt',
     ];
+
+    /**
+     * La URL de su foto, o null si nadie la ha subido. El POS y los paneles
+     * preguntan por esto; nadie compone la ruta a mano.
+     */
+    public function imageUrl(): ?string
+    {
+        return $this->image_path === null ? null : Storage::disk('public')->url($this->image_path);
+    }
 
     protected function casts(): array
     {

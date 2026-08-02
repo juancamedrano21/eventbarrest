@@ -194,7 +194,17 @@ export const usePos = defineStore('pos', {
             if (line) {
                 line.quantity += 1;
             } else {
-                this.cart.push({ product_id: product.id, name: product.name, price_cents: product.price_cents, itbis_exempt: !!product.itbis_exempt, quantity: 1 });
+                // La linea se lleva la miniatura para que el ticket no
+                // dependa del catalogo: un borrador guardado ayer se repinta
+                // igual aunque el producto ya no exista.
+                this.cart.push({
+                    product_id: product.id,
+                    name: product.name,
+                    price_cents: product.price_cents,
+                    itbis_exempt: !!product.itbis_exempt,
+                    image_url: product.image_url ?? null,
+                    quantity: 1,
+                });
             }
             this.saveDraft();
         },
@@ -207,6 +217,13 @@ export const usePos = defineStore('pos', {
             } else {
                 this.cart.splice(index, 1);
             }
+            this.saveDraft();
+        },
+
+        // Quitar la linea ENTERA, sin restar de una en una: en una orden de
+        // ocho cervezas, tocar ocho veces el menos es un castigo.
+        dropLine(productId) {
+            this.cart = this.cart.filter((item) => item.product_id !== productId);
             this.saveDraft();
         },
 

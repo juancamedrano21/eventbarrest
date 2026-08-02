@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watchEffect } from 'vue';
 import { usePos } from './store';
 import { money, toCents } from './money';
 import LoginScreen from './components/LoginScreen.vue';
@@ -22,6 +22,29 @@ function closeTill() {
 
 const unitName = computed(() =>
     pos.units.find((unit) => unit.id === pos.session?.operating_unit_id)?.name ?? null);
+
+// El tema es del DISPOSITIVO, no de la cuenta: la tableta de la barra puede
+// estar en oscuro y la de la caja de la entrada en claro. Va en localStorage
+// y no en el outbox de Dexie porque debe leerse antes del primer pintado.
+const theme = ref(localStorage.getItem('pos:theme') ?? 'light');
+
+watchEffect(() => {
+    document.documentElement.dataset.theme = theme.value;
+    localStorage.setItem('pos:theme', theme.value);
+});
+
+function toggleTheme() {
+    theme.value = theme.value === 'dark' ? 'light' : 'dark';
+}
+
+// La hora en pantalla, como en el mostrador de un restaurante. Se refresca
+// cada minuto: al segundo no le sirve a nadie y repinta sesenta veces más.
+const now = ref(new Date());
+setInterval(() => { now.value = new Date(); }, 60_000);
+
+const clock = computed(() => new Intl.DateTimeFormat('es-DO', {
+    weekday: 'long', day: 'numeric', month: 'long', hour: 'numeric', minute: '2-digit',
+}).format(now.value));
 
 const statusLabel = {
     pendiente: 'Por sincronizar',
@@ -59,6 +82,11 @@ const statusLabel = {
             </div>
 
             <div class="session">
+                <span class="clock">{{ clock }}</span>
+                <button class="icon-btn" :title="theme === 'dark' ? 'Cambiar a claro' : 'Cambiar a oscuro'" @click="toggleTheme()">
+                    <svg v-if="theme === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                    <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                </button>
                 <span v-if="pos.user" class="user-chip">{{ pos.user.name }}</span>
                 <button v-if="pos.screen === 'sale'" class="btn-topbar" @click="pos.screen = 'sales'">Ventas</button>
                 <button v-if="pos.screen === 'sales'" class="btn-topbar" @click="pos.screen = 'sale'">Vender</button>
@@ -131,7 +159,33 @@ const statusLabel = {
 </template>
 
 <style>
+/*
+ * Dos temas, una sola hoja. Claro por defecto —es donde más se lee y lo que
+ * comparte con los paneles— y oscuro para la barra de noche, que el cajero
+ * elige y el dispositivo recuerda.
+ *
+ * Las esquinas se quedan en 4px por decisión del dueño: el radio no hace
+ * moderno a un POS, y a esta pantalla la mira alguien de pie con prisa.
+ */
 :root {
+    --bg: #f4f5f7;
+    --panel: #ffffff;
+    --panel-2: #f2f4f7;
+    --line: #e6e8ec;
+    --line-strong: #d4d8de;
+    --text: #101828;
+    --muted: #667085;
+    --accent: #16233c;
+    --accent-2: #16233c;
+    --accent-strong: #0b1526;
+    --on-accent: #ffffff;
+    --ok: #12b76a;
+    --warn: #f79009;
+    --bad: #d92d20;
+    --shade: rgba(16, 24, 40, .04);
+}
+
+[data-theme='dark'] {
     --bg: #090e1a;
     --panel: #101828;
     --panel-2: #17223a;
@@ -142,9 +196,11 @@ const statusLabel = {
     --accent: #0ea5e9;
     --accent-2: #38bdf8;
     --accent-strong: #0284c7;
+    --on-accent: #ffffff;
     --ok: #34d399;
     --warn: #fbbf24;
     --bad: #f87171;
+    --shade: rgba(148, 163, 184, .06);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -164,17 +220,14 @@ input, select { font: inherit; }
 .topbar {
     display: flex; align-items: center; gap: .75rem;
     padding: .55rem .9rem;
-    background: rgba(16, 24, 40, .92);
+    background: var(--panel);
     border-bottom: 1px solid var(--line);
-    backdrop-filter: blur(8px);
     position: sticky; top: 0; z-index: 10;
 }
 .brand { display: flex; align-items: center; gap: .6rem; min-width: 0; }
 .brand-mark {
     display: grid; place-items: center; width: 34px; height: 34px; border-radius: 4px;
-    background: linear-gradient(135deg, #0ea5e9, #0369a1);
-   
-    color: white; flex-shrink: 0;
+    background: var(--accent); color: var(--on-accent); flex-shrink: 0;
 }
 .brand-mark svg { width: 18px; height: 18px; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
@@ -202,6 +255,8 @@ input, select { font: inherit; }
 
 .session { display: flex; align-items: center; gap: .5rem; }
 .user-chip { font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.clock { font-size: .78rem; color: var(--muted); white-space: nowrap; text-transform: capitalize; }
+@media (max-width: 900px) { .clock { display: none; } }
 .icon-btn {
     display: grid; place-items: center; width: 36px; height: 36px; border-radius: 4px;
     border: 1px solid var(--line); color: var(--muted); transition: all .15s;
@@ -214,7 +269,7 @@ input, select { font: inherit; }
     position: fixed; top: 4.2rem; left: 50%; transform: translateX(-50%);
     display: flex; align-items: center; gap: .6rem; text-align: left;
     max-width: min(560px, calc(100vw - 2rem));
-    background: #2c1214; border: 1px solid rgba(248, 113, 113, .4); color: #fecaca;
+    background: var(--panel); border: 1px solid var(--bad); color: var(--bad);
     padding: .7rem 1rem; border-radius: 4px; z-index: 40;
    
     font-size: .875rem;
@@ -225,7 +280,7 @@ input, select { font: inherit; }
 
 /* ---------- Overlays y hojas ---------- */
 .overlay {
-    position: fixed; inset: 0; background: rgba(3, 7, 18, .72);
+    position: fixed; inset: 0; background: rgba(3, 7, 18, .55);
     display: grid; place-items: center; z-index: 30; padding: 1rem;
     backdrop-filter: blur(3px);
 }
@@ -282,8 +337,8 @@ input, select { font: inherit; }
 .btn-primary {
     width: 100%; display: flex; align-items: center; justify-content: center; gap: .5rem;
     padding: .95rem 1rem; border-radius: 4px;
-    background: linear-gradient(135deg, #0ea5e9, #0369a1);
-    color: white; font-size: 1.02rem; font-weight: 700; letter-spacing: .01em;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 1.02rem; font-weight: 700; letter-spacing: .01em;
    
     transition: transform .1s, filter .15s;
 }

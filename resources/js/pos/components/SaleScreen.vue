@@ -10,12 +10,22 @@ const paying = ref(false);
 const method = ref('cash');
 const tendered = ref('');
 
+const matchesSearch = (product) => search.value.trim() === ''
+    || product.name.toLowerCase().includes(search.value.trim().toLowerCase());
+
 const visibleProducts = computed(() => pos.products.filter((product) =>
-    (category.value === null || product.category_id === category.value)
-    && (search.value.trim() === ''
-        || product.name.toLowerCase().includes(search.value.trim().toLowerCase()))));
+    (category.value === null || product.category_id === category.value) && matchesSearch(product)));
+
+// El contador de cada pestaña respeta la búsqueda: si el cajero escribe
+// «moji», «Bebidas 1» le dice dónde está, en vez de prometerle veinte.
+const countFor = (categoryId) => pos.products.filter((product) =>
+    (categoryId === null || product.category_id === categoryId) && matchesSearch(product)).length;
 
 const itemCount = computed(() => pos.cart.reduce((sum, line) => sum + line.quantity, 0));
+
+// Cuántas unidades de este producto ya van en la orden: el botón de la
+// tarjeta lo dice sin que haya que mirar el ticket.
+const inCart = (productId) => pos.cart.find((line) => line.product_id === productId)?.quantity ?? 0;
 
 const submitting = ref(false);
 const tenderedCents = computed(() => toCents(tendered.value));
@@ -32,14 +42,27 @@ const methods = [
     { value: 'transfer', label: 'Transf.' },
 ];
 
-// Sumar una unidad desde el ticket: la linea guarda todo lo que addToCart
-// necesita del producto (precio, exencion), asi que no hay que buscarlo.
+// Sin foto, un bloque de color estable derivado del nombre: el mismo plato
+// tiene siempre el mismo color, y eso se reconoce de un vistazo mejor que
+// una silueta gris repetida veinte veces.
+function tint(name) {
+    let hash = 0;
+    for (const char of name) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+
+    return `hsl(${hash} 46% 62%)`;
+}
+
+function initials(name) {
+    return name.trim().split(/\s+/).slice(0, 2).map((word) => word[0]).join('').toUpperCase();
+}
+
 function addOne(line) {
     pos.addToCart({
         id: line.product_id,
         name: line.name,
         price_cents: line.price_cents,
         itbis_exempt: line.itbis_exempt,
+        image_url: line.image_url,
     });
 }
 
@@ -75,24 +98,53 @@ async function confirm() {
     <div class="sale">
         <div class="catalog">
             <div class="catalog-tools">
+                <nav class="cats">
+                    <button :class="{ active: category === null }" @click="category = null">
+                        Todo <span class="cat-count">{{ countFor(null) }}</span>
+                    </button>
+                    <button v-for="cat in pos.categories" :key="cat.id"
+                        :class="{ active: category === cat.id }" @click="category = cat.id">
+                        {{ cat.name }} <span class="cat-count">{{ countFor(cat.id) }}</span>
+                    </button>
+                </nav>
                 <div class="search">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                     <input v-model="search" type="text" placeholder="Buscar en el menu..." autocapitalize="none">
                 </div>
-                <nav class="cats">
-                    <button :class="{ active: category === null }" @click="category = null">Todo</button>
-                    <button v-for="cat in pos.categories" :key="cat.id"
-                        :class="{ active: category === cat.id }" @click="category = cat.id">{{ cat.name }}</button>
-                </nav>
             </div>
 
             <main class="grid">
-                <button v-for="product in visibleProducts" :key="product.id" class="product"
-                    @click="pos.addToCart(product)">
-                    <span class="product-avatar">{{ product.name.slice(0, 1).toUpperCase() }}</span>
-                    <span class="product-name">{{ product.name }}</span>
-                    <strong class="product-price money">{{ money(product.price_cents) }}</strong>
-                </button>
+                <article v-for="product in visibleProducts" :key="product.id" class="product"
+                    :class="{ 'is-off': product.active === false }">
+                    <div class="thumb">
+                        <img v-if="product.image_url" :src="product.image_url" :alt="product.name" loading="lazy">
+                        <span v-else class="thumb-fallback" :style="{ background: tint(product.name) }">
+                            {{ initials(product.name) }}
+                        </span>
+                        <span class="badge" :class="product.active === false ? 'badge-off' : 'badge-on'">
+                            <span class="badge-dot"></span>
+                            {{ product.active === false ? 'Agotado' : 'Disponible' }}
+                        </span>
+                    </div>
+
+                    <div class="product-body">
+                        <h3 class="product-name">{{ product.name }}</h3>
+                        <strong class="product-price money">{{ money(product.price_cents) }}</strong>
+                    </div>
+
+                    <button v-if="product.active === false" class="product-btn product-btn-off" disabled>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                        No disponible
+                    </button>
+                    <button v-else-if="inCart(product.id) > 0" class="product-btn product-btn-more"
+                        @click="pos.addToCart(product)">
+                        Añadir más ({{ inCart(product.id) }})
+                    </button>
+                    <button v-else class="product-btn" @click="pos.addToCart(product)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                        Añadir
+                    </button>
+                </article>
                 <p v-if="visibleProducts.length === 0" class="grid-empty">Nada coincide con la busqueda.</p>
             </main>
         </div>
@@ -109,16 +161,27 @@ async function confirm() {
                     <p>Toca un producto<br>para empezar la orden.</p>
                 </div>
                 <div v-for="line in pos.cart" :key="line.product_id" class="line">
+                    <span class="line-thumb">
+                        <img v-if="line.image_url" :src="line.image_url" :alt="line.name" loading="lazy">
+                        <span v-else class="thumb-fallback" :style="{ background: tint(line.name) }">
+                            {{ initials(line.name) }}
+                        </span>
+                    </span>
                     <div class="line-info">
                         <span class="line-name">{{ line.name }}</span>
                         <span class="line-unit money">{{ money(line.price_cents) }} c/u</span>
+                        <strong class="line-total money">{{ money(line.price_cents * line.quantity) }}</strong>
                     </div>
-                    <div class="stepper">
-                        <button class="step" @click="pos.removeFromCart(line.product_id)">−</button>
-                        <span class="qty">{{ line.quantity }}</span>
-                        <button class="step step-add" @click="addOne(line)">+</button>
+                    <div class="line-side">
+                        <div class="stepper">
+                            <button class="step" @click="pos.removeFromCart(line.product_id)">−</button>
+                            <span class="qty">{{ line.quantity }}</span>
+                            <button class="step step-add" @click="addOne(line)">+</button>
+                        </div>
+                        <button class="line-drop" title="Quitar de la orden" @click="pos.dropLine(line.product_id)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
+                        </button>
                     </div>
-                    <span class="line-total money">{{ money(line.price_cents * line.quantity) }}</span>
                 </div>
             </div>
 
@@ -187,51 +250,87 @@ async function confirm() {
 </template>
 
 <style scoped>
-.sale { flex: 1; display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+.sale { flex: 1; display: grid; grid-template-columns: 1fr 350px; min-height: 0; }
 
 /* ---------- Catalogo ---------- */
 .catalog { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .catalog-tools {
-    display: flex; flex-direction: column; gap: .55rem;
-    padding: .75rem .9rem .55rem;
+    display: flex; align-items: center; gap: 1rem;
+    padding: .8rem 1rem;
+    background: var(--panel); border-bottom: 1px solid var(--line);
 }
-.search { position: relative; }
+.search { position: relative; width: 260px; flex-shrink: 0; }
 .search svg {
     position: absolute; left: .8rem; top: 50%; transform: translateY(-50%);
     width: 16px; height: 16px; color: var(--muted); pointer-events: none;
 }
-.search input { padding-left: 2.4rem; background: var(--panel); }
-.cats { display: flex; gap: .45rem; overflow-x: auto; padding-bottom: .2rem; scrollbar-width: none; }
+.search input { padding: .6rem .9rem .6rem 2.4rem; background: var(--bg); font-size: .9rem; }
+.cats { display: flex; gap: .4rem; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
 .cats::-webkit-scrollbar { display: none; }
 .cats button {
+    display: inline-flex; align-items: center; gap: .45rem;
     border: 1px solid var(--line-strong); background: var(--panel); color: var(--muted);
-    border-radius: 4px; padding: .45rem 1rem; white-space: nowrap;
+    border-radius: 4px; padding: .5rem .85rem; white-space: nowrap;
     font-size: .84rem; font-weight: 600; transition: all .15s; flex-shrink: 0;
 }
-.cats button.active {
-    background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; border-color: transparent;
-   
+.cats button:hover { color: var(--text); border-color: var(--muted); }
+.cats button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.cat-count {
+    font-size: .74rem; font-weight: 700; padding: .1rem .38rem; border-radius: 4px;
+    background: var(--shade); color: inherit; opacity: .75;
 }
+.cats button.active .cat-count { background: rgba(255, 255, 255, .18); opacity: 1; }
 
 .grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: .6rem; padding: .35rem .9rem 1rem; align-content: start; overflow-y: auto;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: .85rem; padding: .95rem 1rem 1.2rem; align-content: start; overflow-y: auto;
 }
 .product {
-    display: flex; flex-direction: column; align-items: flex-start; gap: .45rem;
-    padding: .8rem; min-height: 108px;
-    border: 1px solid var(--line); background: var(--panel); color: var(--text);
-    border-radius: 4px; text-align: left;
-    transition: transform .1s, border-color .15s, background .15s;
+    display: flex; flex-direction: column;
+    border: 1px solid var(--line); background: var(--panel);
+    border-radius: 4px; overflow: hidden;
+    transition: border-color .15s, transform .1s;
 }
-.product:hover { border-color: var(--line-strong); background: var(--panel-2); }
-.product:active { transform: scale(.97); }
-.product-avatar {
-    display: grid; place-items: center; width: 30px; height: 30px; border-radius: 4px;
-    background: rgba(14, 165, 233, .14); color: #38bdf8; font-weight: 700; font-size: .85rem;
+.product:hover { border-color: var(--line-strong); }
+.product.is-off { opacity: .62; }
+
+.thumb { position: relative; aspect-ratio: 4 / 3; background: var(--panel-2); }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb-fallback {
+    display: grid; place-items: center; width: 100%; height: 100%;
+    color: rgba(255, 255, 255, .92); font-weight: 800; font-size: 1.6rem; letter-spacing: .04em;
 }
-.product-name { font-size: .86rem; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.product-price { margin-top: auto; color: #38bdf8; font-size: .9rem; }
+.badge {
+    position: absolute; top: .45rem; right: .45rem;
+    display: inline-flex; align-items: center; gap: .3rem;
+    padding: .22rem .5rem; border-radius: 4px;
+    background: var(--panel); color: var(--text);
+    font-size: .7rem; font-weight: 600; white-space: nowrap;
+}
+.badge-dot { width: 6px; height: 6px; border-radius: 4px; }
+.badge-on .badge-dot { background: var(--ok); }
+.badge-off .badge-dot { background: var(--bad); }
+
+.product-body { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; padding: .65rem .7rem .5rem; }
+.product-name {
+    font-size: .88rem; font-weight: 500; line-height: 1.25; min-width: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.product-price { font-size: .9rem; white-space: nowrap; }
+
+.product-btn {
+    display: flex; align-items: center; justify-content: center; gap: .4rem;
+    margin: 0 .7rem .7rem; padding: .6rem; border-radius: 4px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: .84rem; font-weight: 600; transition: filter .15s, transform .1s;
+}
+.product-btn svg { width: 15px; height: 15px; }
+.product-btn:not(:disabled):hover { filter: brightness(1.12); }
+.product-btn:not(:disabled):active { transform: scale(.97); }
+.product-btn-more {
+    background: var(--panel); color: var(--text); border: 1px solid var(--line-strong);
+}
+.product-btn-off { background: var(--panel-2); color: var(--muted); cursor: not-allowed; }
 .grid-empty { grid-column: 1 / -1; color: var(--muted); padding: 2rem 0; text-align: center; font-size: .9rem; }
 
 /* ---------- Ticket ---------- */
@@ -254,24 +353,37 @@ async function confirm() {
 .ticket-empty svg { width: 34px; height: 34px; opacity: .5; }
 
 .line {
-    display: flex; align-items: center; gap: .6rem;
-    padding: .6rem 0; border-bottom: 1px solid var(--line);
+    display: flex; align-items: flex-start; gap: .65rem;
+    padding: .7rem 0; border-bottom: 1px solid var(--line);
 }
-.line-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
+.line-thumb {
+    width: 48px; height: 48px; flex-shrink: 0; border-radius: 4px; overflow: hidden;
+    background: var(--panel-2);
+}
+.line-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.line-thumb .thumb-fallback { font-size: .82rem; }
+.line-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .12rem; }
 .line-name { font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .line-unit { font-size: .72rem; color: var(--muted); }
+.line-total { font-size: .88rem; font-weight: 600; }
+.line-side { display: flex; flex-direction: column; align-items: flex-end; gap: .35rem; }
 .stepper {
     display: flex; align-items: center; gap: .1rem;
     background: var(--panel-2); border: 1px solid var(--line); border-radius: 4px;
 }
 .step {
-    width: 30px; height: 30px; display: grid; place-items: center;
+    width: 28px; height: 28px; display: grid; place-items: center;
     font-size: 1.05rem; color: var(--muted); border-radius: 4px; transition: all .12s;
 }
-.step:hover { color: var(--bad); background: rgba(248, 113, 113, .1); }
-.step-add:hover { color: var(--ok); background: rgba(52, 211, 153, .1); }
-.qty { min-width: 1.5rem; text-align: center; font-weight: 700; font-size: .88rem; }
-.line-total { font-size: .88rem; font-weight: 600; min-width: 4.6rem; text-align: right; }
+.step:hover { color: var(--bad); background: var(--shade); }
+.step-add:hover { color: var(--ok); }
+.qty { min-width: 1.4rem; text-align: center; font-weight: 700; font-size: .86rem; }
+.line-drop {
+    display: grid; place-items: center; width: 26px; height: 26px;
+    border-radius: 4px; color: var(--muted); transition: all .12s;
+}
+.line-drop svg { width: 15px; height: 15px; }
+.line-drop:hover { color: var(--bad); background: var(--shade); }
 
 .ticket-foot { padding: .8rem 1rem 1rem; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: .7rem; }
 
@@ -290,8 +402,8 @@ async function confirm() {
     content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
     border-radius: 4px; background: var(--muted); transition: transform .15s, background .15s;
 }
-.switch.on .knob { background: rgba(14, 165, 233, .25); border-color: var(--accent); }
-.switch.on .knob::after { transform: translateX(18px); background: var(--accent-2); }
+.switch.on .knob { background: var(--accent); border-color: var(--accent); }
+.switch.on .knob::after { transform: translateX(18px); background: var(--on-accent); }
 
 .totals { display: flex; flex-direction: column; gap: .3rem; }
 .trow { display: flex; justify-content: space-between; font-size: .82rem; color: var(--muted); }
@@ -309,17 +421,20 @@ async function confirm() {
     padding: .6rem .4rem; border-radius: 4px; font-size: .86rem; font-weight: 600;
     color: var(--muted); transition: all .15s;
 }
-.segmented button.active { background: linear-gradient(135deg, #0ea5e9, #0369a1); color: white; }
+.segmented button.active { background: var(--accent); color: var(--on-accent); }
 .pay-input { font-size: 1.25rem; font-weight: 700; }
 .pay-chips { margin: -.3rem 0 .9rem; }
 .change { color: var(--ok); font-size: 1.05rem; font-weight: 700; margin-bottom: .9rem; }
 .short { color: var(--bad); font-size: 1rem; font-weight: 600; margin-bottom: .9rem; }
 
 /* ---------- Movil ---------- */
+@media (max-width: 900px) {
+    .catalog-tools { flex-direction: column; align-items: stretch; gap: .55rem; }
+    .search { width: 100%; }
+}
 @media (max-width: 760px) {
     .sale { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
     .ticket { border-left: 0; border-top: 1px solid var(--line-strong); max-height: 46vh; max-height: 46dvh; overflow-y: auto; }
-    .grid { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
-    .product { min-height: 96px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .6rem; padding: .7rem; }
 }
 </style>

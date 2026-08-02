@@ -34,10 +34,21 @@ class PosCatalogController extends Controller
             'categories' => Category::query()
                 ->orderBy('name')
                 ->get(['id', 'name', 'dispatch']),
+            // Se mandan TODOS, activos o no: el POS pinta los inactivos en
+            // gris y sin poder tocarlos, que dice más que esconderlos —el
+            // cajero sabe que el plato existe y hoy no se sirve.
             'products' => Product::query()
-                ->where('active', true)
                 ->orderBy('name')
-                ->get(['id', 'category_id', 'name', 'type', 'price_cents', 'itbis_exempt']),
+                ->get(['id', 'category_id', 'name', 'image_path', 'type', 'price_cents', 'itbis_exempt', 'active'])
+                ->map(fn (Product $product): array => [
+                    'id' => $product->id,
+                    'category_id' => $product->category_id,
+                    'name' => $product->name,
+                    'price_cents' => $product->price_cents,
+                    'itbis_exempt' => $product->itbis_exempt,
+                    'active' => $product->active,
+                    'image_url' => $product->imageUrl(),
+                ]),
         ]);
     }
 }

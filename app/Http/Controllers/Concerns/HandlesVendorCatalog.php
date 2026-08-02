@@ -22,6 +22,8 @@ use Illuminate\Validation\Rule;
  */
 trait HandlesVendorCatalog
 {
+    use HandlesProductImage;
+
     protected function createCategory(Request $request, Vendor $record): void
     {
         $data = $request->validate([
@@ -57,11 +59,17 @@ trait HandlesVendorCatalog
             'inventory_item_id' => ['nullable', 'integer'],
             // Gravado si no se dice lo contrario: el default fiscal seguro.
             'itbis' => ['nullable', 'in:gravado,exento'],
+            'image' => $this->reglasDeImagen(),
         ], [
             'name.unique' => 'Ya existe un producto con ese nombre en este comercio.',
-        ], ['name' => 'nombre', 'price' => 'precio']);
+            'image.max' => 'La foto no puede pesar más de 4 MB.',
+        ], ['name' => 'nombre', 'price' => 'precio', 'image' => 'foto']);
 
-        app(VendorContext::class)->runAs($record, function () use ($data): void {
+        // FUERA del runAs: guardar un archivo no necesita contexto y así el
+        // disco no queda a medias si el guard del dominio rechaza el producto.
+        $imagen = $this->imagenDe($request);
+
+        app(VendorContext::class)->runAs($record, function () use ($data, $imagen): void {
             // Con el comercio activo, una categoría o insumo ajenos no existen.
             $category = Category::query()->findOrFail((int) $data['category_id']);
 
@@ -81,6 +89,7 @@ trait HandlesVendorCatalog
                 'track_stock' => $itemId !== null,
                 'inventory_item_id' => $itemId,
                 'itbis_exempt' => ($data['itbis'] ?? 'gravado') === 'exento',
+                ...$imagen,
             ]);
         });
     }
@@ -100,11 +109,13 @@ trait HandlesVendorCatalog
             'itbis_exempt' => ['nullable', 'boolean'],
             'category_id' => ['nullable', 'integer'],
             'inventory_item_id' => ['nullable', 'integer'],
+            'image' => $this->reglasDeImagen(),
         ], [
             'name.unique' => 'Ya existe un producto con ese nombre en este comercio.',
-        ]);
+            'image.max' => 'La foto no puede pesar más de 4 MB.',
+        ], ['image' => 'foto']);
 
-        app(VendorContext::class)->runAs($record, function () use ($product, $data): void {
+        app(VendorContext::class)->runAs($record, function () use ($request, $product, $data): void {
             // El scope del comercio activo hace el 404 de lo ajeno.
             $target = Product::query()->findOrFail($product);
 
@@ -143,6 +154,8 @@ trait HandlesVendorCatalog
                 $attrs['inventory_item_id'] = $itemId;
                 $attrs['track_stock'] = $itemId !== null;
             }
+
+            $attrs = [...$attrs, ...$this->imagenDe($request, $target)];
 
             if ($attrs !== []) {
                 $target->update($attrs);
