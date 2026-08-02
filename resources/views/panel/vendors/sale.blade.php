@@ -20,7 +20,10 @@
                 <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 {{ $vendor->name }}
             </a>
-            <h1 class="mt-1 text-xl font-medium text-gray-800">Detalle de la venta</h1>
+            <h1 class="mt-1 text-xl font-medium text-gray-800">
+                Orden <span class="font-mono">{{ $sale->publicNumber() }}</span>
+                <span class="ml-1 text-sm font-normal text-gray-500">· {{ $sale->channel->getLabel() }}</span>
+            </h1>
         </div>
         <button type="button" onclick="window.print()" class="inline-flex items-center gap-x-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[13px] text-gray-700 shadow-2xs hover:bg-gray-50">
             <svg class="size-4 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg>

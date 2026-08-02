@@ -70,12 +70,20 @@ class PlaceOrder
 
         try {
             return $this->create($session, $lines, $clientRef, $user, $withTip, $channel);
-        } catch (UniqueConstraintViolationException) {
-            // Carrera del reenvío offline: otro request la creó primero.
-            return Order::query()
+        } catch (UniqueConstraintViolationException $exception) {
+            // Carrera del reenvío offline: otro request la creó primero. Si
+            // lo que chocó fue el NÚMERO, el reintento del contador es la
+            // salida — disfrazarlo de reenvío escondería el fallo real.
+            $gemela = Order::query()
                 ->where('operating_unit_id', $session->operating_unit_id)
                 ->where('client_ref', $clientRef)
-                ->firstOrFail();
+                ->first();
+
+            if ($gemela === null) {
+                throw $exception;
+            }
+
+            return $gemela;
         }
     }
 

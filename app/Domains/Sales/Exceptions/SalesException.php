@@ -53,6 +53,14 @@ class SalesException extends RuntimeException
         return new self('Cada línea vende un producto del comercio de la unidad: no se cruzan comercios.', 'line_outside_vendor');
     }
 
+    public static function orderNumberUnavailable(): self
+    {
+        return new self(
+            'No se pudo asignar el número de la orden: reintenta el cobro.',
+            'order_number_unavailable',
+        );
+    }
+
     public static function unknownItbisMode(string $modo, string $origen): self
     {
         return new self(

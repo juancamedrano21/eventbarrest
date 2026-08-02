@@ -308,7 +308,16 @@ export const usePos = defineStore('pos', {
         },
 
         async openReview() {
-            this.reviewRows = await db.outbox.where('status').anyOf('error', 'sin_caja', 'pendiente').toArray();
+            const abiertas = await db.outbox.where('status').anyOf('error', 'sin_caja', 'pendiente').toArray();
+
+            // Y las ultimas ya sincronizadas: es donde el cajero encuentra
+            // el NUMERO de la venta para decirselo al cliente (P0041). Sin
+            // esto, la bandeja solo hablaria en UUID.
+            const recientes = (await db.outbox.where('status').equals('sincronizada').toArray())
+                .sort((a, b) => b.created_at - a.created_at)
+                .slice(0, 10);
+
+            this.reviewRows = [...abiertas, ...recientes];
             this.reviewing = true;
         },
 

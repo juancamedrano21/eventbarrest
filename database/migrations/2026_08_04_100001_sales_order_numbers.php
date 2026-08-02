@@ -17,8 +17,11 @@ use Illuminate\Support\Facades\Schema;
  * él el índice único no serviría, porque MySQL no considera iguales dos
  * NULL y dejaría repetir números en el mundo negocio.
  *
- * El histórico se numera por orden de creación, respetando esa misma
- * partición: las ventas viejas también tienen su número.
+ * CADA PASO TIENE SU PROPIO GUARD y el backfill es reanudable (solo numera
+ * lo que aún no tiene número, por lotes). El DDL de MySQL commitea al
+ * vuelo: si el proceso muere a mitad del relleno, el reintento retoma
+ * donde iba en vez de saltarse el índice único, que es el backstop de que
+ * dos ventas jamás compartan número.
  */
 return new class extends Migration
 {
@@ -37,15 +40,20 @@ return new class extends Migration
             });
         }
 
+        if (! Schema::hasColumn('orders', 'channel')) {
+            Schema::table('orders', fn (Blueprint $table) => $table->string('channel', 20)->default('pos'));
+        }
+
         if (! Schema::hasColumn('orders', 'order_number')) {
             Schema::table('orders', function (Blueprint $table): void {
-                $table->string('channel', 20)->default('pos');
                 $table->unsignedBigInteger('order_number')->nullable();
                 $table->unsignedBigInteger('number_scope')->default(0);
             });
+        }
 
-            $this->backfill();
+        $this->backfill();
 
+        if (! Schema::hasIndex('orders', 'orders_public_number_unique')) {
             Schema::table('orders', function (Blueprint $table): void {
                 $table->unique(['tenant_id', 'number_scope', 'order_number'], 'orders_public_number_unique');
             });
@@ -53,46 +61,58 @@ return new class extends Migration
     }
 
     /**
-     * Numera lo ya vendido por orden de creación, y deja cada contador
-     * listo para la siguiente venta.
+     * Numera lo ya vendido por orden de creación, continuando la serie que
+     * cada comercio tenga. Reanudable: solo toca las órdenes sin número.
      */
     private function backfill(): void
     {
         $contadores = [];
 
-        DB::table('orders')->orderBy('id')->select('id', 'tenant_id', 'vendor_id')
-            ->each(function (object $order) use (&$contadores): void {
-                $scope = (int) ($order->vendor_id ?? 0);
-                $clave = $order->tenant_id.':'.$scope;
-                $numero = ($contadores[$clave] ?? 0) + 1;
-                $contadores[$clave] = $numero;
+        DB::table('orders')
+            ->whereNull('order_number')
+            ->orderBy('id')
+            ->select('id', 'tenant_id', 'vendor_id')
+            ->chunkById(500, function ($ordenes) use (&$contadores): void {
+                foreach ($ordenes as $order) {
+                    $scope = (int) ($order->vendor_id ?? 0);
+                    $clave = $order->tenant_id.':'.$scope;
 
-                DB::table('orders')->where('id', $order->id)->update([
-                    'order_number' => $numero,
-                    'number_scope' => $scope,
-                ]);
+                    // Continúa desde lo ya numerado (corrida anterior a medias).
+                    $contadores[$clave] ??= (int) DB::table('orders')
+                        ->where('tenant_id', $order->tenant_id)
+                        ->where('number_scope', $scope)
+                        ->max('order_number');
+
+                    $numero = ++$contadores[$clave];
+
+                    DB::table('orders')->where('id', $order->id)->update([
+                        'order_number' => $numero,
+                        'number_scope' => $scope,
+                    ]);
+                }
             });
 
+        // Los contadores quedan listos para la siguiente venta de cada uno.
         foreach ($contadores as $clave => $ultimo) {
             [$tenantId, $scope] = explode(':', (string) $clave);
 
-            DB::table('order_sequences')->insert([
-                'tenant_id' => (int) $tenantId,
-                'number_scope' => (int) $scope,
-                'next_number' => $ultimo + 1,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            DB::table('order_sequences')->updateOrInsert(
+                ['tenant_id' => (int) $tenantId, 'number_scope' => (int) $scope],
+                ['next_number' => $ultimo + 1, 'updated_at' => now(), 'created_at' => now()],
+            );
         }
     }
 
     public function down(): void
     {
-        if (Schema::hasColumn('orders', 'order_number')) {
-            Schema::table('orders', function (Blueprint $table): void {
-                $table->dropUnique('orders_public_number_unique');
-                $table->dropColumn(['channel', 'order_number', 'number_scope']);
-            });
+        if (Schema::hasIndex('orders', 'orders_public_number_unique')) {
+            Schema::table('orders', fn (Blueprint $table) => $table->dropUnique('orders_public_number_unique'));
+        }
+
+        foreach (['channel', 'order_number', 'number_scope'] as $columna) {
+            if (Schema::hasColumn('orders', $columna)) {
+                Schema::table('orders', fn (Blueprint $table) => $table->dropColumn($columna));
+            }
         }
 
         Schema::dropIfExists('order_sequences');

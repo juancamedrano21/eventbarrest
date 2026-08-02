@@ -156,7 +156,7 @@ it('shows its own sale detail and 404s a foreign one', function (): void {
     $this->actingAs($this->encargada)
         ->get("/comercio/ventas/{$venta->id}")
         ->assertOk()
-        ->assertSee('Detalle de la venta')
+        ->assertSee('P0001')
         ->assertSee('500.00');
 
     $this->actingAs($this->encargada)

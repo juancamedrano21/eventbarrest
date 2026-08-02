@@ -47,6 +47,9 @@ class PosOrderController extends Controller
         // parte de cero (el lookup idempotente tolera el rollback).
         $created = false;
 
+        // attempts=3: es la transacción EXTERIOR, y por tanto la única capa
+        // donde Laravel reintenta de verdad — dentro son savepoints y el
+        // error de concurrencia se relanza sin reintentar.
         $order = DB::transaction(function () use ($session, $data, $request, &$created): Order {
             $order = app(PlaceOrder::class)(
                 $session,
@@ -79,7 +82,7 @@ class PosOrderController extends Controller
             }
 
             return $order;
-        });
+        }, 3);
 
         // Una venta anulada no se «re-cobra» con la misma referencia: el
         // POS debe renumerar y reenviar. Contrato explícito, no un 200 mudo.
@@ -88,6 +91,7 @@ class PosOrderController extends Controller
                 'code' => 'order_voided',
                 'message' => 'Esa referencia corresponde a una orden anulada: renumera y reenvía.',
                 'id' => $order->id,
+                'number' => $order->publicNumber(),
                 'client_ref' => $order->client_ref,
                 'voided_at' => $order->voided_at,
                 'void_reason' => $order->void_reason,

@@ -24,8 +24,10 @@ use Illuminate\Support\Facades\DB;
  * recibe «no está abierta». El backstop es el unique de payments.order_id:
  * un doble cobro que escapara al lock revienta y revierte el stock. El
  * consumo se aplana por insumo y se aplica en orden canónico de id: los
- * locks del ledger se toman siempre igual y no hay abrazo mortal. La
- * transacción exterior reintenta ante deadlocks residuales.
+ * locks del ledger se toman siempre igual y no hay abrazo mortal. El
+ * reintento ante deadlocks residuales solo puede vivir en la transacción
+ * MÁS EXTERNA (aquí somos savepoint cuando nos llaman desde el POS): lo
+ * pone PosOrderController.
  *
  * El stock puede quedar negativo a propósito: un POS jamás bloquea la venta
  * por un conteo desfasado — la diferencia la corrige un ajuste.

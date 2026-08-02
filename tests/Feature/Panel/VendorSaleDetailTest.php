@@ -65,7 +65,9 @@ it('shows the full sale detail with the frozen fiscal breakdown and commission',
     $this->actingAs($this->owner)
         ->get("/panel/comercios/{$this->vendor->id}/ventas/{$this->sale->id}")
         ->assertOk()
-        ->assertSee('Detalle de la venta')
+        // El encabezado es el número que el cliente dicta, no una etiqueta.
+        ->assertSee('P0001')
+        ->assertSee('Punto de venta')
         ->assertSee('Cobrada')
         ->assertSee('Taco')
         ->assertSee('Agua')

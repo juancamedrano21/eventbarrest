@@ -489,3 +489,20 @@ it('numbers branch sales per account when there is no vendor', function (): void
             ->and($primera->number_scope)->toBe(0);
     });
 });
+
+it('numbers open and voided sales too, and the POS response carries the number', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $abierta = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0040');
+        $anulada = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0041');
+        app(VoidOrder::class)($anulada, 'Cliente se fue');
+
+        // Trazabilidad: la serie no salta ni reserva números para las que
+        // terminan cobradas.
+        expect($abierta->publicNumber())->toBe('P0001')
+            ->and($anulada->fresh()->publicNumber())->toBe('P0002');
+    });
+});
