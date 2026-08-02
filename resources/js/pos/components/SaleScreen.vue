@@ -103,6 +103,23 @@ async function confirm() {
     }
 }
 
+// El ticket congelado de la ultima venta: el modal lo lee de un sitio, no
+// de pos.lastSale.ticket repetido veinte veces en la plantilla.
+const lastTicket = computed(() => pos.lastSale?.ticket ?? {});
+
+const lastUnits = computed(() =>
+    (lastTicket.value.lines ?? []).reduce((sum, line) => sum + line.quantity, 0));
+
+const lastWhen = computed(() => new Intl.DateTimeFormat('es-DO', {
+    hour: 'numeric', minute: '2-digit',
+}).format(pos.lastSale?.created_at ? new Date(pos.lastSale.created_at) : new Date()));
+
+const metodoLargo = {
+    cash: 'Efectivo',
+    card: 'Tarjeta',
+    transfer: 'Transferencia',
+};
+
 function printFrom(kind) {
     if (! pos.lastSale) return;
     pos.printTicket(pos.lastSale.ticket, kind, pos.lastSale.number);
@@ -268,24 +285,80 @@ function printFrom(kind) {
 
         <div v-if="done && pos.lastSale" class="overlay" @click.self="done = false">
             <div class="sheet done-sheet">
-                <span class="done-mark">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
-                <h2 class="done-title">Venta cobrada</h2>
-                <p class="done-total money">{{ money(pos.lastSale.ticket.total) }}</p>
+                <header class="done-head">
+                    <span class="done-mark">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </span>
+                    <h2 class="done-title">Venta cobrada</h2>
+                    <p class="done-total money">{{ money(lastTicket.total) }}</p>
+                    <p class="done-when">
+                        {{ lastWhen }}
+                        <template v-if="lastTicket.unit_name"> · {{ lastTicket.unit_name }}</template>
+                    </p>
+                </header>
 
-                <div class="done-facts">
+                <!-- Sincronizada o esperando senal: el cajero debe saber si
+                     esa venta ya esta en el sistema o vive en la tableta. -->
+                <p class="done-sync" :class="pos.lastSale.number ? 'sync-ok' : 'sync-wait'">
+                    <span class="sync-dot"></span>
+                    <template v-if="pos.lastSale.number">
+                        Registrada como <strong>{{ pos.lastSale.number }}</strong>
+                    </template>
+                    <template v-else>
+                        Guardada en el dispositivo · el numero llega al sincronizar
+                    </template>
+                </p>
+
+                <p v-if="lastTicket.customer_name" class="done-customer">
+                    <span>A nombre de</span><strong>{{ lastTicket.customer_name }}</strong>
+                </p>
+
+                <!-- Que se cobro -->
+                <div class="done-block">
+                    <p class="done-block-title">
+                        Lo cobrado
+                        <span class="done-block-count">{{ lastUnits }} articulo(s)</span>
+                    </p>
+                    <div v-for="line in lastTicket.lines" :key="line.product_id" class="done-line">
+                        <span class="done-line-qty">{{ line.quantity }}×</span>
+                        <span class="done-line-name">{{ line.product_name }}</span>
+                        <span class="done-line-unit money">{{ money(line.unit_price_cents) }}</span>
+                        <strong class="done-line-total money">{{ money(line.total_cents) }}</strong>
+                    </div>
+                </div>
+
+                <!-- Como se compone el total -->
+                <div class="done-block">
+                    <div class="done-row"><span>Subtotal</span><span class="money">{{ money(lastTicket.subtotal) }}</span></div>
                     <div class="done-row">
-                        <span>Orden</span>
-                        <strong v-if="pos.lastSale.number">{{ pos.lastSale.number }}</strong>
-                        <em v-else class="done-pending">se asigna al sincronizar</em>
+                        <span>{{ pos.itbisMode === 'added' ? 'ITBIS 18 %' : 'ITBIS incluido' }}</span>
+                        <span class="money">{{ money(lastTicket.itbis) }}</span>
                     </div>
-                    <div v-if="pos.lastSale.ticket.customer_name" class="done-row">
-                        <span>Para</span><strong>{{ pos.lastSale.ticket.customer_name }}</strong>
+                    <div v-if="lastTicket.tip > 0" class="done-row">
+                        <span>Propina legal 10 %</span><span class="money">{{ money(lastTicket.tip) }}</span>
                     </div>
-                    <div v-if="pos.lastSale.ticket.method === 'cash' && pos.lastSale.ticket.change_cents > 0" class="done-row">
-                        <span>Vuelto</span><strong class="money done-change">{{ money(pos.lastSale.ticket.change_cents) }}</strong>
+                    <div class="done-row done-row-strong">
+                        <span>Total</span><strong class="money">{{ money(lastTicket.total) }}</strong>
                     </div>
+                </div>
+
+                <!-- Como se pago -->
+                <div class="done-block">
+                    <p class="done-block-title">Pago</p>
+                    <div class="done-row">
+                        <span>Metodo</span>
+                        <strong class="done-method">{{ metodoLargo[lastTicket.method] ?? lastTicket.method }}</strong>
+                    </div>
+                    <template v-if="lastTicket.method === 'cash'">
+                        <div class="done-row"><span>Recibido</span><span class="money">{{ money(lastTicket.tendered_cents) }}</span></div>
+                        <div class="done-row done-row-strong">
+                            <span>Vuelto</span>
+                            <strong class="money" :class="{ 'done-change': lastTicket.change_cents > 0 }">
+                                {{ money(lastTicket.change_cents) }}
+                            </strong>
+                        </div>
+                    </template>
+                    <div v-if="lastTicket.cashier" class="done-row"><span>Cobró</span><span>{{ lastTicket.cashier }}</span></div>
                 </div>
 
                 <div class="done-actions">
@@ -485,24 +558,58 @@ function printFrom(kind) {
 .short { color: var(--bad); font-size: 1rem; font-weight: 600; margin-bottom: .9rem; }
 
 /* ---------- Venta cobrada ---------- */
-.done-sheet { text-align: center; width: min(380px, 100%); }
+.done-sheet { width: min(420px, 100%); }
+.done-head { text-align: center; margin-bottom: .9rem; }
 .done-mark {
-    display: grid; place-items: center; width: 54px; height: 54px; margin: 0 auto .8rem;
+    display: grid; place-items: center; width: 50px; height: 50px; margin: 0 auto .7rem;
     border-radius: 4px; background: var(--ok); color: #fff;
 }
-.done-mark svg { width: 28px; height: 28px; }
-.done-title { font-size: 1.05rem; margin-bottom: .2rem; }
-.done-total { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; margin-bottom: 1rem; }
-.done-facts {
-    display: flex; flex-direction: column; gap: .4rem;
-    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-    padding: .8rem 0; margin-bottom: 1rem; text-align: left;
+.done-mark svg { width: 26px; height: 26px; }
+.done-title { font-size: 1rem; margin-bottom: .15rem; }
+.done-total { font-size: 2.1rem; font-weight: 800; letter-spacing: -.02em; }
+.done-when { font-size: .76rem; color: var(--muted); margin-top: .15rem; }
+
+.done-sync {
+    display: flex; align-items: center; justify-content: center; gap: .45rem;
+    font-size: .78rem; padding: .5rem; border-radius: 4px; margin-bottom: .8rem;
 }
-.done-row { display: flex; justify-content: space-between; gap: 1rem; font-size: .86rem; color: var(--muted); }
-.done-row strong { color: var(--text); }
-.done-pending { font-size: .8rem; }
-.done-change { color: var(--ok); font-size: 1rem; }
-.done-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: .8rem; }
+.done-sync strong { font-weight: 700; }
+.sync-dot { width: 7px; height: 7px; border-radius: 4px; flex-shrink: 0; }
+.sync-ok { background: var(--shade); color: var(--ok); }
+.sync-ok .sync-dot { background: var(--ok); }
+.sync-wait { background: var(--shade); color: var(--warn); }
+.sync-wait .sync-dot { background: var(--warn); }
+
+.done-customer {
+    display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    border: 1px solid var(--line-strong); border-radius: 4px;
+    padding: .55rem .7rem; margin-bottom: .8rem; font-size: .86rem; color: var(--muted);
+}
+.done-customer strong { color: var(--text); font-size: .95rem; }
+
+.done-block {
+    border-top: 1px solid var(--line); padding: .7rem 0;
+    display: flex; flex-direction: column; gap: .3rem;
+}
+.done-block-title {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+    font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: .25rem;
+}
+.done-block-count { font-weight: 500; letter-spacing: 0; text-transform: none; }
+
+.done-line { display: flex; align-items: baseline; gap: .5rem; font-size: .84rem; }
+.done-line-qty { min-width: 1.7rem; font-weight: 700; color: var(--text); }
+.done-line-name { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.done-line-unit { color: var(--muted); font-size: .76rem; white-space: nowrap; }
+.done-line-total { min-width: 4.6rem; text-align: right; white-space: nowrap; }
+
+.done-row { display: flex; justify-content: space-between; gap: 1rem; font-size: .84rem; color: var(--muted); }
+.done-row strong, .done-row span:last-child { color: var(--text); }
+.done-row-strong { font-size: .95rem; padding-top: .2rem; }
+.done-method { font-weight: 700; }
+.done-change { color: var(--ok); }
+.done-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin: .9rem 0 .8rem; }
 .done-actions .btn-soft {
     display: flex; align-items: center; justify-content: center; gap: .4rem; padding: .7rem;
 }
