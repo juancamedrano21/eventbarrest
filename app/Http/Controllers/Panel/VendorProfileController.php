@@ -93,6 +93,9 @@ class VendorProfileController extends Controller
             ),
             // Para el selector «Como la cuenta (…)» de la pestaña config.
             'modoCuenta' => app(ResolveItbisMode::class)->forTenant((int) $record->tenant_id),
+            // El que rige HOY para este comercio: el copy de los precios
+            // depende de él (con o sin ITBIS dentro).
+            'modoVigente' => app(ResolveItbisMode::class)->forVendor($record->id, (int) $record->tenant_id),
             'vendorTypes' => VendorType::query()->orderBy('name')->pluck('name', 'id'),
             'foodTypes' => FoodType::query()->orderBy('name')->pluck('name', 'id'),
             'vendor' => $record,

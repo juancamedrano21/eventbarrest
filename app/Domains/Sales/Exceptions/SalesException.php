@@ -53,6 +53,15 @@ class SalesException extends RuntimeException
         return new self('Cada línea vende un producto del comercio de la unidad: no se cruzan comercios.', 'line_outside_vendor');
     }
 
+    public static function unknownItbisMode(string $modo, string $origen): self
+    {
+        return new self(
+            "La modalidad de ITBIS {$origen} tiene un valor desconocido: «{$modo}». ".
+            'Corrígela en la configuración antes de seguir vendiendo.',
+            'unknown_itbis_mode',
+        );
+    }
+
     public static function paidOrdersAreHistory(): self
     {
         return new self('Una orden cobrada es historia: se anula con su acción, nunca se edita.', 'history_is_immutable');

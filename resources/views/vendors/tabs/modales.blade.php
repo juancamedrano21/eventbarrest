@@ -1,6 +1,7 @@
 {{-- Parcial compartido entre /panel (organizador) y /comercio (encargado):
      las acciones llegan en $urls, cada puerta pone las suyas. $puede acota
      por capacidades; sin él, todo permitido (el organizador ya autorizó). --}}
+@php($itbisVaAparte = ($modoVigente ?? null)?->value === 'added')
 @if ($puede['catalogo'] ?? true)
 {{-- Modal: nueva categoría --}}
     <div id="modal-categoria" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
@@ -32,7 +33,7 @@
                 <h3 class="mb-4 font-medium text-gray-800">Nuevo producto del menú</h3>
                 <div class="space-y-3">
                     <input name="name" value="{{ old('name') }}" placeholder="Nombre del producto" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
-                    <input name="price" type="text" inputmode="decimal" value="{{ old('price') }}" placeholder="Precio (RD$)" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
+                    <input name="price" type="text" inputmode="decimal" value="{{ old('price') }}" placeholder="{{ $itbisVaAparte ? 'Precio sin ITBIS (RD$)' : 'Precio con ITBIS incluido (RD$)' }}" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400">
                     <select name="category_id" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
                         @forelse ($menuCategories as $categoria)
                             <option value="{{ $categoria->id }}">{{ $categoria->name }} — {{ $categoria->dispatch->value === 'kitchen' ? 'Alimentos' : 'Bebidas' }}</option>
@@ -45,7 +46,7 @@
                         <option value="receta">Con receta — descuenta varios ingredientes (el escandallo se arma después)</option>
                     </select>
                     <select name="itbis" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
-                        <option value="gravado">Grava — el 18 % va incluido en el precio</option>
+                        <option value="gravado">{{ $itbisVaAparte ? 'Grava — el 18 % se suma al cobrar' : 'Grava — el 18 % va incluido en el precio' }}</option>
                         <option value="exento">Exento — agua embotellada, alimentos no gravados</option>
                     </select>
                     <select name="inventory_item_id" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">

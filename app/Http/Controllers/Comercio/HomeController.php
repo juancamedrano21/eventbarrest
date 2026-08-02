@@ -12,6 +12,7 @@ use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Http\Controllers\Comercio\Concerns\AuthorizesComercioPanel;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
@@ -49,6 +50,9 @@ class HomeController extends Controller
         return view('comercio.home', [
             'vendor' => $record,
             'puede' => $puede,
+            // Con qué factura SU comercio: manda el copy de los precios y
+            // se muestra en el resumen (la fija el organizador).
+            'modoVigente' => app(ResolveItbisMode::class)->forVendor($record->id, (int) $record->tenant_id),
             'salesToday' => $puede['ventas'] ? (int) $paid()->where('paid_at', '>=', $inicioHoy)->sum('total_cents') : 0,
             'salesTotal' => $puede['ventas'] ? (int) $paid()->sum('total_cents') : 0,
             'recentOrders' => $puede['ventas']

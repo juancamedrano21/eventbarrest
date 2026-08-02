@@ -5,6 +5,10 @@
          más bloques @php y el inline se emparejaría con el primer @endphp. --}}
     @php
         $puedeCatalogo = $puede['catalogo'] ?? true;
+        // El precio de carta significa cosas distintas segun la modalidad
+        // fiscal del negocio: decirlo mal invita a cargar precios con el
+        // impuesto dentro cuando el POS lo va a sumar (doble ITBIS).
+        $itbisVaAparte = ($modoVigente ?? null)?->value === 'added';
     @endphp
     {{-- Tab: Menú --}}
     <div id="tab-menu" class="hidden" role="tabpanel" aria-labelledby="tab-menu-item">
@@ -128,7 +132,7 @@
 
                                     <div class="grid grid-cols-2 gap-3">
                                         <div>
-                                            <label class="mb-1.5 block text-xs font-medium text-gray-700">Precio (RD$)</label>
+                                            <label class="mb-1.5 block text-xs font-medium text-gray-700">Precio (RD$) <span class="font-normal text-gray-400">{{ $itbisVaAparte ? 'sin ITBIS' : 'con ITBIS' }}</span></label>
                                             <input name="price" type="text" inputmode="decimal" value="{{ $conError ? old('price') : number_format($product->price_cents / 100, 2, '.', '') }}" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
                                             @if ($conError)
                                                 @error('price')<p class="mt-1.5 text-xs text-red-600">{{ $message }}</p>@enderror
@@ -155,7 +159,7 @@
                                         <div>
                                             <label class="mb-1.5 block text-xs font-medium text-gray-700">ITBIS</label>
                                             <select name="itbis_exempt" class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
-                                                <option value="0" @selected($conError ? old('itbis_exempt') === '0' : ! $product->itbis_exempt)>Grava — 18 % incluido en el precio</option>
+                                                <option value="0" @selected($conError ? old('itbis_exempt') === '0' : ! $product->itbis_exempt)>{{ $itbisVaAparte ? 'Grava — el 18 % se suma al cobrar' : 'Grava — 18 % incluido en el precio' }}</option>
                                                 <option value="1" @selected($conError ? old('itbis_exempt') === '1' : $product->itbis_exempt)>Exento — no desglosa impuesto</option>
                                             </select>
                                         </div>

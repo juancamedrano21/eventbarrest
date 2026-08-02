@@ -106,6 +106,9 @@ class PosOrderController extends Controller
             'itbis_cents' => $order->itbis_cents,
             'tip_cents' => $order->tip_cents,
             'total_cents' => $order->total_cents,
+            // La modalidad con la que el servidor calculó: el dispositivo
+            // compara y manda a revision si no coincide con lo que cobro.
+            'itbis_mode' => $order->itbis_mode->value,
             'paid_at' => $order->paid_at,
             'lines' => $order->lines->map(fn ($line): array => [
                 'id' => $line->id,

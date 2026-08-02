@@ -43,6 +43,15 @@
                 </p>
             </div>
         </div>
+        <div class="mb-4 rounded-xl border border-gray-200 bg-white p-4">
+            <p class="text-xs uppercase tracking-wide text-gray-500">Fiscalidad de tu comercio</p>
+            <p class="mt-1 text-sm text-gray-800">
+                <span class="font-medium">ITBIS {{ $modoVigente->getLabel() }}.</span>
+                {{ $modoVigente->description() }}
+            </p>
+            <p class="mt-1 text-xs text-gray-500">La fija el organizador del evento; carga tus precios de acuerdo con ella.</p>
+        </div>
+
         <p class="text-sm text-gray-500">Usa las pestañas para gestionar el menú{{ $puede['ventas'] ? ', revisar tus ventas' : '' }} y registrar compras de inventario. La caja se opera desde el <a href="/pos" target="_blank" class="font-medium text-sky-700 hover:underline">POS</a>.</p>
     </div>
 

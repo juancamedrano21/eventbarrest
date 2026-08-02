@@ -4,30 +4,33 @@ declare(strict_types=1);
 
 namespace App\Domains\Sales\Queries;
 
-use App\Domains\EventManagement\Models\Vendor;
-use App\Domains\Platform\Models\Tenant;
 use App\Domains\Sales\Enums\ItbisMode;
+use App\Domains\Sales\Exceptions\SalesException;
+use Illuminate\Support\Facades\DB;
 
 /**
  * La regla fiscal vigente: la del comercio si la declaró, si no la de su
  * cuenta. Un comercio de evento es un negocio tercero y puede vender con
  * el impuesto por fuera aunque el organizador lo incluya (y al revés).
  *
- * Consultas sin scopes a propósito: esto resuelve la verdad de las filas,
- * y se llama desde el POS donde el contexto ya está fijado pero la venta
- * puede pertenecer a otra unidad.
+ * Lecturas por el query builder CRUDO a propósito: sin los casts de
+ * Eloquent, un valor corrupto en la columna (import, seeder, SQL manual)
+ * se convierte en un error de dominio explicable en vez de un ValueError
+ * que tumba el catálogo del POS con un 500. Y el comercio se acota por
+ * tenant: nadie hereda la regla fiscal de otra cuenta.
  */
 class ResolveItbisMode
 {
     public function forVendor(?int $vendorId, int $tenantId): ItbisMode
     {
         if ($vendorId !== null) {
-            $delComercio = $this->normalize(
-                Vendor::query()->withoutGlobalScopes()->whereKey($vendorId)->value('itbis_mode')
-            );
+            $delComercio = DB::table('vendors')
+                ->where('id', $vendorId)
+                ->where('tenant_id', $tenantId)
+                ->value('itbis_mode');
 
-            if ($delComercio !== null) {
-                return $delComercio;
+            if (filled($delComercio)) {
+                return $this->parse((string) $delComercio, 'del comercio');
             }
         }
 
@@ -36,21 +39,18 @@ class ResolveItbisMode
 
     public function forTenant(int $tenantId): ItbisMode
     {
-        return $this->normalize(
-            Tenant::query()->withoutGlobalScopes()->whereKey($tenantId)->value('itbis_mode')
-        ) ?? ItbisMode::Included;
+        $modo = DB::table('tenants')->where('id', $tenantId)->value('itbis_mode');
+
+        // Sin fila o sin valor: la regla declarada del producto (así se
+        // vende en la mayoría de los bares de RD).
+        return filled($modo)
+            ? $this->parse((string) $modo, 'de la cuenta')
+            : ItbisMode::Included;
     }
 
-    /**
-     * value() aplica los casts del modelo, así que puede devolver el enum
-     * ya hidratado o el string crudo según por dónde entre.
-     */
-    private function normalize(mixed $modo): ?ItbisMode
+    private function parse(string $modo, string $origen): ItbisMode
     {
-        return match (true) {
-            $modo instanceof ItbisMode => $modo,
-            is_string($modo) && $modo !== '' => ItbisMode::tryFrom($modo),
-            default => null,
-        };
+        return ItbisMode::tryFrom($modo)
+            ?? throw SalesException::unknownItbisMode($modo, $origen);
     }
 }

@@ -145,7 +145,19 @@ export const usePos = defineStore('pos', {
             try {
                 this.session = await api.openSession(unitId, openingCents);
                 await kvSet('my_session_id', this.session.id);
-                await kvSet('cache', { ...(await kvGet('cache', {})), session: this.session });
+
+                // Inicio de turno: la unica llamada online garantizada del
+                // dia. Se revalida el catalogo y con el la REGLA FISCAL —
+                // si cambio, cobrar con la vieja seria cobrar de menos.
+                try {
+                    const catalog = await api.catalog();
+                    this.categories = catalog.categories;
+                    this.products = catalog.products;
+                    this.itbisMode = catalog.settings?.itbis_mode ?? 'included';
+                    await kvSet('cache', { ...(await kvGet('cache', {})), session: this.session, catalog });
+                } catch {
+                    await kvSet('cache', { ...(await kvGet('cache', {})), session: this.session });
+                }
 
                 // Ventas huerfanas de una caja anterior: renacen en esta.
                 const parked = await db.outbox.where('status').equals('sin_caja').toArray();
@@ -243,6 +255,24 @@ export const usePos = defineStore('pos', {
                         lines: sale.lines,
                         payment: sale.payment,
                     });
+                    // El total que el cliente pago debe ser el que el
+                    // servidor registro: si el dispositivo tenia una regla
+                    // fiscal vieja, la venta va a revision en vez de pasar
+                    // como buena con un faltante silencioso en la caja.
+                    const cobrado = sale.display?.total;
+                    if (typeof cobrado === 'number' && cobrado !== result.total_cents) {
+                        await db.outbox.update(sale.id, {
+                            status: 'error',
+                            error_code: 'total_divergente',
+                            error_message: `Se cobro ${(cobrado / 100).toFixed(2)} y el sistema registro `
+                                + `${(result.total_cents / 100).toFixed(2)}: revisa con tu encargado.`,
+                            server: result,
+                        });
+                        // La regla fiscal del dispositivo quedo vieja: la del
+                        // servidor manda desde ya.
+                        if (result.itbis_mode) this.itbisMode = result.itbis_mode;
+                        continue;
+                    }
                     await db.outbox.update(sale.id, { status: 'sincronizada', server: result });
                 } catch (error) {
                     if (!error?.status) {

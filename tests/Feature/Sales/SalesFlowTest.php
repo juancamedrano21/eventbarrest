@@ -31,7 +31,9 @@ use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\Payment;
+use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Domains\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * El flujo completo de una venta: caja abierta, orden con instantáneas,
@@ -387,4 +389,48 @@ it('lets a vendor override the account rule, and freezes it on the sale', functi
         expect($siguiente->itbis_mode)->toBe(ItbisMode::Included)
             ->and($siguiente->total_cents)->toBe(10000);
     });
+});
+
+it('keeps a paid sale frozen even against a keyed mass update', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $order = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0023');
+        app(PayOrder::class)($order, PaymentMethod::Cash, 30000);
+
+        // Acotar por clave es la forma del save de modelo, así que el
+        // builder la deja pasar: la fila cobrada tiene que defenderse sola.
+        expect(fn () => Order::query()->whereKey($order->id)->update([
+            'total_cents' => 999, 'itbis_mode' => 'added',
+        ]))->toThrow(SalesException::class);
+
+        $fresh = Order::query()->withoutGlobalScopes()->findOrFail($order->id);
+        expect($fresh->total_cents)->toBe(30000)
+            ->and($fresh->itbis_mode)->toBe(ItbisMode::Included);
+    });
+});
+
+it('refuses to price a sale with a corrupt fiscal rule instead of guessing', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        // Un import o un SQL manual pueden meter basura: el dominio la
+        // nombra en vez de reventar con un ValueError o inventar un modo.
+        DB::table('tenants')->where('id', $this->tenant->id)->update(['itbis_mode' => 'con-itbis']);
+
+        expect(fn () => app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0024'))->toThrow(SalesException::class, 'con-itbis');
+    });
+});
+
+it('never inherits the fiscal rule of another account', function (): void {
+    // Los comercios solo existen en cuentas de organizador.
+    $otra = app(CreateTenant::class)('Otro Fest', null, TenantType::Organizer);
+    $ajeno = app(TenantContext::class)->runAs(
+        $otra,
+        fn () => tap(app(CreateVendor::class)('Comercio Ajeno'), fn ($v) => $v->update(['itbis_mode' => ItbisMode::Added])),
+    );
+
+    // El id de un comercio de OTRA cuenta no dicta la regla de esta.
+    expect(app(ResolveItbisMode::class)->forVendor($ajeno->id, $this->tenant->id))
+        ->toBe(ItbisMode::Included);
 });

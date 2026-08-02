@@ -73,18 +73,30 @@ class VendorsController extends Controller
             'itbis_mode' => ['nullable', Rule::enum(ItbisMode::class)],
         ]);
 
+        // Dos formularios distintos escriben aquí (el modal «Editar» y la
+        // pestaña Configuraciones) y cada uno trae SUS campos: lo que no
+        // viene en la petición no se toca. Si no, editar un teléfono
+        // borraba en silencio la clasificación y la regla fiscal.
         $update = [
             'name' => $data['name'],
             'rnc' => filled($data['rnc'] ?? null) ? ValidRnc::normalize($data['rnc']) : null,
             'contact_name' => $data['contact_name'] ?? null,
             'contact_phone' => $data['contact_phone'] ?? null,
             'status' => VendorStatus::from($data['status']),
-            'vendor_type_id' => $data['vendor_type_id'] ?? null,
-            'food_type_id' => $data['food_type_id'] ?? null,
-            'itbis_mode' => filled($data['itbis_mode'] ?? null)
-                ? ItbisMode::from($data['itbis_mode'])
-                : null,
         ];
+
+        foreach (['vendor_type_id', 'food_type_id'] as $campo) {
+            if ($request->has($campo)) {
+                $update[$campo] = $data[$campo] ?? null;
+            }
+        }
+
+        if ($request->has('itbis_mode')) {
+            // Vacío = vuelve a heredar la regla fiscal de la cuenta.
+            $update['itbis_mode'] = filled($data['itbis_mode'] ?? null)
+                ? ItbisMode::from($data['itbis_mode'])
+                : null;
+        }
 
         if ($request->hasFile('logo')) {
             $update['logo_path'] = $request->file('logo')->store('vendor-logos', 'public');

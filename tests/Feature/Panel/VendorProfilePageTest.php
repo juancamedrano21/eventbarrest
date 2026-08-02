@@ -10,6 +10,7 @@ use App\Domains\EventManagement\Actions\CreateEvent;
 use App\Domains\EventManagement\Actions\CreateVendor;
 use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Models\EventOutlet;
+use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Role;
@@ -24,6 +25,7 @@ use App\Domains\Platform\Models\VendorType;
 use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
+use App\Domains\Sales\Enums\ItbisMode;
 use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Tenancy\TenantContext;
 use App\Models\User;
@@ -499,4 +501,37 @@ it('reopens the failed modal with the typed values and the error in sight', func
         ->assertSee('Ya existe un producto con ese nombre en este comercio.')
         ->assertSee('HSOverlay.open', false)
         ->assertSee("modal-item-{$dos->id}");
+});
+
+it('never wipes settings the submitted form does not carry', function (): void {
+    app(TenantContext::class)->runAs($this->organizer, fn () => $this->vendor->update([
+        'itbis_mode' => ItbisMode::Added,
+        'vendor_type_id' => VendorType::query()->value('id'),
+    ]));
+
+    // El modal «Editar» solo trae datos de contacto: lo que no envía, no
+    // se toca (antes borraba en silencio la regla fiscal y el tipo).
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/datos", [
+            'name' => 'Tacos del Puerto',
+            'contact_phone' => '809-555-0000',
+            'status' => 'active',
+        ])
+        ->assertRedirect();
+
+    $fresh = Vendor::query()->withoutGlobalScopes()->findOrFail($this->vendor->id);
+    expect($fresh->itbis_mode)->toBe(ItbisMode::Added)
+        ->and($fresh->vendor_type_id)->not->toBeNull()
+        ->and($fresh->contact_phone)->toBe('809-555-0000');
+
+    // Y la pestaña de configuración SÍ puede devolverlo a heredar.
+    $this->actingAs($this->owner)
+        ->post("/panel/comercios/{$this->vendor->id}/datos", [
+            'name' => 'Tacos del Puerto',
+            'status' => 'active',
+            'itbis_mode' => '',
+        ])
+        ->assertRedirect();
+
+    expect(Vendor::query()->withoutGlobalScopes()->findOrFail($this->vendor->id)->itbis_mode)->toBeNull();
 });

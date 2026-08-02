@@ -20,9 +20,10 @@ use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
 
 /**
- * Una venta. Los totales viven en centavos y el desglose de ITBIS es
- * informativo (el precio al público ya lo incluye, como se vende en RD);
- * se suma de las líneas, donde los productos exentos aportan cero.
+ * Una venta. Los totales viven en centavos y el ITBIS se suma de las
+ * líneas, donde los exentos aportan cero. Según la modalidad congelada
+ * (itbis_mode) el impuesto va DENTRO del precio — desglose informativo,
+ * el total no crece — o POR FUERA, sumado al total al cobrar.
  *
  * Cobrada o anulada, la orden es historia: el guard de updating no deja
  * tocar ninguna de las dos — la anulación post-cobro llegará como
@@ -110,6 +111,32 @@ class Order extends Model
         static::deleting(function (): void {
             throw SalesException::paidOrdersAreHistory();
         });
+    }
+
+    /**
+     * El guard de updating solo ve los save de modelo; un update acotado por
+     * clave (Order::query()->whereKey($id)->update([...])) los esquiva. El
+     * builder pregunta aquí por la fila REAL antes de dejar escribir, así
+     * que una venta cobrada o anulada es historia por las dos vías.
+     */
+    public function assertRowIsWritable(mixed $key): void
+    {
+        if ($key === null) {
+            return;
+        }
+
+        $status = static::query()->withoutGlobalScopes()
+            ->getQuery()  // crudo: sin este builder, no hay recursión
+            ->where($this->getKeyName(), $key)
+            ->value('status');
+
+        if ($status === null) {
+            return;
+        }
+
+        if (OrderStatus::tryFrom((string) $status) !== OrderStatus::Open) {
+            throw SalesException::paidOrdersAreHistory();
+        }
     }
 
     /**
