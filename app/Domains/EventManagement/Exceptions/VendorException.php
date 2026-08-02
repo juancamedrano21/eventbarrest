@@ -36,6 +36,19 @@ class VendorException extends RuntimeException
         return new self('El negocio indicado no pertenece a esta cuenta.');
     }
 
+    public static function vendorIsNotInTheEvent(): self
+    {
+        return new self('Ese comercio no participa en el evento.');
+    }
+
+    public static function vendorHasAnOpenCashSession(): self
+    {
+        return new self(
+            'Tiene una caja abierta en este evento. Ciérrala desde el POS antes de sacarlo: '
+            .'si no, su cajero se queda a mitad de turno sin poder cobrar ni cuadrar.'
+        );
+    }
+
     public static function vendorIsImmutable(): self
     {
         return new self(

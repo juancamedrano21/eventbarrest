@@ -8,19 +8,26 @@ use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
 use App\Domains\EventManagement\Actions\CreateEventOutlet;
 use App\Domains\EventManagement\Actions\InviteVendorToEvent;
+use App\Domains\EventManagement\Actions\RemoveVendorFromEvent;
+use App\Domains\EventManagement\Actions\UpdateEventOutlet;
+use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\VendorContext;
+use App\Domains\Identity\Actions\AssignTenantRole;
 use App\Domains\Identity\Actions\CreateTenantUser;
 use App\Domains\Identity\Enums\Permission;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
 use App\Domains\Operations\Enums\OperatingUnitKind;
+use App\Domains\Operations\Enums\OperatingUnitStatus;
 use App\Domains\Platform\Models\FoodType;
 use App\Domains\Platform\Models\VendorType;
+use App\Domains\Sales\Enums\CashSessionStatus;
 use App\Domains\Sales\Enums\OrderStatus;
+use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\OrderLine;
 use App\Domains\Sales\Models\Payment;
@@ -29,9 +36,11 @@ use App\Domains\Sales\Queries\NetSales;
 use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\EventPanel\Concerns\AuthorizesOrganizerPanel;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Spatie\Activitylog\Models\Activity;
 
@@ -290,5 +299,115 @@ class VendorProfileController extends Controller
         );
 
         return back()->with('status', 'Puesto creado.');
+    }
+
+    /**
+     * Renegociar la comisión de una participación que ya existe. La acción
+     * de dominio es idempotente y la actualiza; lo único que faltaba era
+     * poder pedírselo desde una pantalla.
+     *
+     * Lo ya cobrado no cambia: cada orden guarda su comisión congelada.
+     */
+    public function updateCommission(Request $request, int $vendor, int $event): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::EventsManage);
+
+        $record = Vendor::query()->findOrFail($vendor);
+
+        $data = $request->validate([
+            'commission' => ['required', 'numeric', 'min:0', 'max:100'],
+        ], [], ['commission' => 'comisión']);
+
+        app(InviteVendorToEvent::class)(
+            Event::query()->findOrFail($event),
+            $record,
+            (int) round(((float) $data['commission']) * 100),
+        );
+
+        return back()->with('status', 'Comisión actualizada. Las ventas ya cobradas conservan la suya.');
+    }
+
+    /** Sacar a un comercio de un evento: sus puestos dejan de operar. */
+    public function removeFromEvent(Request $request, int $vendor, int $event): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::EventsManage);
+
+        try {
+            app(RemoveVendorFromEvent::class)(
+                Event::query()->findOrFail($event),
+                Vendor::query()->findOrFail($vendor),
+            );
+        } catch (VendorException $e) {
+            // Una regla del dominio es algo que el organizador puede
+            // resolver, no un fallo del servidor: se le cuenta en su panel.
+            return back()->withErrors(['vendor' => $e->getMessage()]);
+        }
+
+        return back()->with('status', 'Comercio retirado del evento y sus puestos cerrados.');
+    }
+
+    /** Cambiar el puesto de sitio no: renombrarlo, o cerrarlo, sí. */
+    public function updateOutlet(Request $request, int $vendor, int $outlet): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::EventOutletsManage);
+
+        $record = EventOutlet::query()
+            ->where('vendor_id', $vendor)
+            ->findOrFail($outlet);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'kind' => ['required', Rule::enum(OperatingUnitKind::class)],
+            'status' => ['required', Rule::in([
+                OperatingUnitStatus::Active->value,
+                OperatingUnitStatus::Closed->value,
+            ])],
+        ], [], ['name' => 'nombre', 'status' => 'estado']);
+
+        if ($data['status'] === OperatingUnitStatus::Closed->value
+            && CashSession::query()
+                ->where('operating_unit_id', $record->id)
+                ->where('status', CashSessionStatus::Open->value)
+                ->exists()) {
+            return back()->withErrors([
+                'status' => 'Este puesto tiene una caja abierta. Ciérrala desde el POS antes de cerrarlo.',
+            ]);
+        }
+
+        app(UpdateEventOutlet::class)(
+            $record,
+            $data['name'],
+            OperatingUnitKind::from($data['kind']),
+            OperatingUnitStatus::from($data['status']),
+        );
+
+        return back()->with('status', 'Puesto actualizado.');
+    }
+
+    /**
+     * Cambiar el rol de alguien del comercio. Hasta ahora el panel nuevo
+     * solo sabía crear usuarios: corregir un rol mal dado obligaba a entrar
+     * al Filament viejo.
+     */
+    public function updateUserRole(Request $request, int $vendor, int $user): RedirectResponse
+    {
+        $this->authorizeOrganizer($request, Permission::UsersManage);
+
+        $record = Vendor::query()->findOrFail($vendor);
+
+        $target = User::query()
+            ->where('tenant_id', $record->tenant_id)
+            ->where('vendor_id', $record->id)
+            ->findOrFail($user);
+
+        $data = $request->validate([
+            'role' => ['required', 'string', Rule::in(array_keys(RoleTemplate::optionsForVendorStaff()))],
+        ], [], ['role' => 'rol']);
+
+        // El actor va para que aplique el techo antiescalada, y la Action
+        // revoca los tokens del POS si el rol nuevo ya no puede operar caja.
+        app(AssignTenantRole::class)($target, $data['role'], $request->user());
+
+        return back()->with('status', 'Rol actualizado.');
     }
 }

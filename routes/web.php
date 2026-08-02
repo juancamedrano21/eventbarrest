@@ -68,11 +68,16 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::get('/eventos', [EventsController::class, 'index'])->name('events.index');
     Route::post('/eventos', [EventsController::class, 'store'])->name('events.store');
     Route::get('/eventos/{event}', [EventsController::class, 'show'])->name('events.show');
+    Route::post('/eventos/{event}', [EventsController::class, 'update'])->name('events.update');
     Route::get('/comercios/{vendor}', [VendorProfileController::class, 'show'])->name('vendors.show');
     Route::get('/comercios/{vendor}/ventas/{order}', [VendorSalesController::class, 'show'])->name('vendors.sales.show');
     Route::post('/comercios/{vendor}/usuarios', [VendorProfileController::class, 'storeUser'])->name('vendors.users.store');
+    Route::post('/comercios/{vendor}/usuarios/{user}/rol', [VendorProfileController::class, 'updateUserRole'])->name('vendors.users.role');
     Route::post('/comercios/{vendor}/invitar', [VendorProfileController::class, 'invite'])->name('vendors.invite');
+    Route::post('/comercios/{vendor}/eventos/{event}/comision', [VendorProfileController::class, 'updateCommission'])->name('vendors.commission.update');
+    Route::post('/comercios/{vendor}/eventos/{event}/retirar', [VendorProfileController::class, 'removeFromEvent'])->name('vendors.events.remove');
     Route::post('/comercios/{vendor}/puestos', [VendorProfileController::class, 'storeOutlet'])->name('vendors.outlets.store');
+    Route::post('/comercios/{vendor}/puestos/{outlet}', [VendorProfileController::class, 'updateOutlet'])->name('vendors.outlets.update');
     Route::post('/comercios/{vendor}/categorias', [VendorCatalogController::class, 'storeCategory'])->name('vendors.categories.store');
     Route::post('/comercios/{vendor}/productos', [VendorCatalogController::class, 'storeProduct'])->name('vendors.products.store');
     Route::post('/comercios/{vendor}/productos/{product}', [VendorCatalogController::class, 'updateProduct'])->name('vendors.products.update');

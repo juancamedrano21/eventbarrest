@@ -193,12 +193,16 @@
             </header>
             <ul class="divide-y divide-gray-200">
                 @forelse ($participations as $event)
-                    <li class="flex items-center justify-between px-5 py-3 text-sm">
+                    <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
                         <div>
                             <p class="text-gray-800">{{ $event->name }}</p>
                             <p class="text-xs text-gray-500">{{ $event->starts_at->format('d M Y, H:i') }}</p>
                         </div>
-                        <span class="text-xs text-gray-500">Comisión {{ number_format($event->pivot->commission_bps / 100, 2) }} %</span>
+                        <div class="flex items-center gap-3">
+                            <span class="text-xs text-gray-500">Comisión {{ number_format($event->pivot->commission_bps / 100, 2) }} %</span>
+                            <button type="button" data-hs-overlay="#modal-participacion-{{ $event->id }}" aria-haspopup="dialog"
+                                class="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">Ajustar</button>
+                        </div>
                     </li>
                 @empty
                     <li class="px-5 py-6 text-sm text-gray-500">Aún no participa en ningún evento.</li>
@@ -217,12 +221,21 @@
             </header>
             <ul class="divide-y divide-gray-200">
                 @forelse ($outlets as $outlet)
-                    <li class="flex items-center justify-between px-5 py-3 text-sm">
+                    <li class="flex items-center justify-between gap-3 px-5 py-3 text-sm">
                         <div>
-                            <p class="text-gray-800">{{ $outlet->name }}</p>
+                            <p class="text-gray-800">
+                                {{ $outlet->name }}
+                                @if ($outlet->status->value !== 'active')
+                                    <span class="ml-1 rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600">{{ $outlet->status->getLabel() }}</span>
+                                @endif
+                            </p>
                             <p class="text-xs text-gray-500">{{ $outlet->event?->name }}</p>
                         </div>
-                        <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $outlet->kind->getLabel() }}</span>
+                        <div class="flex items-center gap-3">
+                            <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $outlet->kind->getLabel() }}</span>
+                            <button type="button" data-hs-overlay="#modal-puesto-{{ $outlet->id }}" aria-haspopup="dialog"
+                                class="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">Editar</button>
+                        </div>
                     </li>
                 @empty
                     <li class="px-5 py-6 text-sm text-gray-500">Sin puestos: invítalo a un evento y asígnale su barra o cocina.</li>
@@ -292,6 +305,7 @@
                             <th class="px-5 py-3 font-medium">Usuario POS</th>
                             <th class="px-5 py-3 font-medium">Rol</th>
                             <th class="px-5 py-3 font-medium">Alta</th>
+                            <th class="px-5 py-3"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200">
@@ -321,10 +335,14 @@
                                     </span>
                                 </td>
                                 <td class="whitespace-nowrap px-5 py-3 text-gray-500">{{ $member->created_at->format('d M Y') }}</td>
+                                <td class="whitespace-nowrap px-5 py-3 text-right">
+                                    <button type="button" data-hs-overlay="#modal-rol-{{ $member->id }}" aria-haspopup="dialog"
+                                        class="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">Cambiar rol</button>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="px-5 py-10 text-center text-gray-500">
+                                <td colspan="5" class="px-5 py-10 text-center text-gray-500">
                                     Sin equipo: crea su encargado — él montará el catálogo y sus cajeros venderán en el POS.
                                 </td>
                             </tr>
@@ -551,4 +569,92 @@
             </form>
         </div>
     </div>
+
+    {{-- Modal: participación en un evento — renegociar o retirar.
+         Lo ya cobrado no cambia: cada orden lleva su comisión congelada. --}}
+    @foreach ($participations as $event)
+        <div id="modal-participacion-{{ $event->id }}" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
+            <div class="m-3 mt-16 sm:mx-auto sm:w-full sm:max-w-md">
+                <div class="rounded-xl border border-gray-200 bg-white shadow-xl">
+                    <form method="POST" action="{{ route('event-panel.vendors.commission.update', [$vendor, $event]) }}" class="p-5">
+                        @csrf
+                        <h3 class="mb-1 font-medium text-gray-800">{{ $event->name }}</h3>
+                        <p class="mb-4 text-xs text-gray-500">{{ $event->starts_at->format('d M Y') }}</p>
+                        <label for="comision-{{ $event->id }}" class="mb-1.5 block text-sm text-gray-700">Comisión (%)</label>
+                        <input id="comision-{{ $event->id }}" name="commission" type="number" step="0.01" min="0" max="100" required
+                            value="{{ number_format($event->pivot->commission_bps / 100, 2, '.', '') }}"
+                            class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-sky-500 focus:ring-sky-500">
+                        <p class="mt-1.5 text-xs text-gray-500">Se aplica a las ventas de aquí en adelante. Las ya cobradas conservan la suya.</p>
+                        <div class="mt-5 flex justify-end gap-2">
+                            <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50" data-hs-overlay="#modal-participacion-{{ $event->id }}">Cancelar</button>
+                            <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Guardar</button>
+                        </div>
+                    </form>
+                    <form method="POST" action="{{ route('event-panel.vendors.events.remove', [$vendor, $event]) }}"
+                        onsubmit="return confirm('¿Retirar a {{ $vendor->name }} de {{ $event->name }}? Sus puestos de este evento se cerrarán.')"
+                        class="border-t border-gray-200 px-5 py-3">
+                        @csrf
+                        <button type="submit" class="text-sm text-red-600 hover:text-red-700">Retirar del evento</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    @endforeach
+
+    {{-- Modal: editar un puesto. Su evento y su comercio no se tocan:
+         moverlo reescribiría de quién son las ventas que salieron por él. --}}
+    @foreach ($outlets as $outlet)
+        <div id="modal-puesto-{{ $outlet->id }}" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
+            <div class="m-3 mt-16 sm:mx-auto sm:w-full sm:max-w-md">
+                <form method="POST" action="{{ route('event-panel.vendors.outlets.update', [$vendor, $outlet]) }}"
+                    class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+                    @csrf
+                    <h3 class="mb-1 font-medium text-gray-800">{{ $outlet->name }}</h3>
+                    <p class="mb-4 text-xs text-gray-500">{{ $outlet->event?->name }}</p>
+                    <div class="space-y-3">
+                        <input name="name" value="{{ $outlet->name }}" required maxlength="255"
+                            class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-sky-500 focus:ring-sky-500">
+                        <select name="kind" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-sky-500 focus:ring-sky-500">
+                            <option value="bar" @selected($outlet->kind->value === 'bar')>Barra</option>
+                            <option value="kitchen" @selected($outlet->kind->value === 'kitchen')>Cocina</option>
+                            <option value="mixed" @selected($outlet->kind->value === 'mixed')>Mixta</option>
+                        </select>
+                        <select name="status" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-sky-500 focus:ring-sky-500">
+                            <option value="active" @selected($outlet->status->value === 'active')>Activo</option>
+                            <option value="closed" @selected($outlet->status->value !== 'active')>Cerrado</option>
+                        </select>
+                    </div>
+                    <div class="mt-5 flex justify-end gap-2">
+                        <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50" data-hs-overlay="#modal-puesto-{{ $outlet->id }}">Cancelar</button>
+                        <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endforeach
+
+    {{-- Modal: cambiar el rol de alguien del comercio --}}
+    @foreach ($vendor->users as $member)
+        <div id="modal-rol-{{ $member->id }}" class="hs-overlay hidden size-full fixed top-0 start-0 z-80 overflow-y-auto" role="dialog" tabindex="-1">
+            <div class="m-3 mt-20 sm:mx-auto sm:w-full sm:max-w-sm">
+                <form method="POST" action="{{ route('event-panel.vendors.users.role', [$vendor, $member]) }}"
+                    class="rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
+                    @csrf
+                    <h3 class="mb-1 font-medium text-gray-800">{{ $member->name }}</h3>
+                    <p class="mb-4 text-xs text-gray-500">{{ $member->email }}</p>
+                    <label for="rol-{{ $member->id }}" class="mb-1.5 block text-sm text-gray-700">Rol</label>
+                    <select id="rol-{{ $member->id }}" name="role" required class="w-full rounded-lg border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-sky-500 focus:ring-sky-500">
+                        @foreach ($vendorRoles as $valor => $etiqueta)
+                            <option value="{{ $valor }}" @selected($member->roles->first()?->name === $valor)>{{ $etiqueta }}</option>
+                        @endforeach
+                    </select>
+                    <p class="mt-1.5 text-xs text-gray-500">Si el rol nuevo no opera caja, sus sesiones del POS se cierran.</p>
+                    <div class="mt-5 flex justify-end gap-2">
+                        <button type="button" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50" data-hs-overlay="#modal-rol-{{ $member->id }}">Cancelar</button>
+                        <button type="submit" class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    @endforeach
 @endsection
