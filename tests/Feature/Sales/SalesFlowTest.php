@@ -22,6 +22,7 @@ use App\Domains\Sales\Actions\CloseCashSession;
 use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
+use App\Domains\Sales\Actions\RefundOrder;
 use App\Domains\Sales\Actions\VoidOrder;
 use App\Domains\Sales\Enums\CashSessionStatus;
 use App\Domains\Sales\Enums\ItbisMode;
@@ -504,5 +505,66 @@ it('numbers open and voided sales too, and the POS response carries the number',
         // terminan cobradas.
         expect($abierta->publicNumber())->toBe('P0001')
             ->and($anulada->fresh()->publicNumber())->toBe('P0002');
+    });
+});
+
+it('refunds a paid sale without touching it, and the drawer expects less', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $orden = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 2],
+        ], 'pos-0050');
+        app(PayOrder::class)($orden, PaymentMethod::Cash, 60000);
+
+        // Parcial: se devuelve una de las dos cervezas.
+        $refund = app(RefundOrder::class)($orden->fresh(), $this->caja, 30000, 'Producto en mal estado');
+
+        expect($refund->amount_cents)->toBe(30000)
+            ->and($refund->cash_session_id)->toBe($this->caja->id);
+
+        // La venta NO cambia: sigue siendo el registro de lo que pasó.
+        $fresh = $orden->fresh();
+        expect($fresh->status)->toBe(OrderStatus::Paid)
+            ->and($fresh->total_cents)->toBe(60000)
+            ->and($fresh->refunds->sum('amount_cents'))->toBe(30000);
+
+        // No se puede devolver más de lo que queda.
+        expect(fn () => app(RefundOrder::class)($fresh, $this->caja, 30001, 'De más'))
+            ->toThrow(SalesException::class);
+
+        // Ni sin motivo.
+        expect(fn () => app(RefundOrder::class)($fresh, $this->caja, 100, '   '))
+            ->toThrow(SalesException::class);
+
+        // El arqueo descuenta lo devuelto en efectivo: fondo 5,000 + 600
+        // cobrados − 300 devueltos.
+        $cerrada = app(CloseCashSession::class)($this->caja, 530000);
+        expect($cerrada->expected_cents)->toBe(530000)
+            ->and($cerrada->difference_cents)->toBe(0);
+    });
+});
+
+it('refuses to refund what was never charged', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $abierta = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0051');
+
+        expect(fn () => app(RefundOrder::class)($abierta, $this->caja, 100, 'Motivo'))
+            ->toThrow(SalesException::class);
+    });
+});
+
+it('keeps a refund frozen once written', function (): void {
+    app(TenantContext::class)->runAs($this->tenant, function (): void {
+        $orden = app(PlaceOrder::class)($this->caja, [
+            ['product_id' => $this->presidente->id, 'quantity' => 1],
+        ], 'pos-0052');
+        app(PayOrder::class)($orden, PaymentMethod::Cash, 30000);
+
+        $refund = app(RefundOrder::class)($orden->fresh(), $this->caja, 10000, 'Parcial');
+
+        // Corregir un reembolso será otro asiento, nunca una edición.
+        expect(fn () => $refund->update(['amount_cents' => 1]))->toThrow(SalesException::class)
+            ->and(fn () => $refund->delete())->toThrow(SalesException::class);
     });
 });

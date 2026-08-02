@@ -5,6 +5,7 @@ import { money, toCents } from './money';
 import LoginScreen from './components/LoginScreen.vue';
 import TillScreen from './components/TillScreen.vue';
 import SaleScreen from './components/SaleScreen.vue';
+import SalesScreen from './components/SalesScreen.vue';
 
 const pos = usePos();
 
@@ -59,6 +60,8 @@ const statusLabel = {
 
             <div class="session">
                 <span v-if="pos.user" class="user-chip">{{ pos.user.name }}</span>
+                <button v-if="pos.screen === 'sale'" class="btn-topbar" @click="pos.screen = 'sales'">Ventas</button>
+                <button v-if="pos.screen === 'sales'" class="btn-topbar" @click="pos.screen = 'sale'">Vender</button>
                 <button v-if="pos.screen === 'sale'" class="btn-topbar" @click="counting = true">Cerrar caja</button>
                 <button class="icon-btn" title="Salir" @click="pos.logout()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
@@ -122,6 +125,7 @@ const statusLabel = {
 
         <LoginScreen v-if="pos.screen === 'login'" />
         <TillScreen v-else-if="pos.screen === 'till'" />
+        <SalesScreen v-else-if="pos.screen === 'sales'" />
         <SaleScreen v-else />
     </div>
 </template>

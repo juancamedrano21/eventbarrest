@@ -8,6 +8,7 @@ use App\Http\Controllers\Pos\PosBootstrapController;
 use App\Http\Controllers\Pos\PosCashSessionController;
 use App\Http\Controllers\Pos\PosCatalogController;
 use App\Http\Controllers\Pos\PosOrderController;
+use App\Http\Controllers\Pos\PosSalesController;
 use App\Http\Middleware\EnsurePosCapability;
 use Illuminate\Support\Facades\Route;
 
@@ -23,5 +24,7 @@ Route::middleware(['auth:sanctum', SetTenantContext::class, EnsurePosCapability:
         Route::post('/sessions', [PosCashSessionController::class, 'store']);
         Route::post('/sessions/{cashSession}/close', [PosCashSessionController::class, 'close']);
         Route::post('/orders', [PosOrderController::class, 'store']);
+        Route::get('/sales', [PosSalesController::class, 'index']);
+        Route::post('/sales/{order}/refund', [PosSalesController::class, 'refund']);
         Route::post('/logout', [PosAuthController::class, 'logout']);
     });

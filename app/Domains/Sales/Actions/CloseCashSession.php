@@ -11,6 +11,7 @@ use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Payment;
+use App\Domains\Sales\Models\Refund;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -51,7 +52,14 @@ class CloseCashSession
                     ->select('id'))
                 ->sum('amount_cents');
 
-            $expected = $session->opening_cents + $cash;
+            // Lo devuelto en efectivo salió de ESTA gaveta: el esperado
+            // baja, o el arqueo culparía al cajero del faltante.
+            $refunds = (int) Refund::query()
+                ->where('cash_session_id', $session->id)
+                ->where('method', PaymentMethod::Cash->value)
+                ->sum('amount_cents');
+
+            $expected = $session->opening_cents + $cash - $refunds;
 
             $session->forceFill([
                 'status' => CashSessionStatus::Closed,

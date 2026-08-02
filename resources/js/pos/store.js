@@ -33,6 +33,9 @@ export const usePos = defineStore('pos', {
         categories: [],
         products: [],
         itbisMode: 'included',
+        permissions: [],
+        sales: [],
+        loadingSales: false,
         cart: [],
         withTip: false,
         pending: 0,
@@ -49,6 +52,7 @@ export const usePos = defineStore('pos', {
 
     getters: {
         totals: (state) => totals(state.cart, state.withTip, state.itbisMode),
+        canRefund: (state) => state.permissions.includes('sales.refund'),
     },
 
     actions: {
@@ -103,6 +107,7 @@ export const usePos = defineStore('pos', {
                 const boot = await api.bootstrap();
                 const catalog = await api.catalog();
                 this.units = boot.units;
+                this.permissions = boot.permissions ?? [];
                 this.categories = catalog.categories;
                 this.products = catalog.products;
                 this.itbisMode = catalog.settings?.itbis_mode ?? 'included';
@@ -305,6 +310,42 @@ export const usePos = defineStore('pos', {
                 }
             }
             await this.recount();
+        },
+
+        // Las ventas de ESTA caja, del servidor: el reembolso es una accion
+        // supervisada que exige senal, asi que la lista tambien.
+        async loadSales() {
+            if (!this.session) return;
+            this.loadingSales = true;
+            this.error = null;
+            try {
+                const data = await api.sales(this.session.id);
+                this.sales = data.orders ?? [];
+            } catch (error) {
+                this.fail(error);
+            } finally {
+                this.loadingSales = false;
+            }
+        },
+
+        async refundSale(orderId, amountCents, reason) {
+            if (this.busy) return false;
+            this.busy = true;
+            this.error = null;
+            try {
+                await api.refund(orderId, {
+                    cash_session_id: this.session.id,
+                    amount_cents: amountCents,
+                    reason,
+                });
+                await this.loadSales();
+                return true;
+            } catch (error) {
+                this.fail(error);
+                return false;
+            } finally {
+                this.busy = false;
+            }
         },
 
         async openReview() {

@@ -32,7 +32,7 @@ class VendorSalesController extends Controller
         // venta de otro comercio (o de otra cuenta) no existe aquí.
         $sale = Order::query()
             ->where('vendor_id', $record->id)
-            ->with(['lines', 'payments', 'operatingUnit.event', 'cashSession', 'user'])
+            ->with(['lines', 'payments', 'refunds.user', 'operatingUnit.event', 'cashSession', 'user'])
             ->findOrFail($order);
 
         return view('panel.vendors.sale', [

@@ -25,7 +25,7 @@ class SalesController extends Controller
 
         $sale = Order::query()
             ->where('vendor_id', $record->id)
-            ->with(['lines', 'payments', 'operatingUnit.event', 'cashSession', 'user'])
+            ->with(['lines', 'payments', 'refunds.user', 'operatingUnit.event', 'cashSession', 'user'])
             ->findOrFail($order);
 
         return view('panel.vendors.sale', [

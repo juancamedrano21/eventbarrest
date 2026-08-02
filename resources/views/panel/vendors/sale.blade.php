@@ -100,6 +100,19 @@
                     @else
                         <p class="text-sm text-gray-500">Sin cobro todavía: la orden sigue abierta en el POS.</p>
                     @endif
+
+                    @if ($sale->refunds->isNotEmpty())
+                        <div class="mt-3 border-t border-gray-200 pt-3">
+                            <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-amber-700">Reembolsos</p>
+                            @foreach ($sale->refunds as $refund)
+                                <div class="mb-1.5 text-sm">
+                                    <span class="font-medium text-gray-800">RD$ {{ number_format($refund->amount_cents / 100, 2) }}</span>
+                                    <span class="text-gray-500">· {{ $refund->method->getLabel() }}</span>
+                                    <p class="text-xs text-gray-500">{{ $refund->reason }} — {{ $refund->user?->name ?? 'sistema' }}, {{ $fechaLocal($refund->created_at) }}</p>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
                 </div>
 
                 {{-- Resumen --}}
@@ -124,6 +137,17 @@
                             <span class="text-sm font-medium text-gray-800">Total</span>
                             <span class="text-end font-semibold text-gray-800"><span class="text-xs">RD$</span> {{ number_format($sale->total_cents / 100, 2) }}</span>
                         </div>
+                        @if ($sale->refunds->isNotEmpty())
+                            @php($devuelto = (int) $sale->refunds->sum('amount_cents'))
+                            <div class="grid grid-cols-2 gap-2">
+                                <span class="text-[13px] text-amber-700">Reembolsado</span>
+                                <span class="text-end text-[13px] font-semibold text-amber-700">− RD$ {{ number_format($devuelto / 100, 2) }}</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <span class="text-[13px] font-medium text-gray-800">Neto</span>
+                                <span class="text-end text-[13px] font-semibold text-gray-800">RD$ {{ number_format(($sale->total_cents - $devuelto) / 100, 2) }}</span>
+                            </div>
+                        @endif
                         @if ($sale->commission_bps !== null)
                             <div class="grid grid-cols-2 gap-2">
                                 <span class="text-[13px] text-teal-700">Tu comisión ({{ rtrim(rtrim(number_format($sale->commission_bps / 100, 2), '0'), '.') }} %)</span>

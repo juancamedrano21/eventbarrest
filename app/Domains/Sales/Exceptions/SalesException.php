@@ -53,6 +53,34 @@ class SalesException extends RuntimeException
         return new self('Cada línea vende un producto del comercio de la unidad: no se cruzan comercios.', 'line_outside_vendor');
     }
 
+    public static function refundNeedsAReason(): self
+    {
+        return new self('Un reembolso sin motivo no es auditable: escribe por qué se devuelve.', 'refund_needs_reason');
+    }
+
+    public static function refundAmountInvalid(): self
+    {
+        return new self('El monto a devolver debe ser mayor que cero.', 'refund_amount_invalid');
+    }
+
+    public static function refundAboveRemaining(int $disponible): self
+    {
+        return new self(
+            'No se puede devolver más de lo cobrado: quedan RD$ '.number_format($disponible / 100, 2).' por reembolsar.',
+            'refund_above_remaining',
+        );
+    }
+
+    public static function onlyPaidOrdersAreRefundable(): self
+    {
+        return new self('Solo se reembolsa una venta cobrada: una abierta se anula y una anulada no cobró.', 'order_not_refundable');
+    }
+
+    public static function orderNotFoundForRefund(): self
+    {
+        return new self('Esa venta no existe para este comercio.', 'order_not_found');
+    }
+
     public static function orderNumberUnavailable(): self
     {
         return new self(

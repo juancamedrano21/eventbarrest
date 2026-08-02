@@ -30,6 +30,7 @@ enum Permission: string implements HasLabel
     case InventoryAllocateToEvent = 'inventory.allocate_to_event';
     case SalesOperate = 'sales.operate';
     case SalesVoid = 'sales.void';
+    case SalesRefund = 'sales.refund';
     case SalesDiscount = 'sales.discount';
     case CashSessionManage = 'cash_session.manage';
     case PosDevicesManage = 'pos_devices.manage';
@@ -61,6 +62,7 @@ enum Permission: string implements HasLabel
             self::InventoryAllocateToEvent => 'Asignar stock a eventos',
             self::SalesOperate => 'Vender (POS)',
             self::SalesVoid => 'Anular ventas',
+            self::SalesRefund => 'Reembolsar ventas',
             self::SalesDiscount => 'Descuentos',
             self::CashSessionManage => 'Caja',
             self::PosDevicesManage => 'Terminales POS',
@@ -85,7 +87,8 @@ enum Permission: string implements HasLabel
             self::InventoryAdjust => 'Conteos físicos y pérdidas.',
             self::InventoryAllocateToEvent => 'Aprovisionar un evento desde el almacén.',
             self::SalesOperate => 'Operar el punto de venta.',
-            self::SalesVoid => 'Anular ventas ya cobradas.',
+            self::SalesVoid => 'Anular una orden ANTES de cobrarla.',
+            self::SalesRefund => 'Devolver dinero de una venta ya cobrada. No borra la venta: registra el reembolso.',
             self::SalesDiscount => 'Aplicar descuentos.',
             self::CashSessionManage => 'Apertura y cierre de caja.',
             self::PosDevicesManage => 'Dispositivos del punto de venta.',
@@ -127,6 +130,7 @@ enum Permission: string implements HasLabel
         return [
             self::SalesOperate->value,
             self::SalesVoid->value,
+            self::SalesRefund->value,
             self::SalesDiscount->value,
             self::CashSessionManage->value,
         ];

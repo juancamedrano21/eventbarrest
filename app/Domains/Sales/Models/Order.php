@@ -54,6 +54,7 @@ use Illuminate\Support\Str;
  * @property string|null $void_reason
  * @property-read Collection<int, OrderLine> $lines
  * @property-read Collection<int, Payment> $payments
+ * @property-read Collection<int, Refund> $refunds
  */
 class Order extends Model
 {
@@ -179,6 +180,13 @@ class Order extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    /** Lo devuelto de esta venta: hechos nuevos, jamás una edición. */
+    /** @return HasMany<Refund, $this> */
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(Refund::class);
     }
 
     /** @return BelongsTo<OperatingUnit, $this> */

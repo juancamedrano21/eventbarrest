@@ -23,6 +23,7 @@ use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Tenancy\TenantContext;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 
 /**
@@ -246,4 +247,62 @@ it('answers a resync after the till closed with the recorded sale', function ():
     $this->postJson('/api/pos/orders', $payload)
         ->assertOk()
         ->assertJsonPath('status', 'paid');
+});
+
+it('lists the shift sales and refunds only with the extra permission', function (): void {
+    $caja = app(TenantContext::class)->runAs($this->organizer, fn () => app(VendorContext::class)->runAs(
+        $this->cerveceria,
+        fn () => app(OpenCashSession::class)($this->barra, $this->cajera, 0),
+    ));
+
+    // Se crea ANTES de autenticar a la cajera: el techo de concesión mira
+    // quién está en sesión, y ella no puede otorgar lo que no tiene.
+    $encargada = app(CreateTenantUser::class)(
+        $this->organizer, 'Ana', 'ana@pos.test', 'Secreta-2026', Role::VendorManager, $this->cerveceria,
+        username: 'ana',
+    );
+
+    Sanctum::actingAs($this->cajera, ['pos']);
+
+    $venta = $this->postJson('/api/pos/orders', [
+        'cash_session_id' => $caja->id,
+        'client_ref' => (string) Str::uuid(),
+        'lines' => [['product_id' => $this->cubaLibre->id, 'quantity' => 1]],
+        'payment' => ['method' => 'cash', 'tendered_cents' => 50000],
+    ])->assertCreated()->json();
+
+    // La cajera VE sus ventas del turno...
+    $this->getJson("/api/pos/sales?cash_session_id={$caja->id}")
+        ->assertOk()
+        ->assertJsonPath('orders.0.number', $venta['number'])
+        ->assertJsonPath('orders.0.refunded_cents', 0);
+
+    // ...pero devolver dinero no es cosa suya.
+    $this->postJson("/api/pos/sales/{$venta['id']}/refund", [
+        'cash_session_id' => $caja->id,
+        'amount_cents' => 40000,
+        'reason' => 'Se arrepintió',
+    ])->assertForbidden();
+
+    // La encargada sí: tiene sales.refund.
+    Sanctum::actingAs($encargada, ['pos']);
+
+    $this->postJson("/api/pos/sales/{$venta['id']}/refund", [
+        'cash_session_id' => $caja->id,
+        'amount_cents' => 40000,
+        'reason' => 'Se arrepintió',
+    ])
+        ->assertCreated()
+        ->assertJsonPath('refunded_cents', 40000);
+
+    // Y no se devuelve dos veces lo mismo.
+    $this->postJson("/api/pos/sales/{$venta['id']}/refund", [
+        'cash_session_id' => $caja->id,
+        'amount_cents' => 100,
+        'reason' => 'Otra vez',
+    ])->assertStatus(422)->assertJsonPath('code', 'refund_above_remaining');
+
+    $this->getJson("/api/pos/sales?cash_session_id={$caja->id}")
+        ->assertOk()
+        ->assertJsonPath('orders.0.refunded_cents', 40000);
 });

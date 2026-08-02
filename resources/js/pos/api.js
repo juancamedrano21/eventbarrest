@@ -50,4 +50,6 @@ export const api = {
     openSession: (unitId, openingCents) => request('POST', '/sessions', { operating_unit_id: unitId, opening_cents: openingCents }),
     closeSession: (sessionId, countedCents) => request('POST', `/sessions/${sessionId}/close`, { counted_cents: countedCents }),
     syncOrder: (payload) => request('POST', '/orders', payload),
+    sales: (sessionId) => request('GET', `/sales?cash_session_id=${sessionId}`),
+    refund: (orderId, payload) => request('POST', `/sales/${orderId}/refund`, payload),
 };
