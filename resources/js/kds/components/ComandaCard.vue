@@ -17,10 +17,19 @@ const ANTERIOR = { in_progress: 'pending', ready: 'in_progress' };
 
 const siguiente = computed(() => SIGUIENTE[estado.value] ?? null);
 
-/** Segundos transcurridos según el reloj del SERVIDOR, no el de la tablet. */
-function desde(marca) {
-    return marca ? Math.max(0, Math.round((pantalla.reloj - Date.parse(marca)) / 1000)) : null;
+/**
+ * Segundos entre dos marcas. Si la segunda no ha llegado todavía, corre
+ * contra el reloj del SERVIDOR — nunca contra el de la tablet, que en un
+ * cacharro barato va desfasado y pintaría esperas absurdas.
+ */
+function entre(desdeMarca, hastaMarca = null) {
+    if (!desdeMarca) return null;
+    const fin = hastaMarca ? Date.parse(hastaMarca) : pantalla.reloj;
+
+    return Math.max(0, Math.round((fin - Date.parse(desdeMarca)) / 1000));
 }
+
+const desde = (marca) => entre(marca);
 
 // Minutos y segundos mientras eso signifique algo. Pasada la hora, «187:12»
 // no se lee de un vistazo y además ya no importan los segundos: lo que hay
@@ -32,16 +41,34 @@ function mmss(s) {
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
-// Lo que el cliente lleva esperando: desde que PAGÓ, no desde que su pedido
-// llegó al servidor. El servidor ya resuelve cuál de los dos relojes manda.
-const espera = computed(() => desde(props.fila.waiting_since ?? props.fila.paid_at));
-// Lo que lleva en cocina: desde que la comanda apareció aquí. Es lo único que
-// la cocina controla, y por eso es lo que decide el color.
-const enCocina = computed(() => desde(props.fila.paid_at));
+// Los tres tiempos, cada uno con su principio y su final. Los tres PARAN
+// cuando les toca: un cronómetro que sigue corriendo después de su hecho ya
+// no mide ese hecho, mide otra cosa.
 
+// Lo que el cliente esperó: desde que PAGÓ —no desde que su pedido llegó al
+// servidor— hasta que estuvo LISTA. Al marcarla lista deja de correr, porque
+// a partir de ahí el cliente ya no espera: le toca a alguien entregársela.
+const espera = computed(() => entre(props.fila.waiting_since ?? props.fila.paid_at, props.fila.ready_at));
+
+// Lo que tardó en EMPEZAR desde que la comanda apareció en cocina. Es la
+// cola, no la preparación: mide si hay manos libres, no si se cocina rápido.
+const enCola = computed(() => entre(props.fila.paid_at, props.fila.started_at));
+
+// Lo que se tardó PREPARANDO. Solo existe una vez empezada.
+const preparando = computed(() => entre(props.fila.started_at, props.fila.ready_at));
+
+// Y cuánto lleva hecha esperando a que alguien la recoja. Este sí sigue
+// corriendo: es el único que todavía está pasando.
+const enElPase = computed(() => desde(props.fila.ready_at));
+
+// El color sale del reloj que está VIVO en cada estado: la cola mientras
+// nadie la ha tocado, la preparación mientras se cocina. Nunca de la espera
+// del cliente, que incluye el retraso de la red y culparía a quien cocina de
+// un problema de wifi.
 const urgencia = computed(() => {
-    const s = enCocina.value ?? 0;
     if (estado.value === 'ready') return 'lista';
+
+    const s = (estado.value === 'pending' ? enCola.value : preparando.value) ?? 0;
 
     return s > 600 ? 'mal' : s > 300 ? 'medio' : 'bien';
 });
@@ -104,8 +131,13 @@ function soltarPulsacion() {
         </ul>
 
         <div class="c-relojes">
-            <span><small>Espera del cliente</small>{{ mmss(espera) }}</span>
-            <span><small>En cocina</small>{{ mmss(enCocina) }}</span>
+            <span :class="{ parado: fila.ready_at }">
+                <small>Espera del cliente</small>{{ mmss(espera) }}
+            </span>
+            <span v-if="estado === 'pending'"><small>En cola</small>{{ mmss(enCola) }}</span>
+            <span v-else :class="{ parado: fila.ready_at }">
+                <small>Preparando</small>{{ mmss(preparando) }}
+            </span>
         </div>
 
         <div class="c-chapas">
@@ -119,7 +151,7 @@ function soltarPulsacion() {
             @click="pantalla.avanzar(fila, siguiente.a)">
             {{ siguiente.texto }}
         </button>
-        <p v-else class="c-final">Lista {{ mmss(desde(fila.ready_at)) }}</p>
+        <p v-else class="c-final">En el pase {{ mmss(enElPase) }}</p>
 
         <button v-if="ANTERIOR[estado]" class="c-atras" :class="{ cargando: pulsando }"
             @pointerdown="empezarPulsacion()" @pointerup="soltarPulsacion()"
@@ -175,6 +207,9 @@ function soltarPulsacion() {
 
 .c-relojes { display: flex; gap: 1.2rem; font-variant-numeric: tabular-nums; }
 .c-relojes span { display: flex; flex-direction: column; font-size: 1.05rem; font-weight: 600; }
+/* Un reloj parado se ve parado: si no, alguien lo mira un rato esperando a
+   que avance y acaba dudando de si la pantalla se colgó. */
+.c-relojes span.parado { color: var(--muted); }
 .c-relojes small { font-size: .64rem; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 
 .c-chapas { display: flex; flex-wrap: wrap; gap: .35rem; }
