@@ -14,18 +14,27 @@ use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Tenancy\TenantContext;
+use Illuminate\Support\Carbon;
 
 /**
  * La batería de las tabletas donde el organizador ya está mirando.
  *
  * Lo que se vigila aquí no es que un número llegue —de eso responde
  * BateriaTest, que cubre el camino desde el navegador de la tablet— sino las
- * cuatro maneras que tiene esta pantalla de mentir la noche del festival:
- * pintar como agotada una tablet que nunca dijo nada, mandar a alguien con un
- * cable a un puesto donde ya hay uno puesto, esconder la tablet moribunda del
- * puesto tranquilo porque ese puesto no tiene cola, y matar el 304 —que es lo
- * que hace que este sondeo de cinco segundos sea barato— al meter la batería
- * en el cuerpo.
+ * maneras que tiene esta pantalla de mentir la noche del festival: pintar como
+ * agotada una tablet que nunca dijo nada, mandar a alguien con un cable a un
+ * puesto donde ya hay uno puesto, mandarlo a un puesto donde la pantalla ya no
+ * está, esconder la tablet moribunda del puesto tranquilo porque ese puesto no
+ * tiene cola, y matar el 304 —que es lo que hace que este sondeo de cinco
+ * segundos sea barato— al meter la batería en el cuerpo.
+ *
+ * LA CUENTA DE «HAY QUE LLEVAR UN CABLE» NO ESTÁ EN EL CUERPO, y esa ausencia
+ * es lo que fija la mitad de este archivo. Esa frase quiere decir dos cosas a
+ * la vez —que el nivel está bajo y que la tablet sigue ahí— y la segunda es
+ * una resta contra el reloj de quien mira, la misma que no puede viajar sin
+ * matar el 304. Así que lo que se prueba aquí es que el cuerpo lleva los HECHOS
+ * con los que el navegador hace esa cuenta —el nivel, el cable, cuándo se midió
+ * y cuándo se supo de la tablet— y que no lleva ningún total que la congele.
  */
 beforeEach(function (): void {
     $this->organizer = app(CreateTenant::class)('Bocao Food Fest', null, TenantType::Organizer);
@@ -69,13 +78,23 @@ function tabletDelPanel(string $codigo, string $pin, string $nombre): KdsDevice
  * este archivo prueba es qué hace el PANEL con lo que hay en la fila, y montar
  * el camino entero de la tablet aquí solo serviría para que estas pruebas
  * fallaran el día que cambie una cabecera que no es cosa suya.
+ *
+ * El latido se escribe junto a la medida y por defecto es de ahora mismo: una
+ * lectura de batería llega DENTRO de un sondeo, así que una fila con nivel y
+ * sin latido no existe en la realidad y no debe existir aquí.
  */
-function bateriaEnLaFila(KdsDevice $device, ?int $nivel, ?bool $cargando = false, int $haceSegundos = 0): void
-{
+function bateriaEnLaFila(
+    KdsDevice $device,
+    ?int $nivel,
+    ?bool $cargando = false,
+    int $haceSegundos = 0,
+    ?int $vistoHaceSegundos = null,
+): void {
     KdsDevice::query()->withoutGlobalScopes()->whereKey($device->id)->update([
         'battery_percent' => $nivel,
         'battery_charging' => $cargando,
         'battery_at' => $nivel === null ? null : now()->subSeconds($haceSegundos),
+        'last_seen_at' => now()->subSeconds($vistoHaceSegundos ?? $haceSegundos),
     ]);
 }
 
@@ -153,7 +172,7 @@ it('shows the tablets of a stall with nothing pending at all', function (): void
     expect($comercio['open'])->toBe(0)
         ->and($comercio['units'])->toBe([])
         ->and($comercio['tablets'])->toHaveCount(1)
-        ->and($comercio['low_battery'])->toBe(1);
+        ->and($comercio['tablets'][0]['low'])->toBeTrue();
 });
 
 it('never paints a tablet that has never reported as an empty one', function (): void {
@@ -170,8 +189,10 @@ it('never paints a tablet that has never reported as an empty one', function ():
         ->and($muda['charging'])->toBeNull()
         ->and($muda['measured_at'])->toBeNull()
         ->and($muda['low'])->toBeFalse()
-        ->and($comercio['low_battery'])->toBe(0)
-        ->and($cuerpo['totals']['low_battery'])->toBe(0);
+        // Y tampoco se sabe cuándo la vimos por última vez: recién colgada, ni
+        // ha sondeado. Es el hueco que hace que el panel la ponga en gris en
+        // vez de en rojo, en las dos cuentas.
+        ->and($muda['seen_at'])->toBeNull();
 
     expect($tablet->battery_percent)->toBeNull();
 });
@@ -196,16 +217,13 @@ it('counts only the tablets that actually need someone to bring a cable', functi
 
     $cuerpo = $this->actingAs($this->owner)->getJson($this->feed)->assertOk()->json();
 
-    expect($cuerpo['totals']['low_battery'])->toBe(1);
-
     $tacos = comercioConTabletas($cuerpo, 'Tacos del Puerto');
 
-    expect($tacos['low_battery'])->toBe(1)
-        ->and(array_column($tacos['tablets'], 'low', 'name'))->toBe([
-            'Tablet con cable' => false,
-            'Tablet llena' => false,
-            'Tablet pelada' => true,
-        ]);
+    expect(array_column($tacos['tablets'], 'low', 'name'))->toBe([
+        'Tablet con cable' => false,
+        'Tablet llena' => false,
+        'Tablet pelada' => true,
+    ]);
 
     // La revocada no aparece ni apagada ni encendida: se fue.
     expect(array_column(comercioConTabletas($cuerpo, 'Pizza del Malecón')['tablets'], 'name'))->toBe([]);
@@ -240,7 +258,71 @@ it('keeps answering 304 while nothing moves and repaints as soon as a battery dr
         ->assertOk();
 
     expect($segunda->headers->get('ETag'))->not->toBe($etag)
-        ->and($segunda->json('totals.low_battery'))->toBe(1);
+        ->and(tabletaDelFeed(
+            comercioConTabletas($segunda->json(), 'Tacos del Puerto'),
+            'Tablet ventanilla',
+        )['low'])->toBeTrue();
+});
+
+it('never carries a count that would freeze who needs a cable', function (): void {
+    // La cifra de la tira se cuenta en el navegador, con los chips delante y el
+    // reloj en la mano. Un total aquí volvería a ser lo de antes: un número
+    // calculado cuando se sirvió la respuesta, que sigue diciendo «uno» sobre
+    // una tablet de la que ya no se sabe nada. Si alguien lo vuelve a añadir,
+    // que sea leyendo esta prueba y el docblock del controlador.
+    $tablet = tabletDelPanel((string) $this->tacos->kds_code, $this->pinTacos, 'Tablet ventanilla');
+    bateriaEnLaFila($tablet, 5, false);
+
+    $cuerpo = $this->actingAs($this->owner)->getJson($this->feed)->assertOk()->json();
+
+    expect($cuerpo['totals'])->not->toHaveKey('low_battery')
+        ->and(comercioConTabletas($cuerpo, 'Tacos del Puerto'))->not->toHaveKey('low_battery');
+});
+
+it('stops asking for a cable for a tablet nobody has heard from', function (): void {
+    // El caso que mandaba a alguien con un cable a un puesto vacío: la tablet
+    // dijo 7 % a las once y se apagó. A las dos de la mañana su 7 % sigue en la
+    // fila, y sin la marca del último latido la pantalla lo lee como una
+    // emergencia que se arregla con un cable, cuando lo que hay que hacer es ir
+    // a ver por qué esa pantalla no contesta.
+    $apagada = tabletDelPanel((string) $this->tacos->kds_code, $this->pinTacos, 'Tablet apagada');
+    $viva = tabletDelPanel((string) $this->tacos->kds_code, $this->pinTacos, 'Tablet viva');
+
+    bateriaEnLaFila($apagada, 7, false, haceSegundos: 10800, vistoHaceSegundos: 10800);
+    bateriaEnLaFila($viva, 7, false, haceSegundos: 900, vistoHaceSegundos: 20);
+
+    $cuerpo = $this->actingAs($this->owner)->getJson($this->feed)->assertOk()->json();
+    $comercio = comercioConTabletas($cuerpo, 'Tacos del Puerto');
+
+    $callada = tabletaDelFeed($comercio, 'Tablet apagada');
+    $contestando = tabletaDelFeed($comercio, 'Tablet viva');
+
+    // Las dos llegan con el mismo 7 % y el mismo `low`: eso es un hecho de la
+    // última lectura y no cambia porque pase el tiempo.
+    expect($callada['low'])->toBeTrue()
+        ->and($contestando['low'])->toBeTrue();
+
+    // Lo que las separa es `seen_at`, que es lo único con lo que se puede
+    // distinguir «hay que llevarle un cable» de «no sabemos de ella». Viaja la
+    // MARCA y el umbral; la resta la hace quien tiene el reloj.
+    expect(Carbon::parse($callada['seen_at'])->diffInSeconds(absolute: true))
+        ->toBeGreaterThan($cuerpo['battery']['stale_seconds'])
+        ->and(Carbon::parse($contestando['seen_at'])->diffInSeconds(absolute: true))
+        ->toBeLessThan($cuerpo['battery']['stale_seconds']);
+
+    // Y una batería quieta no es una tablet muerta: la viva lleva quince
+    // minutos sin remedir —el mismo 7 % no se vuelve a guardar— y aun así
+    // contesta. Mirar `measured_at` en vez de `seen_at` la daría por perdida.
+    expect(Carbon::parse($contestando['measured_at'])->diffInSeconds(absolute: true))
+        ->toBeGreaterThan($cuerpo['battery']['stale_seconds']);
+
+    // La pantalla dice las dos cosas, con dos nombres y dos recados.
+    $this->actingAs($this->owner)
+        ->get($this->pantalla)
+        ->assertOk()
+        ->assertSee('Tabletas sin batería')
+        ->assertSee('Tabletas sin noticias')
+        ->assertSee('deja de pedir un cable', false);
 });
 
 it('never lets a tablet of another account into the strip', function (): void {
@@ -268,7 +350,11 @@ it('never lets a tablet of another account into the strip', function (): void {
 
     $cuerpo = $this->actingAs($this->owner)->getJson($this->feed)->assertOk()->json();
 
-    expect($cuerpo['totals']['low_battery'])->toBe(0);
+    // Ni el nombre, ni la fila, ni el 2 %: la tira de la otra cuenta no puede
+    // contar nada mío porque aquí no hay nada suyo que contar.
+    expect($cuerpo['vendors'])->toHaveCount(2)
+        ->and(array_column(comercioConTabletas($cuerpo, 'Tacos del Puerto')['tablets'], 'name'))
+        ->toBe(['Tablet ventanilla']);
 
     $this->actingAs($this->owner)
         ->get($this->pantalla)

@@ -104,7 +104,7 @@
         <span id="frescura-nota" class="text-xs text-gray-400">Se actualiza sola cada 5 segundos.</span>
     </div>
 
-    <div id="tira" class="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+    <div id="tira" class="mb-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"></div>
 
     <p class="mb-2 text-xs text-gray-500">
         Un comercio se pinta <span class="rounded bg-rose-50 px-1.5 py-0.5 font-medium text-rose-700">en rojo</span>
@@ -125,7 +125,9 @@
         «sin dato» y no cuenta como avisada — un hueco no es una emergencia. Y si lleva más de
         {{ intdiv($cuerpo['battery']['stale_seconds'], 60) }} minutos sin decir nada, el nivel se queda
         <span class="rounded border border-dashed border-gray-300 px-1.5 py-0.5">con el borde punteado</span>: es lo último
-        que supimos, no lo que hay ahora.
+        que supimos, no lo que hay ahora, <strong class="font-medium text-gray-600">y por eso deja de pedir un cable</strong>
+        y pasa a contar en «tabletas sin noticias». Son dos avisos porque son dos recados distintos: al primero se va con un
+        cable en la mano; al segundo se va a ver por qué esa pantalla ya no contesta, que igual es que se la llevaron.
     </p>
 
     <div id="tablero" class="space-y-4"></div>
@@ -239,31 +241,29 @@
                 `;
             };
 
+            /** Las clases que lleva todo chip de tablet, pinte lo que pinte. */
+            const CHIP = 'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs';
+
+            const TONO_CHIP = {
+                mudo: 'border-gray-200 bg-white text-gray-400',
+                tranquilo: 'border-gray-200 bg-white text-gray-600',
+                ambar: 'border-amber-300 bg-amber-50 text-amber-900',
+                rojo: 'border-rose-300 bg-rose-50 text-rose-800',
+            };
+
             /**
              * Una tablet y su batería, en un chip.
              *
-             * El color sale del nivel, que es un dato y no cambia solo. La
-             * antigüedad la escribe relojes() cada segundo: «hace 4 minutos»
-             * no puede viajar en la respuesta sin matar el 304.
+             * Aquí NO se elige el color, y eso es el arreglo entero: el color
+             * dice «hay que llevarle un cable», y eso no depende solo del
+             * nivel sino de que sepamos algo de la tablet ahora mismo. Esa
+             * segunda mitad es una resta contra el reloj, así que el chip sale
+             * de aquí con los datos puestos y lo pinta relojes(), que corre
+             * cada segundo. Si se pintara aquí, un 8 % de hace tres horas se
+             * quedaría en rojo hasta el siguiente sondeo.
              */
-            const pantalla = (t) => {
-                const b = datos.battery || {};
-                const critico = b.critical === undefined ? 10 : b.critical;
-
+            const pantalla = (t, comercio) => {
                 const sinDato = t.percent === null || t.percent === undefined;
-                // `low` lo decidió el servidor con la regla del dominio —y ya
-                // descontó las que están cargando—, así que aquí solo queda
-                // elegir entre el ámbar y el rojo.
-                const rojo = t.low === true && t.percent <= critico;
-                const ambar = t.low === true && !rojo;
-
-                const tono = sinDato
-                    ? 'border-gray-200 bg-white text-gray-400'
-                    : rojo
-                        ? 'border-rose-300 bg-rose-50 text-rose-800'
-                        : ambar
-                            ? 'border-amber-300 bg-amber-50 text-amber-900'
-                            : 'border-gray-200 bg-white text-gray-600';
 
                 // Cargando se dice con letras y no con un rayito: es la mitad
                 // de la información —un 8 % con cable no es un 8 %— y un icono
@@ -273,8 +273,12 @@
                     : '';
 
                 return `
-                    <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${tono}"
-                        data-tablet data-medido="${esc(t.measured_at || '')}" data-visto="${esc(t.seen_at || '')}">
+                    <span class="${CHIP} ${TONO_CHIP.tranquilo}"
+                        data-tablet
+                        data-de="${esc(comercio)}"
+                        data-baja="${t.low === true ? '1' : ''}"
+                        data-nivel="${sinDato ? '' : esc(t.percent)}"
+                        data-medido="${esc(t.measured_at || '')}" data-visto="${esc(t.seen_at || '')}">
                         <span class="font-medium">${esc(t.unit_name)}</span>
                         <span class="opacity-60">${esc(t.name)}</span>
                         <span class="font-semibold">${sinDato ? 'sin dato' : esc(t.percent) + ' %'}</span>
@@ -312,7 +316,7 @@
                     ? ''
                     : `<div class="flex flex-wrap items-center gap-2 border-t border-gray-100 bg-gray-50 px-5 py-2">
                            <span class="text-xs uppercase tracking-wide text-gray-400">Tabletas</span>
-                           ${(v.tablets || []).map(pantalla).join('')}
+                           ${(v.tablets || []).map((t) => pantalla(t, v.name)).join('')}
                        </div>`;
 
                 return `
@@ -386,11 +390,21 @@
                     if (linea) linea.classList.toggle('text-rose-700', rojo);
                 });
 
-                // La edad de cada lectura de batería. Va aquí y no en pintar()
-                // porque lo que pasa cada segundo no es que cambie el nivel,
-                // es que envejece: el mismo 80 % significa una cosa recién
-                // medido y otra muy distinta tres horas después.
+                // Las tabletas: su color, su edad y las dos cuentas de la tira
+                // que las miran. Va aquí y no en pintar() porque lo que pasa
+                // cada segundo no es que cambie el nivel, es que envejece: el
+                // mismo 80 % significa una cosa recién medido y otra muy
+                // distinta tres horas después.
                 const caduca = (datos.battery || {}).stale_seconds || 300;
+                const critico = (datos.battery || {}).critical === undefined ? 10 : datos.battery.critical;
+
+                // Dos problemas distintos y dos listas distintas de comercios,
+                // porque no se arreglan igual: a uno se va con un cable, al
+                // otro se va a ver qué ha pasado con la pantalla.
+                let sinBateria = 0;
+                let sinNoticias = 0;
+                const pidenCable = [];
+                const calladas = [];
 
                 document.querySelectorAll('[data-tablet]').forEach((chip) => {
                     const medido = chip.getAttribute('data-medido');
@@ -407,10 +421,43 @@
                     const desdeQueSeSupo = visto ? desde(visto) : null;
                     const viejo = desdeQueSeSupo === null || desdeQueSeSupo >= caduca;
 
+                    const nivel = chip.getAttribute('data-nivel');
+                    const sinDato = nivel === '';
+
+                    // LA REGLA DEL CABLE, entera y en un sitio: nivel bajo, sin
+                    // cargador (las dos las decidió el servidor, están en
+                    // data-baja) Y que sepamos de la tablet ahora mismo. Sin lo
+                    // tercero, el 8 % de una pantalla que se apagó a las once
+                    // sigue pidiendo un cable a las dos de la mañana y manda a
+                    // alguien a un puesto vacío.
+                    const baja = chip.getAttribute('data-baja') === '1' && !viejo;
+                    const rojo = baja && Number(nivel) <= critico;
+
                     // Borde punteado = esto es un recuerdo, no una medida. Lo
                     // mismo para la que nunca dijo nada: en las dos el número
                     // que se ve no describe la tablet de ahora mismo.
-                    chip.classList.toggle('border-dashed', viejo || s === null);
+                    const punteado = viejo || s === null ? ' border-dashed' : '';
+
+                    chip.className = CHIP + ' ' + (
+                        viejo || sinDato
+                            ? TONO_CHIP.mudo
+                            : rojo ? TONO_CHIP.rojo : baja ? TONO_CHIP.ambar : TONO_CHIP.tranquilo
+                    ) + punteado;
+
+                    // Se cuenta aquí, con el mismo `viejo` que acaba de pintar
+                    // el chip, para que la cifra de la tira y lo que se ve
+                    // abajo no puedan decir cosas distintas.
+                    const suComercio = chip.getAttribute('data-de') || '';
+
+                    if (baja) {
+                        sinBateria += 1;
+                        if (!pidenCable.includes(suComercio)) pidenCable.push(suComercio);
+                    }
+
+                    if (viejo) {
+                        sinNoticias += 1;
+                        if (!calladas.includes(suComercio)) calladas.push(suComercio);
+                    }
 
                     const edad = chip.querySelector('[data-edad]');
                     if (!edad) return;
@@ -426,14 +473,6 @@
 
                 const total = (datos.totals || {}).open || 0;
                 const tono = (mal) => mal ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-gray-200 bg-white text-gray-800';
-
-                // La cuenta la trae el servidor con la misma regla que pinta
-                // los chips —nivel bajo Y sin cable— para que la cifra de
-                // arriba no pueda decir tres mientras abajo se ven dos.
-                const sinBateria = (datos.totals || {}).low_battery || 0;
-                const pelados = (datos.vendors || [])
-                    .filter((v) => (v.low_battery || 0) > 0)
-                    .map((v) => v.name);
 
                 $('tira').innerHTML = indicador(
                     'Sin cerrar ahora',
@@ -458,9 +497,24 @@
                     // cuál es, y el puesto pelado suele ser el tranquilo, que
                     // está justo al final de la lista.
                     sinBateria === 0
-                        ? 'Ninguna por debajo del ' + ((datos.battery || {}).low || 20) + ' % sin cable.'
-                        : 'Hay que llevar un cable a: ' + pelados.join(', '),
+                        ? 'Ninguna encendida por debajo del ' + ((datos.battery || {}).low || 20) + ' % sin cable.'
+                        : 'Hay que llevar un cable a: ' + pidenCable.join(', '),
                     tono(sinBateria > 0),
+                ) + indicador(
+                    // El otro problema, con su propio nombre. Antes se sumaba
+                    // al de arriba y el resultado era mandar a alguien con un
+                    // cable a un puesto donde la pantalla ya no estaba. No
+                    // sabemos de ella y no sabemos por qué: puede estar
+                    // apagada, sin cobertura o descolgada — y a las tres se va
+                    // igual, pero a mirar, no a enchufar.
+                    'Tabletas sin noticias',
+                    sinNoticias,
+                    sinNoticias === 0
+                        ? 'Todas han dado señal hace menos de ' + enPalabras(caduca) + '.'
+                        : 'Hay que ir a ver qué pasa en: ' + calladas.join(', '),
+                    // Ámbar y no rojo: es un aviso distinto del de la batería y
+                    // tiene que verse distinto, o el ojo los suma otra vez.
+                    sinNoticias > 0 ? 'border-amber-200 bg-amber-50 text-amber-900' : tono(false),
                 );
 
                 frescura();

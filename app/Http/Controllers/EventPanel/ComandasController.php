@@ -66,6 +66,20 @@ use Symfony\Component\HttpFoundation\Response;
  * menos que antes. Es el precio correcto: sacar la batería del hash la
  * congelaría hasta que se moviera una comanda, y entonces el aviso llegaría
  * tarde justo en el puesto tranquilo, que es donde nadie está mirando.
+ *
+ * Y POR ESO AQUÍ NO SE CUENTAN LAS TABLETAS QUE HAY QUE IR A ENCHUFAR. Esa
+ * cuenta parece un dato del servidor y no lo es: «hay que llevarle un cable»
+ * quiere decir que la tablet está ahí, encendida, y que lo último que dijo
+ * sigue describiéndola. Un 8 % del que no se sabe nada desde hace dos horas no
+ * es una carrera con un cable, es una pantalla que ya se apagó, y mandar a
+ * alguien con el cable a ese puesto es mandarlo a un sitio vacío. Distinguir
+ * las dos cosas es restarle `seen_at` a la hora que sea AHORA, y esa resta es
+ * exactamente la que este cuerpo no puede hacer sin matar el 304 —la misma
+ * razón por la que tampoco viaja «hay 3 comercios atascados»—. Así que viajan
+ * los hechos por tablet —el nivel, si tenía cable, cuándo se midió y cuándo se
+ * supo de ella— y el umbral; la cuenta la hace el navegador, que tiene el
+ * reloj delante y que además es quien pinta los chips: contando ahí, la cifra
+ * de la tira y los chips de abajo no pueden discrepar ni un segundo.
  */
 class ComandasController extends Controller
 {
@@ -106,6 +120,13 @@ class ComandasController extends Controller
      * sin cobertura o desenchufada de la corriente y de la red a la vez. El
      * nivel se sigue enseñando —es lo último que supimos— pero la pantalla
      * dice que es viejo, porque un 80 % de hace tres horas no es un 80 %.
+     *
+     * Este mismo número parte en dos el aviso de las tabletas, y es la razón de
+     * que exista: por debajo de él la tablet está ahí y su nivel es un hecho de
+     * ahora —«hay que llevarle un cable»—; por encima, lo único cierto es que
+     * no sabemos de ella, que es otro problema y otra reacción. Confundirlos
+     * manda a alguien con un cable a un puesto vacío, y un aviso que hace eso
+     * dos veces deja de mirarse la tercera.
      */
     public const SEGUNDOS_SIN_NOTICIAS = 300;
 
@@ -300,7 +321,6 @@ class ComandasController extends Controller
         foreach ($puestos->groupBy(fn (EventOutlet $puesto): int => (int) $puesto->vendor_id) as $vendorId => $suyos) {
             $unidades = [];
             $pantallas = [];
-            $sinCable = 0;
             $contadores = ['pending' => 0, 'in_progress' => 0, 'ready' => 0];
             $masVieja = null;
             $numeroMasViejo = null;
@@ -314,10 +334,6 @@ class ComandasController extends Controller
                 // comanda de la noche y ya no hay pantalla que la reciba.
                 foreach ($tabletas->where('operating_unit_id', $puesto->id) as $tablet) {
                     $pantallas[] = $this->pantalla($tablet, $puesto);
-
-                    if ($tablet->bateriaEnApuros()) {
-                        $sinCable++;
-                    }
                 }
 
                 // Todos los puestos del grupo son del mismo comercio, así que
@@ -378,8 +394,12 @@ class ComandasController extends Controller
                 // tablet moribunda no puede depender de que ese puesto tenga
                 // cola justo ahora para que se la vea. Cada pantalla dice de
                 // qué puesto es, que es lo que hacía falta.
+                //
+                // Y van las pantallas, no un recuento de las que están mal:
+                // «cuántas hay que enchufar» y «de cuántas no sabemos nada»
+                // son dos restas contra el reloj de quien mira. Ver el
+                // docblock de arriba.
                 'tablets' => $pantallas,
-                'low_battery' => $sinCable,
             ];
         }
 
@@ -418,7 +438,6 @@ class ComandasController extends Controller
                 'in_progress' => array_sum(array_column($comercios, 'in_progress')),
                 'ready' => array_sum(array_column($comercios, 'ready')),
                 'open' => array_sum(array_column($comercios, 'open')),
-                'low_battery' => array_sum(array_column($comercios, 'low_battery')),
             ],
             'vendors' => $comercios,
         ];
@@ -452,9 +471,13 @@ class ComandasController extends Controller
      * es la forma más rápida de que se deje de mirar el aviso de verdad.
      *
      * `low` lo decide el servidor con la regla del dominio —el mismo
-     * `bateriaEnApuros()` que cuenta la tira de indicadores— para que la cifra
-     * de arriba y los chips de abajo no puedan discrepar nunca. Al navegador
-     * solo le queda elegir entre ámbar y rojo.
+     * `bateriaEnApuros()` de KdsDevice— para que ámbar y rojo no salgan de una
+     * copia de la regla escrita en el navegador. Pero `low` dice lo que dice la
+     * ÚLTIMA LECTURA —poca batería, sin cable— y no dice «hay que llevarle un
+     * cable»: eso además exige que siga habiendo alguien al otro lado, y de eso
+     * responde `seen_at` contra el reloj de quien mira. Un `low` de una tablet
+     * de la que no se sabe nada desde hace dos horas no es una emergencia de
+     * batería, es una tablet que ya no está.
      *
      * @return array<string, mixed>
      */
@@ -551,7 +574,7 @@ class ComandasController extends Controller
             'vendor' => null,
             'threshold_seconds' => self::SEGUNDOS_DE_ATASCO,
             'battery' => $this->umbralesDeBateria(),
-            'totals' => ['pending' => 0, 'in_progress' => 0, 'ready' => 0, 'open' => 0, 'low_battery' => 0],
+            'totals' => ['pending' => 0, 'in_progress' => 0, 'ready' => 0, 'open' => 0],
             'vendors' => [],
         ];
     }

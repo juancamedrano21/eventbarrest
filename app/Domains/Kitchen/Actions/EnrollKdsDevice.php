@@ -60,6 +60,16 @@ use Illuminate\Support\Str;
  * pasado, nunca antes, y nunca en su lugar—. Si valiera para saltarse el
  * PIN, cualquiera que averiguase una cadena de dieciséis caracteres que el
  * propio aparato reparte entraría en un puesto ajeno.
+ *
+ * Y PORQUE NO ES UNA CREDENCIAL, aquí se decide qué cuenta como identidad.
+ * El APK filtra el ANDROID_ID de fábrica y el JavaScript filtra lo suyo,
+ * pero los dos corren en el aparato del que hay que desconfiar: el cuerpo
+ * del alta lo escribe quien quiera con un curl. Un filtro que vive en el
+ * cliente no es un filtro, así que `identidad()` vuelve a hacer el trabajo
+ * entero de este lado. Lo que no pasa el filtro NO tumba el alta: se ignora
+ * y la tablet se cuelga sin identidad, exactamente como una que no la tiene.
+ * Rechazar el alta por una etiqueta sería castigar a un cocinero por un dato
+ * que ni sabe que su tablet manda.
  */
 class EnrollKdsDevice
 {
@@ -71,6 +81,23 @@ class EnrollKdsDevice
      * tiempo del camino sin candidatos y volvería a delatarlo.
      */
     private const HASH_TONTO = '$2y$12$O.I7qIcVxV5eGKcJmsl9LOnQdfnQgVx/CA3Q4ITl7ZDj5rWRGQFS2';
+
+    /**
+     * Identidades que no identifican a nadie porque miles de aparatos las
+     * repiten. La primera es el ANDROID_ID de fábrica más famoso de Android:
+     * los equipos que salieron con ese fallo se quedaron con el del aparato
+     * de pruebas del fabricante en vez de sortear el suyo. La segunda es el
+     * relleno de manual que traen algunos clones y emuladores.
+     *
+     * El APK ya filtra la primera, y aquí se vuelve a filtrar a propósito:
+     * quien manda el cuerpo del alta no tiene por qué ser el APK.
+     *
+     * @var list<string>
+     */
+    private const IDENTIDADES_COMODIN = [
+        '9774d56d682e549c',
+        '0123456789abcdef',
+    ];
 
     /** Diez a ciegas es mucho más de lo que falla un dedo, y poquísimo para adivinar 10^6. */
     private const INTENTOS_MAXIMOS = 10;
@@ -234,18 +261,63 @@ class EnrollKdsDevice
     }
 
     /**
-     * La identidad tal como se guarda, o null si no vino ninguna.
+     * La identidad tal como se guarda, o null si lo que llegó no sirve para
+     * nombrar a un aparato.
      *
-     * La cadena vacía y una llena de espacios son lo mismo que no traerla:
-     * el puente devuelve '' cuando el sistema no da el identificador, y si
-     * eso llegara a la columna, TODAS las tabletas sin identidad de un puesto
-     * colisionarían en el único y se fundirían en una sola fila.
+     * Tres cosas se comprueban, y las tres persiguen el mismo destrozo: que
+     * dos tabletas distintas acaben compartiendo fila. Es peor que no tener
+     * identidad, porque una identidad repetida no deja huecos que rellenar
+     * después: se pisan el token y el rastro entre ellas, en el mismo puesto
+     * y sin que nadie lo note.
+     *
+     * FORMATO. Letras, dígitos y cuatro separadores, empezando y acabando en
+     * letra o dígito. Es EXACTAMENTE el alfabeto que declara el cliente
+     * (`resources/js/kds/bateria.js`), y se repite aquí por dos motivos que
+     * no se contradicen: aquel no es de fiar —corre en el aparato del que
+     * desconfiamos— y a la vez es el contrato de la única fuente que existe.
+     * Estrecharlo de este lado «por si acaso» —a hexadecimal puro, que es lo
+     * que devuelve hoy el ANDROID_ID— dejaría fuera EN SILENCIO identidades
+     * legítimas del día que otra fuente mande otra cosa, y una identidad que
+     * el servidor ignora es una fila duplicada que nadie ve venir. Los dos
+     * lados dicen lo mismo; el que manda es este.
+     *
+     * LARGO. Entre 8 y 64. Por arriba manda la columna, y el tope NO se
+     * recorta: truncar a 64 fundiría en una sola fila dos cadenas distintas
+     * que compartieran los primeros 64 caracteres, que es precisamente el
+     * fallo que se está evitando. Por abajo, hay aparatos que devuelven el
+     * ANDROID_ID sin los ceros de la izquierda y sale más corto de dieciséis;
+     * menos de ocho ya no nombra a nadie —«unknown», lo que contesta Android
+     * cuando no quiere contestar, cae por aquí—.
+     *
+     * COMODINES. Cadenas que muchísimos aparatos repiten y que por tanto no
+     * distinguen a ninguno. La cadena vacía y la de espacios cuentan aquí
+     * también: el puente devuelve '' cuando el sistema no da el
+     * identificador, y si eso llegara a la columna, TODAS las tabletas sin
+     * identidad de un puesto colisionarían en el índice único.
+     *
+     * Se guarda en minúscula porque el hex de una misma tablet escrito en
+     * mayúscula sería otra fila para el mismo aparato.
      */
     private function identidad(?string $identidad): ?string
     {
-        $limpia = trim((string) $identidad);
+        $limpia = mb_strtolower(trim((string) $identidad));
 
-        return $limpia === '' ? null : mb_substr($limpia, 0, 64);
+        if (preg_match('/^[a-z0-9][a-z0-9._:-]{6,62}[a-z0-9]$/', $limpia) !== 1) {
+            return null;
+        }
+
+        if (in_array($limpia, self::IDENTIDADES_COMODIN, true)) {
+            return null;
+        }
+
+        // Un solo carácter repetido —los ceros, las efes— no es un aparato:
+        // es lo que devuelve un clon barato que no sorteó nada al arrancar.
+        // Va por regla y no por lista porque la familia entera cabe en una.
+        if (preg_match('/^(.)\1*$/', $limpia) === 1) {
+            return null;
+        }
+
+        return $limpia;
     }
 
     /**

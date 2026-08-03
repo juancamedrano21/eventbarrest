@@ -24,14 +24,29 @@ use Illuminate\Support\Collection;
  * acierta —los duplicados nacen de reenrolar la misma tablet, y quien la
  * enrola vuelve a teclear el mismo nombre— pero puede equivocarse: dos
  * pantallas de verdad, colgadas a la vez en la misma ventanilla y bautizadas
- * las dos «Cocina 1», se verían aquí como una. De ahí las dos decisiones que
- * siguen.
+ * las dos «Cocina 1», se verían aquí como una. Como el error que se pagaría es
+ * dejar ciego un puesto en pleno servicio, la conjetura viene con tres frenos.
  *
- * VA EN SECO POR DEFECTO. Sin --aplicar no escribe nada: enseña la lista de lo
- * que haría, con la hora del último latido de cada fila, para que quien la lea
- * pueda distinguir a la tablet viva de las cinco fantasmas antes de tocar
- * nada. Una tablet que sigue preguntando cada tres segundos se ve en esa
- * columna.
+ * PRIMERO: LO QUE SIGUE DANDO SEÑAL NO SE TOCA. Una fila que ha latido en la
+ * última hora no es un fantasma, es una pantalla encendida en un puesto, y no
+ * hay conjetura de nombres que valga contra eso. Si dos filas del mismo grupo
+ * están vivas a la vez, son DOS TABLETAS: la segunda se queda quieta y la
+ * lista lo dice, en vez de fundirlas y apagarle la pantalla al cocinero que la
+ * estaba usando. Nótese lo que esto NO hace: no impide limpiar el grupo — las
+ * cuatro filas mudas que las acompañan se revocan igual, que era el destrozo
+ * que había que barrer.
+ *
+ * SEGUNDO: LO QUE TIENE IDENTIDAD NO SE TOCA. Esas filas ya no se duplican
+ * solas —el alta las reconoce y les devuelve la suya— así que si hay una en el
+ * grupo es la buena, y sea cual sea el resultado de la conjetura no hay ningún
+ * motivo para apagarla. Sí participa del grupo, para poder quedarse ella como
+ * la superviviente y para que quien lea la lista la vea.
+ *
+ * TERCERO: SE MIRA ANTES DE ESCRIBIR, Y SE CONTESTA. En seco enseña la lista y
+ * no toca nada; con --aplicar enseña la MISMA lista, fila por fila y con lo que
+ * le va a pasar a cada una escrito al lado, y pregunta. La pregunta sale con el
+ * «no» por defecto, así que un `--aplicar --no-interaction` de un script no
+ * revoca nada: esto se corre a mano, mirando, o no se corre.
  *
  * Y REVOCA, NO BORRA. `kitchen_tickets.started_by_device_id` y su gemela
  * ready_by_device_id apuntan a estas filas sin foreign key: son el rastro de
@@ -44,62 +59,181 @@ use Illuminate\Support\Collection;
 class FusionarKdsTabletasCommand extends Command
 {
     protected $signature = 'kds:fusionar-tabletas
-        {--aplicar : Revoca de verdad. Sin esta bandera solo enseña lo que haría}
+        {--aplicar : Enseña la lista, pregunta, y solo entonces revoca}
         {--tenant= : Solo esta cuenta, por id}';
 
     protected $description = 'Junta las filas duplicadas de la misma tablet en un puesto (en seco salvo --aplicar)';
 
+    /**
+     * Cuánto silencio hace falta para dar una fila por fantasma.
+     *
+     * Una hora, y es a propósito mucho más de lo que tarda una tablet en
+     * contestar —pregunta cada tres segundos y su latido se anota cada minuto—.
+     * El margen no es para el sondeo: es para el corte de wifi del recinto, el
+     * cambio de turno con la pantalla en la mochila y el rato que la tablet
+     * pasa cargando en la oficina antes de abrir. Cualquiera de esas tres, con
+     * una ventana corta, se leería como «esta fila está muerta» y acabaría con
+     * el token apagado de una pantalla que se iba a colgar en diez minutos.
+     * Pasarse por arriba, en cambio, solo cuesta que una fila fantasma se
+     * quede otro día sin barrer, que no le hace daño a nadie.
+     */
+    public const MINUTOS_DE_VIDA = 60;
+
+    /**
+     * La pregunta, palabra por palabra y en una constante, porque las pruebas
+     * la contestan por su texto: si cambia aquí y no allí, la prueba se cae en
+     * vez de aprobar en silencio un comando que ya no pregunta lo mismo.
+     */
+    public const PREGUNTA = '¿Revoco las filas marcadas arriba como «se revoca»?';
+
     public function handle(RevokeKdsDevice $revocar): int
     {
-        $aplicar = (bool) $this->option('aplicar');
-        $duplicados = $this->duplicados();
+        $grupos = $this->duplicados();
 
-        if ($duplicados->isEmpty()) {
-            $this->info('No hay tabletas duplicadas: cada puesto tiene una fila por nombre.');
+        [$filas, $condenadas] = $this->plan($grupos);
+
+        if ($condenadas === []) {
+            $this->info($grupos->isEmpty()
+                ? 'No hay nada que fusionar: cada puesto tiene una fila viva por nombre.'
+                : 'Hay nombres repetidos, pero ninguna fila se puede fusionar: o siguen dando señal '
+                    .'—y entonces son tabletas de verdad, no copias— o ya tienen identidad.');
 
             return self::SUCCESS;
-        }
-
-        $filas = [];
-        $revocadas = 0;
-
-        foreach ($duplicados as $grupo) {
-            // La que se queda va primera: es la que la tablet tiene en la
-            // mano. Ver ordenDeSupervivencia().
-            $sobrevive = $grupo->first();
-
-            foreach ($grupo->skip(1) as $sobra) {
-                $filas[] = [
-                    $sobra->getAttribute('tenant_id'),
-                    $sobra->getAttribute('operating_unit_id'),
-                    $sobra->getAttribute('name'),
-                    (string) $sobra->getAttribute('id'),
-                    $this->latido($sobra),
-                    (string) $sobrevive->getAttribute('id'),
-                ];
-
-                if ($aplicar) {
-                    $revocar($sobra);
-                    $revocadas++;
-                }
-            }
         }
 
         $this->table(
-            ['Cuenta', 'Puesto', 'Nombre', 'Se revoca', 'Último latido', 'Se queda'],
+            ['Cuenta', 'Puesto', 'Nombre', 'Fila', 'Último latido', 'Identidad', 'Qué le pasa'],
             $filas,
         );
 
-        if (! $aplicar) {
-            $this->warn(count($filas).' fila(s) se revocarían. Nada se ha tocado: repite con --aplicar.');
-            $this->line('  Mira antes la columna del latido: la que sigue preguntando es la tablet de verdad.');
+        // El resumen va DEBAJO de la tabla y no encima: es lo último que se lee
+        // antes de contestar, y tiene que decir el número y también lo que el
+        // comando NO ha mirado, que es de dónde vendría el susto.
+        $this->newLine();
+        $this->line('  Se revocarían <options=bold>'.count($condenadas).'</> fila(s) de '
+            .count($filas).' que hay en los grupos de arriba.');
+        $this->line('  La conjetura es «mismo puesto y mismo nombre»: el comando no sabe si eran el mismo');
+        $this->line('  aparato, solo que se llamaban igual. Mira la columna del último latido antes de decir que sí.');
+
+        if (! $this->option('aplicar')) {
+            $this->newLine();
+            $this->warn('En seco: no se ha tocado nada. Repite con --aplicar y te preguntará.');
 
             return self::SUCCESS;
         }
 
-        $this->info("Revocadas {$revocadas} fila(s) duplicada(s). Las comandas que tocaron siguen apuntando a ellas.");
+        $this->newLine();
+
+        if (! $this->confirm(self::PREGUNTA, false)) {
+            $this->warn('No se ha tocado nada.');
+
+            return self::SUCCESS;
+        }
+
+        foreach ($condenadas as $fila) {
+            $revocar($fila);
+        }
+
+        $this->info('Revocadas '.count($condenadas).' fila(s) duplicada(s). '
+            .'Las comandas que tocaron siguen apuntando a ellas.');
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Qué le pasa a cada fila de cada grupo, y qué filas se van a revocar.
+     *
+     * Se devuelve el grupo ENTERO —la que se queda, las que se revocan y las
+     * que no se tocan, con el motivo— y no solo las condenadas. La diferencia
+     * importa: una lista de seis «se revoca» a secas empuja a teclear que sí,
+     * mientras que ver las siete filas del grupo con la que sobrevive marcada
+     * es lo único que permite decir «un momento, esas dos están vivas».
+     *
+     * Los grupos donde no se revoca nada no salen: son ruido que enterraría la
+     * media docena de líneas que sí hay que leer.
+     *
+     * @param  Collection<string, Collection<int, KdsDevice>>  $grupos
+     * @return array{0: array<int, array<int, string>>, 1: array<int, KdsDevice>}
+     */
+    private function plan(Collection $grupos): array
+    {
+        $filas = [];
+        $condenadas = [];
+
+        foreach ($grupos as $grupo) {
+            // La que se queda va primera: es la que la tablet tiene en la
+            // mano. Ver cualSobrevive().
+            $sobrevive = $grupo->first();
+
+            $filasDelGrupo = [];
+            $condenadasDelGrupo = [];
+
+            foreach ($grupo as $fila) {
+                if ($fila->getKey() === $sobrevive?->getKey()) {
+                    // «La del último latido» y no «la buena»: es lo que el
+                    // comando sabe de verdad, y si resulta que era la mala, esa
+                    // frase es la que hace que quien mira la lista lo note.
+                    $veredicto = 'SE QUEDA (la del último latido)';
+                } elseif (($motivo = $this->porQueNoSeToca($fila)) !== null) {
+                    $veredicto = 'no se toca: '.$motivo;
+                } else {
+                    $veredicto = 'se revoca';
+                    $condenadasDelGrupo[] = $fila;
+                }
+
+                $filasDelGrupo[] = [
+                    (string) $fila->getAttribute('tenant_id'),
+                    (string) $fila->getAttribute('operating_unit_id'),
+                    (string) $fila->getAttribute('name'),
+                    (string) $fila->getAttribute('id'),
+                    $this->latido($fila),
+                    $fila->getAttribute('device_identity') === null ? '—' : 'sí',
+                    $veredicto,
+                ];
+            }
+
+            if ($condenadasDelGrupo === []) {
+                continue;
+            }
+
+            $filas = array_merge($filas, $filasDelGrupo);
+            $condenadas = array_merge($condenadas, $condenadasDelGrupo);
+        }
+
+        return [$filas, $condenadas];
+    }
+
+    /**
+     * Por qué esta fila se queda como está, o null si de verdad sobra.
+     *
+     * Son los dos frenos de la conjetura, escritos donde se aplican. El texto
+     * que devuelve se imprime tal cual en la tabla: quien la lee tiene que
+     * poder entender por qué el comando dejó viva una fila sin ir a buscar
+     * este archivo.
+     */
+    private function porQueNoSeToca(KdsDevice $fila): ?string
+    {
+        if ($fila->getAttribute('device_identity') !== null) {
+            return 'tiene identidad, no se duplica sola';
+        }
+
+        if ($this->sigueViva($fila)) {
+            return 'ha dado señal, es otra tablet';
+        }
+
+        return null;
+    }
+
+    /** ¿Ha latido esta fila dentro de la ventana que la da por encendida? */
+    private function sigueViva(KdsDevice $fila): bool
+    {
+        $latido = $fila->getAttribute('last_seen_at');
+
+        // El umbral se calcula sobre now() y NUNCA sobre $latido: Carbon es
+        // mutable, y un $latido->addMinutes(...) reescribiría el atributo del
+        // modelo en memoria justo antes de que revocarlo lo persistiera.
+        return $latido !== null
+            && $latido->greaterThan(now()->subMinutes(self::MINUTOS_DE_VIDA));
     }
 
     /**
