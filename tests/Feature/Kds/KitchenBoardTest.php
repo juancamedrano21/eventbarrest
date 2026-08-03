@@ -299,3 +299,61 @@ it('counts the same units before and after somebody touches the card', function 
         ->and(enElPuesto(fn () => KitchenTicket::query()->where('order_id', $orden->id)->sole())->items_count)
         ->toBe(3);
 });
+
+it('drops a fully refunded sale that never entered the kitchen', function (): void {
+    // Se cobró, se devolvió entera, y nadie llegó a tocarla. Nadie va a
+    // cocinar eso jamás.
+    $devuelta = venderYCobrar([['product_id' => $this->taco->id, 'quantity' => 1]]);
+
+    enElPuesto(fn () => app(RefundOrder::class)(
+        $devuelta->fresh(), cajaDe($this->puesto), $devuelta->total_cents, 'Se arrepintió',
+    ));
+
+    // Y otra normal, para saber que el tablero sigue vivo.
+    $buena = venderYCobrar([['product_id' => $this->taco->id, 'quantity' => 1]]);
+
+    $tablero = tableroDe($this->puesto);
+
+    // Sin esto la venta devuelta se quedaba PENDIENTE para siempre —
+    // RefundOrder no toca orders.status a conciencia— y su reloj no paraba
+    // nunca: cada noche acababa arrastrando a su comercio al primer puesto
+    // del tablero del organizador por un plato que nadie iba a hacer.
+    expect($tablero->pluck('orderId')->all())->toBe([$buena->id]);
+});
+
+it('keeps a partly refunded sale, because part of the food is still owed', function (): void {
+    $orden = venderYCobrar([
+        ['product_id' => $this->taco->id, 'quantity' => 1],
+        ['product_id' => $this->refresco->id, 'quantity' => 1],
+    ]);
+
+    // Se devolvió una parte. Nadie sabe cuál —los reembolsos son un importe,
+    // no unas líneas—, así que la comanda se queda y decide la cocina, que
+    // para eso ve la franja roja de «DEVUELTA» en la tarjeta.
+    enElPuesto(fn () => app(RefundOrder::class)(
+        $orden->fresh(), cajaDe($this->puesto), 1000, 'Solo el refresco',
+    ));
+
+    expect(tableroDe($this->puesto)->pluck('orderId')->all())->toContain($orden->id);
+});
+
+it('keeps a fully refunded sale that the kitchen already started', function (): void {
+    $orden = venderYCobrar([['product_id' => $this->taco->id, 'quantity' => 1]]);
+
+    marcar($orden, DispatchArea::Kitchen, KitchenTicketStatus::InProgress, [
+        'started_at' => now()->subMinutes(2),
+    ]);
+
+    enElPuesto(fn () => app(RefundOrder::class)(
+        $orden->fresh(), cajaDe($this->puesto), $orden->total_cents, 'Tardaba mucho',
+    ));
+
+    // Esta NO se cae, y es a propósito: alguien la está cocinando ahora
+    // mismo. Hacerla desaparecer de la pantalla dejaría a esa persona
+    // haciendo un plato sin saber por qué se le fue la tarjeta. Se queda con
+    // su franja de devuelta para que pueda parar y cerrarla.
+    $tarjeta = tableroDe($this->puesto)->sole();
+
+    expect($tarjeta->orderId)->toBe($orden->id)
+        ->and($tarjeta->refundedCents)->toBe($orden->total_cents);
+});

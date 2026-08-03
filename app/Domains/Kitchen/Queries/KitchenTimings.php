@@ -11,6 +11,7 @@ use App\Domains\Kitchen\Models\KitchenTicket;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
+use App\Domains\Sales\Models\Refund;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -237,19 +238,53 @@ class KitchenTimings
             ->toBase()
             ->get();
 
+        $idsDeVenta = $ventas->pluck('order_id')->unique()->all();
+
         // Y las que YA se sirvieron, para restarlas.
         $servidas = KitchenTicket::query()
-            ->whereIn('order_id', $ventas->pluck('order_id')->unique()->all())
+            ->whereIn('order_id', $idsDeVenta)
             ->whereNotNull('ready_at')
             ->toBase()
             ->get(['order_id', 'area'])
             ->map(fn (stdClass $t): string => $t->order_id.':'.$t->area)
             ->flip();
 
+        // Las que alguien llegó a tocar: si tienen fila, hubo cocina de por
+        // medio y siguen contando aunque el dinero se devolviera después.
+        $tocadas = KitchenTicket::query()
+            ->whereIn('order_id', $idsDeVenta)
+            ->toBase()
+            ->get(['order_id', 'area'])
+            ->map(fn (stdClass $t): string => $t->order_id.':'.$t->area)
+            ->flip();
+
+        // Y las ventas que se devolvieron ENTERAS, con el mismo criterio que
+        // el tablero: una venta deshecha que nadie tocó no es una comanda
+        // abierta, y contarla aquí inflaría el número que sirve precisamente
+        // para desconfiar de las medianas.
+        $devueltasEnteras = Order::query()
+            ->whereIn('orders.id', $idsDeVenta)
+            ->leftJoinSub(
+                Refund::query()
+                    ->selectRaw('order_id, sum(amount_cents) as devuelto')
+                    ->groupBy('order_id'),
+                'r',
+                'r.order_id',
+                '=',
+                'orders.id',
+            )
+            ->whereRaw('coalesce(r.devuelto, 0) >= orders.total_cents')
+            ->where('orders.total_cents', '>', 0)
+            ->toBase()
+            ->pluck('orders.id')
+            ->flip();
+
         $filas = $ventas
             ->reject(fn (stdClass $f): bool => $servidas->has(
                 $f->order_id.':'.$this->sitioDeLaVenta($f)['area']->value,
             ))
+            ->reject(fn (stdClass $f): bool => $devueltasEnteras->has($f->order_id)
+                && ! $tocadas->has($f->order_id.':'.$this->sitioDeLaVenta($f)['area']->value))
             // Una venta con tres tacos aporta UNA comanda de cocina, no tres.
             ->unique(fn (stdClass $f): string => $f->order_id.':'.$this->sitioDeLaVenta($f)['area']->value)
             ->values();

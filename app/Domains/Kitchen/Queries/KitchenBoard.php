@@ -145,6 +145,32 @@ class KitchenBoard
                 $comanda = $filas[$valor];
                 $estado = $estados[$valor];
 
+                // Una venta DEVUELTA ENTERA que nadie llegó a tocar no es una
+                // comanda pendiente: es una venta que se deshizo antes de
+                // llegar a la cocina, y nadie va a cocinarla nunca.
+                //
+                // Sin este corte se quedaba pendiente para siempre. RefundOrder
+                // no escribe en orders.status a conciencia —la venta sigue
+                // siendo lo que fue—, así que seguía entrando en el tablero,
+                // sin fila que la cerrara y con un reloj que no paraba: cada
+                // noche acababa arrastrando a su comercio al primer puesto del
+                // tablero del organizador por un plato que no existe.
+                //
+                // Se exige que la devolución sea COMPLETA. Un reembolso es un
+                // importe, no unas líneas: con uno parcial nadie sabe si lo que
+                // volvió fue el refresco o el plato, así que la comanda se
+                // queda y decide la cocina, que para eso ve la franja de
+                // «devuelta» en su tarjeta.
+                //
+                // Y se exige que NO tenga fila. Si alguien ya la empezó, está
+                // cocinándola ahora mismo: hacerla desaparecer de la pantalla
+                // dejaría a esa persona con un plato en la plancha y sin
+                // explicación. Esa se queda, con su franja, para que pueda
+                // parar y cerrarla.
+                if ($comanda === null && $this->devueltaEntera($orden, $devuelto)) {
+                    continue;
+                }
+
                 // Una comanda lista y vieja se cae. Sin marca de hora se
                 // queda: preferimos una tarjeta de más en la pantalla a una
                 // que desaparece sin que nadie sepa por qué.
@@ -252,6 +278,22 @@ class KitchenBoard
     private function unidades(array $lineas): int
     {
         return (int) round(collect($lineas)->sum(fn (OrderLine $linea): float => (float) $linea->quantity));
+    }
+
+    /**
+     * Si de esta venta volvió TODO el dinero.
+     *
+     * Se compara contra el total cobrado, propina incluida: solo cuenta como
+     * deshecha la venta de la que no quedó nada. Devolver el importe de la
+     * comida y quedarse la propina deja una venta viva, y su comanda también.
+     *
+     * @param  Collection<int, mixed>  $devuelto
+     */
+    private function devueltaEntera(Order $orden, Collection $devuelto): bool
+    {
+        $total = $orden->total_cents;
+
+        return $total > 0 && (int) ($devuelto->get($orden->id) ?? 0) >= $total;
     }
 
     private function clave(int $orderId, DispatchArea $area): string

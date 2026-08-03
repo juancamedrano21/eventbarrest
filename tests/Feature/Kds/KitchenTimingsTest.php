@@ -23,6 +23,7 @@ use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Sales\Actions\OpenCashSession;
 use App\Domains\Sales\Actions\PayOrder;
 use App\Domains\Sales\Actions\PlaceOrder;
+use App\Domains\Sales\Actions\RefundOrder;
 use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
@@ -534,4 +535,45 @@ it('never loses the untouched half of a mixed sale from the open count', functio
 
     expect($cocina)->not->toBeNull()
         ->and($cocina->openCount)->toBe(1);
+});
+
+it('never counts a fully refunded sale nobody touched as an open comanda', function (): void {
+    // El antídoto contra el sesgo de supervivencia sirve para desconfiar de
+    // las medianas, así que inflarlo con ventas deshechas lo estropea: quien
+    // lo lea creería que hay gente esperando que no existe.
+    $caja = cajaMedida($this->puesto, $this->tacos);
+
+    test()->travelTo($this->base);
+
+    $orden = conComercio($this->tacos, fn (): Order => app(PlaceOrder::class)(
+        $caja, [['product_id' => $this->taco->id, 'quantity' => 1]], 'pos-devuelta-1',
+    ));
+
+    conComercio($this->tacos, fn () => app(PayOrder::class)($orden, PaymentMethod::Cash, $orden->total_cents));
+    conComercio($this->tacos, fn () => app(RefundOrder::class)(
+        $orden->fresh(), $caja, $orden->total_cents, 'Se arrepintió',
+    ));
+
+    test()->travelBack();
+
+    expect(informeDeUnidades([$this->puesto->id])->openCount)->toBe(0);
+});
+
+it('still counts a partly refunded sale, because part of the food is owed', function (): void {
+    $caja = cajaMedida($this->puesto, $this->tacos);
+
+    test()->travelTo($this->base);
+
+    $orden = conComercio($this->tacos, fn (): Order => app(PlaceOrder::class)(
+        $caja, [['product_id' => $this->taco->id, 'quantity' => 2]], 'pos-parcial-1',
+    ));
+
+    conComercio($this->tacos, fn () => app(PayOrder::class)($orden, PaymentMethod::Cash, $orden->total_cents));
+    conComercio($this->tacos, fn () => app(RefundOrder::class)(
+        $orden->fresh(), $caja, 1000, 'Solo uno',
+    ));
+
+    test()->travelBack();
+
+    expect(informeDeUnidades([$this->puesto->id])->openCount)->toBe(1);
 });
