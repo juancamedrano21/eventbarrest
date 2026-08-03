@@ -442,3 +442,81 @@ it('refuses the board to a request with no token at all', function (): void {
         ->assertUnauthorized()
         ->assertJsonPath('code', 'kds_sin_token');
 });
+
+/**
+ * Los dos agujeros por los que se colaba una pantalla de cocina en blanco.
+ *
+ * Los dos son del cliente —el store guardaba un ETag cuyo cuerpo no había
+ * pintado— y aquí no se pueden probar. Lo que se fija abajo es la mitad del
+ * servidor: la propiedad exacta que convertía un descuido del cliente en una
+ * cocina a oscuras toda la noche, y la cabecera que impide que conteste por
+ * el tablero alguien que no es este controlador.
+ */
+it('rebuilds the very same etag when the same tablet enrols again, which is why the app must forget its own', function (): void {
+    ventaDelKds($this->tacos, $this->norte, [['product_id' => $this->taco->id, 'quantity' => 1]]);
+
+    // Hex, como el ANDROID_ID que lee el puente del APK: es la forma que
+    // produce hoy esa fuente, no el contrato. EnrollKdsDevice::identidad()
+    // acepta a propósito un alfabeto más ancho —el porqué está allí—; lo que
+    // importa aquí es que sea una identidad válida, porque es la que recuelga
+    // la tablet en SU fila en vez de fabricarle otra.
+    $identidad = '7f3c9a21b4e0d5c8';
+
+    $primera = app(EnrollKdsDevice::class)(
+        (string) $this->tacos->kds_code, $this->pinNorte, 'Cocina 1', DispatchArea::Kitchen, $identidad,
+    );
+
+    $etag = (string) pedirElTablero($primera->plainToken)->assertOk()->headers->get('ETag');
+
+    // La misma tablet vuelve a colgarse en su sitio: mismo puesto, misma
+    // identidad y el mismo nombre que trae por defecto la pantalla de alta.
+    // Se recuelga en SU fila, así que el cuerpo que calcula el servidor sale
+    // idéntico byte a byte y el ETag con él.
+    $segunda = app(EnrollKdsDevice::class)(
+        (string) $this->tacos->kds_code, $this->pinNorte, 'Cocina 1', DispatchArea::Kitchen, $identidad,
+    );
+
+    expect($segunda->device->id)->toBe($primera->device->id)
+        ->and($segunda->plainToken)->not->toBe($primera->plainToken);
+
+    // Y AQUÍ ESTÁ LA TRAMPA. Este 304 es CORRECTO —el tablero no ha cambiado—
+    // y es justo lo que dejaba la cocina a oscuras: la tablet que salía y
+    // volvía a entrar se vaciaba el tablero y se quedaba con este ETag, así
+    // que su primer sondeo recibía esto, no pintaba nada, y no volvía a ver
+    // una comanda hasta la siguiente venta. Sacar la tablet y volver a entrar
+    // es lo primero que hace quien ve la pantalla rara.
+    //
+    // El servidor no puede hacer nada mejor que esto: quien tiene que soltar
+    // el ETag al cambiar de sesión es el cliente (store.js, olvidarElTablero).
+    // Este test está aquí para que quien vuelva a tocar el store sepa que el
+    // ETag SOBREVIVE al enrolamiento y no puede heredarse.
+    pedirElTablero($segunda->plainToken, $etag)->assertStatus(304);
+
+    // Y con el ETag olvidado, que es lo que hace la app arreglada, el tablero
+    // entero vuelve a la primera.
+    expect(pedirElTablero($segunda->plainToken)->assertOk()->json('tickets'))->toHaveCount(1);
+});
+
+it('tells every cache in between to ask before answering for the board', function (): void {
+    ventaDelKds($this->tacos, $this->norte, [['product_id' => $this->taco->id, 'quantity' => 1]]);
+
+    $token = $this->tabletNorte->plainToken;
+
+    $lleno = pedirElTablero($token)->assertOk();
+    $etag = (string) $lleno->headers->get('ETag');
+
+    // Sin esto la respuesta es cacheable por heurística —trae ETag y no trae
+    // caducidad—, y el WebView de la tablet o el proxy del wifi del recinto
+    // puede servirla él mismo sin preguntar. Una pantalla de cocina no puede
+    // depender de que a un intermediario le parezca bien.
+    //
+    // `no-cache` no es «no lo guardes», es «pregunta SIEMPRE antes de
+    // servirlo»: quien ahorra el payload aquí es el 304, no la caché.
+    foreach ([$lleno, pedirElTablero($token, $etag)->assertStatus(304)] as $respuesta) {
+        expect((string) $respuesta->headers->get('Cache-Control'))
+            ->toContain('no-cache')
+            // `private` porque veinte tabletas del festival salen por el mismo
+            // NAT y el tablero de un puesto no puede acabar en el de al lado.
+            ->toContain('private');
+    }
+});

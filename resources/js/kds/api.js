@@ -28,6 +28,13 @@ async function request(method, path, body = null, extraHeaders = {}) {
     try {
         response = await fetch(BASE + path, {
             method,
+            // La cache del navegador NO participa en esto. La revalidacion la
+            // lleva la app a mano con su If-None-Match, y un WebView que se
+            // ponga a responder por su cuenta —o un proxy de wifi de festival
+            // que guarde el snapshot de hace un rato— pintaria comandas viejas
+            // sin que el servidor se entere. Aqui la unica cache es el ETag
+            // que guarda el store, y es la que sabe lo que se pinto.
+            cache: 'no-store',
             headers: {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
@@ -46,10 +53,38 @@ async function request(method, path, body = null, extraHeaders = {}) {
         return { sinCambios: true, etag: response.headers.get('ETag') };
     }
 
-    const data = await response.json().catch(() => ({}));
-
     if (!response.ok) {
+        // Aqui SI se tolera un cuerpo ilegible: lo que importa de un error es
+        // el codigo de estado, y muchas puertas de enlace devuelven HTML.
+        const data = await response.json().catch(() => ({}));
+
         throw { status: response.status, code: data.code ?? null, message: data.message ?? 'Error de red', data };
+    }
+
+    // NO SE TRAGA UN CUERPO ILEGIBLE EN UNA RESPUESTA BUENA. ESTE `throw` ES
+    // EL ARREGLO DE LA PANTALLA QUE SE QUEDABA EN BLANCO — NO LO CONVIERTAS
+    // EN UN `catch(() => ({}))`.
+    //
+    // `fetch` resuelve en cuanto llegan las CABECERAS; el cuerpo viaja
+    // despues. Si la transferencia se corta a medias —wifi de festival, un
+    // proxy, un warning de PHP colado antes del JSON— esto es un 200 de
+    // verdad, con su ETag de verdad, y un cuerpo que no se puede leer.
+    // Devolviendo `{}` el store guardaba el ETag VIGENTE del servidor
+    // emparejado con un tablero VACIO: a partir de ahi cada sondeo recibia un
+    // 304 legitimo y la cocina se quedaba a oscuras hasta la siguiente venta,
+    // sin un solo error en pantalla. Lanzando, el store no toca ni las
+    // comandas ni el ETag, y el siguiente sondeo vuelve a pedir el tablero.
+    let data;
+    try {
+        data = await response.json();
+    } catch {
+        throw { status: 0, code: 'cuerpo_ilegible', message: 'La respuesta llego a medias.' };
+    }
+
+    // Un cuerpo `null` o `"algo"` parsea sin fallar y luego se esparce en la
+    // nada. Se exige un objeto para que nunca salga de aqui un exito hueco.
+    if (data === null || typeof data !== 'object') {
+        throw { status: 0, code: 'cuerpo_ilegible', message: 'La respuesta llego a medias.' };
     }
 
     return { ...data, etag: response.headers.get('ETag') };

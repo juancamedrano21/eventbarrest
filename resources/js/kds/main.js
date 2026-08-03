@@ -44,13 +44,27 @@ vuelta();
 
 // Volver a mirar la pantalla, o recuperar la senal, pregunta YA: esperar tres
 // segundos con la tablet en la mano ya se nota.
+//
+// Pero no si ya hay un sondeo viajando. Estos dos eventos llegan cuando les
+// da la gana —el `online` de Android salta varias veces al reengancharse al
+// wifi— y sin este freno lanzaban un sondeo encima del que estaba en curso:
+// dos respuestas pedidas con ETags distintos, y la que llegara tarde
+// repintaba el tablero de hace un ciclo. El store tambien lo frena por su
+// lado (usePantalla.sondeando); aqui se evita ademas reiniciar el
+// temporizador para nada.
+function despertar() {
+    if (pantalla.sondeando) return;
+
+    programar(0);
+}
+
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') programar(0);
+    if (document.visibilityState === 'visible') despertar();
 });
 
 window.addEventListener('online', () => {
     pantalla.online = true;
-    programar(0);
+    despertar();
 });
 
 window.addEventListener('offline', () => {

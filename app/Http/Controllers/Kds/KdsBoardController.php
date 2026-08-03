@@ -37,6 +37,25 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class KdsBoardController extends Controller
 {
+    /**
+     * NADIE QUE NO SEA ESTE CONTROLADOR CONTESTA POR EL TABLERO.
+     *
+     * Sin ninguna directiva —que es como salía antes— una respuesta con ETag
+     * y sin fecha de caducidad es CACHEABLE por heurística: el WebView de la
+     * tablet, o el proxy del wifi del recinto, puede guardarla y servirla él
+     * mismo sin preguntar. Y aquí eso no es una optimización, es una pantalla
+     * de cocina enseñando el tablero de hace un rato mientras el servidor
+     * tiene otro y nadie se entera, exactamente el fallo que esta pieza
+     * existe para no tener.
+     *
+     * `no-cache` no significa «no lo guardes»: significa «guárdalo si
+     * quieres, pero pregunta SIEMPRE antes de servirlo». Es justo lo que hace
+     * falta, porque lo que ahorra el payload aquí es el 304, no la caché.
+     * `private` porque veinte tabletas del festival salen por el mismo NAT y
+     * el tablero de un puesto no puede acabar en la pantalla del vecino.
+     */
+    private const CACHE = 'no-cache, private';
+
     public function __invoke(Request $request): Response
     {
         $device = $request->attributes->get('kds_device');
@@ -68,12 +87,15 @@ class KdsBoardController extends Controller
         $etag = 'W/"'.sha1((string) json_encode($cuerpo)).'"';
 
         if (in_array($etag, $request->getETags(), true)) {
-            return response()->noContent(304)->header('ETag', $etag);
+            return response()->noContent(304)
+                ->header('ETag', $etag)
+                ->header('Cache-Control', self::CACHE);
         }
 
         return response()
             ->json($cuerpo + ['server_time' => now()->toIso8601String()])
-            ->header('ETag', $etag);
+            ->header('ETag', $etag)
+            ->header('Cache-Control', self::CACHE);
     }
 
     /**
