@@ -69,9 +69,14 @@ const cantidad = (n) => Number.isInteger(n) ? String(n) : String(n).replace('.',
         <template v-if="kind === 'comanda'">
             <section v-for="grupo in grupos" :key="grupo.destino" class="tp-group">
                 <p class="tp-group-title">{{ grupo.destino }}</p>
-                <div v-for="line in grupo.lines" :key="line.product_id" class="tp-row tp-row-big">
+                <div v-for="(line, i) in grupo.lines" :key="i" class="tp-row tp-row-big">
                     <span class="tp-qty">{{ cantidad(line.quantity) }}×</span>
-                    <span class="tp-name">{{ line.product_name }}</span>
+                    <span class="tp-name">
+                        {{ line.product_name }}
+                        <!-- La nota va DEBAJO y en negrita: es lo único de esta
+                             hoja que cambia lo que hay que hacer. -->
+                        <em v-if="line.notes" class="tp-note">{{ line.notes }}</em>
+                    </span>
                 </div>
             </section>
         </template>
@@ -79,9 +84,12 @@ const cantidad = (n) => Number.isInteger(n) ? String(n) : String(n).replace('.',
         <!-- Recibo: lo que el cliente se lleva -->
         <template v-else>
             <div class="tp-lines">
-                <div v-for="line in ticket.lines ?? []" :key="line.product_id" class="tp-row">
+                <div v-for="(line, i) in ticket.lines ?? []" :key="i" class="tp-row">
                     <span class="tp-qty">{{ cantidad(line.quantity) }}×</span>
-                    <span class="tp-name">{{ line.product_name }}</span>
+                    <span class="tp-name">
+                        {{ line.product_name }}
+                        <em v-if="line.notes" class="tp-note">{{ line.notes }}</em>
+                    </span>
                     <span class="tp-amount">{{ money(line.total_cents) }}</span>
                 </div>
             </div>
@@ -156,6 +164,7 @@ const cantidad = (n) => Number.isInteger(n) ? String(n) : String(n).replace('.',
 .tp-row-big { font-size: 14px; font-weight: 700; margin-bottom: 2mm; }
 .tp-qty { min-width: 8mm; font-weight: 700; }
 .tp-name { flex: 1; }
+.tp-note { display: block; font-style: normal; font-weight: 700; text-transform: uppercase; }
 .tp-amount { text-align: right; white-space: nowrap; }
 
 .tp-lines { border-bottom: 1px dashed #000; padding-bottom: 2mm; margin-bottom: 2mm; }

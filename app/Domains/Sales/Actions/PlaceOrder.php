@@ -15,7 +15,9 @@ use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Queries\ResolveItbisMode;
 use App\Models\User;
+use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -35,7 +37,7 @@ use Illuminate\Support\Facades\DB;
 class PlaceOrder
 {
     /**
-     * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
+     * @param  array<int, array{product_id: int, quantity: float|int, notes?: string|null}>  $lines
      */
     public function __invoke(
         CashSession $session,
@@ -45,6 +47,7 @@ class PlaceOrder
         bool $withTip = false,
         SalesChannel $channel = SalesChannel::Pos,
         ?string $customerName = null,
+        ?CarbonInterface $soldAt = null,
     ): Order {
         if ($lines === []) {
             throw SalesException::orderNeedsLines();
@@ -71,7 +74,7 @@ class PlaceOrder
         }
 
         try {
-            return $this->create($session, $lines, $clientRef, $user, $withTip, $channel, $customerName);
+            return $this->create($session, $lines, $clientRef, $user, $withTip, $channel, $customerName, $soldAt);
         } catch (UniqueConstraintViolationException $exception) {
             // Carrera del reenvío offline: otro request la creó primero. Si
             // lo que chocó fue el NÚMERO, el reintento del contador es la
@@ -93,7 +96,12 @@ class PlaceOrder
      * El reenvío legítimo trae exactamente lo mismo; cualquier divergencia
      * (sesión, líneas o propina) delata una referencia reutilizada.
      *
-     * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
+     * Lo que se compara es el hecho ECONÓMICO: qué se vendió y por cuánto.
+     * La nota de preparación y la hora del dispositivo quedan fuera a
+     * propósito — un borrador guardado antes de que existieran esos campos
+     * se reenviaría distinto sin que nadie haya reutilizado nada.
+     *
+     * @param  array<int, array{product_id: int, quantity: float|int, notes?: string|null}>  $lines
      */
     private function assertSameSale(Order $existing, CashSession $session, array $lines, bool $withTip): void
     {
@@ -126,7 +134,38 @@ class PlaceOrder
     }
 
     /**
-     * @param  array<int, array{product_id: int, quantity: float|int}>  $lines
+     * Una instrucción para quien cocina, no un campo libre: se recorta a lo
+     * que cabe en una tarjeta que se lee a tres metros.
+     */
+    private function notaLimpia(?string $notes): ?string
+    {
+        $limpia = trim((string) $notes);
+
+        return $limpia === '' ? null : mb_substr($limpia, 0, 120);
+    }
+
+    /**
+     * La hora que dice el dispositivo, si es creíble. El reloj de una tablet
+     * barata se desfasa: una marca futura o de hace más de un día no es un
+     * retraso de sincronización, es un reloj mal puesto, y pintar con ella
+     * la espera del cliente daría cifras absurdas. Ante la duda, null — y el
+     * tablero cae a paid_at, que siempre es del servidor.
+     */
+    private function horaCreible(?CarbonInterface $soldAt): ?Carbon
+    {
+        if ($soldAt === null) {
+            return null;
+        }
+
+        $ahora = Carbon::now();
+
+        return $soldAt->greaterThan($ahora->copy()->addMinutes(5)) || $soldAt->lessThan($ahora->copy()->subDay())
+            ? null
+            : Carbon::instance($soldAt);
+    }
+
+    /**
+     * @param  array<int, array{product_id: int, quantity: float|int, notes?: string|null}>  $lines
      */
     private function create(
         CashSession $session,
@@ -136,8 +175,9 @@ class PlaceOrder
         bool $withTip,
         SalesChannel $channel,
         ?string $customerName,
+        ?CarbonInterface $soldAt,
     ): Order {
-        return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip, $channel, $customerName): Order {
+        return DB::transaction(function () use ($session, $lines, $clientRef, $user, $withTip, $channel, $customerName, $soldAt): Order {
             $unit = OperatingUnit::query()->withoutGlobalScopes()
                 ->whereKey($session->operating_unit_id)
                 ->first(['tenant_id', 'vendor_id', 'event_id']);
@@ -152,7 +192,7 @@ class PlaceOrder
             $prepared = [];
 
             foreach ($lines as $line) {
-                $product = Product::query()->findOrFail((int) $line['product_id']);
+                $product = Product::query()->with('category')->findOrFail((int) $line['product_id']);
 
                 if (! $product->active) {
                     throw SalesException::productNotSellable($product->name);
@@ -174,7 +214,7 @@ class PlaceOrder
                 $subtotal += $total;
                 $itbis += $lineItbis;
 
-                $prepared[] = [$product, $quantity, $total, $lineItbis];
+                $prepared[] = [$product, $quantity, $total, $lineItbis, $this->notaLimpia($line['notes'] ?? null)];
             }
 
             // Propina legal sobre la BASE, no sobre la base con impuesto.
@@ -199,6 +239,9 @@ class PlaceOrder
             $order->commission_base = $this->commissionBaseFor($unit);
             $order->itbis_mode = $modo;
             $order->channel = $channel;
+            // La hora del cajero, para saber si esta venta llega con retraso
+            // de sincronización. paid_at la pone el servidor al cobrar.
+            $order->device_sold_at = $this->horaCreible($soldAt);
 
             // El número que el cliente dicta: serie POR COMERCIO (por
             // cuenta si no hay comercio), tomada con lock aquí dentro.
@@ -208,9 +251,14 @@ class PlaceOrder
             $order->order_number = app(NextOrderNumber::class)($tenantId, $vendorId);
             $order->save();
 
-            foreach ($prepared as [$product, $quantity, $total, $lineItbis]) {
+            foreach ($prepared as [$product, $quantity, $total, $lineItbis, $nota]) {
                 $orderLine = $order->lines()->make([
                     'product_name' => $product->name,
+                    // De dónde sale esto: barra o cocina. Vive en la
+                    // categoría, que es mutable — congelarlo aquí impide que
+                    // recategorizar mañana reescriba qué se hizo hoy.
+                    'dispatch' => $product->category->dispatch,
+                    'notes' => $nota,
                     'quantity' => $quantity,
                     'unit_price_cents' => $product->price_cents,
                     'total_cents' => $total,

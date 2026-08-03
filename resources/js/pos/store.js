@@ -138,7 +138,14 @@ export const usePos = defineStore('pos', {
             } finally {
                 const draft = await kvGet('draft');
                 if (draft && this.cart.length === 0) {
-                    this.cart = draft.cart;
+                    // Un borrador guardado antes de que las lineas tuvieran
+                    // llave propia se adopta en vez de descartarse: es una
+                    // orden a medio teclear, y perderla seria peor.
+                    this.cart = draft.cart.map((line) => ({
+                        notes: null,
+                        ...line,
+                        key: line.key ?? crypto.randomUUID(),
+                    }));
                     this.withTip = draft.withTip;
                 }
                 await this.recount();
@@ -193,7 +200,11 @@ export const usePos = defineStore('pos', {
         },
 
         addToCart(product) {
-            const line = this.cart.find((item) => item.product_id === product.id);
+            // Se acumula sobre la linea SIN nota. Una vez que una linea lleva
+            // «sin cebolla», tocar el producto otra vez abre una linea nueva:
+            // asi salen «2 sin cebolla + 1 normal» sin inventar ningun gesto
+            // que el cajero tenga que aprender.
+            const line = this.cart.find((item) => item.product_id === product.id && !item.notes);
             if (line) {
                 line.quantity += 1;
             } else {
@@ -201,19 +212,30 @@ export const usePos = defineStore('pos', {
                 // dependa del catalogo: un borrador guardado ayer se repinta
                 // igual aunque el producto ya no exista.
                 this.cart.push({
+                    key: crypto.randomUUID(),
                     product_id: product.id,
                     name: product.name,
                     price_cents: product.price_cents,
                     itbis_exempt: !!product.itbis_exempt,
                     image_url: product.image_url ?? null,
+                    notes: null,
                     quantity: 1,
                 });
             }
             this.saveDraft();
         },
 
-        removeFromCart(productId) {
-            const index = this.cart.findIndex((item) => item.product_id === productId);
+        // Lo que hay que leer antes de cocinar. Va en la linea, no en la
+        // orden: sin cebolla es de ESE taco, no de todo el pedido.
+        setLineNote(key, note) {
+            const line = this.cart.find((item) => item.key === key);
+            if (!line) return;
+            line.notes = (note ?? '').trim().slice(0, 120) || null;
+            this.saveDraft();
+        },
+
+        removeFromCart(key) {
+            const index = this.cart.findIndex((item) => item.key === key);
             if (index === -1) return;
             if (this.cart[index].quantity > 1) {
                 this.cart[index].quantity -= 1;
@@ -245,8 +267,8 @@ export const usePos = defineStore('pos', {
 
         // Quitar la linea ENTERA, sin restar de una en una: en una orden de
         // ocho cervezas, tocar ocho veces el menos es un castigo.
-        dropLine(productId) {
-            this.cart = this.cart.filter((item) => item.product_id !== productId);
+        dropLine(key) {
+            this.cart = this.cart.filter((item) => item.key !== key);
             this.saveDraft();
         },
 
@@ -264,7 +286,11 @@ export const usePos = defineStore('pos', {
                 cash_session_id: this.session.id,
                 customer_name: nombre,
                 with_tip: this.withTip,
-                lines: this.cart.map((line) => ({ product_id: line.product_id, quantity: line.quantity })),
+                lines: this.cart.map((line) => ({
+                    product_id: line.product_id,
+                    quantity: line.quantity,
+                    notes: line.notes ?? null,
+                })),
                 payment: { method, tendered_cents: tenderedCents },
                 display: { ...this.totals, method },
                 // El ticket LEGIBLE, congelado aqui: la reimpresion no
@@ -281,6 +307,7 @@ export const usePos = defineStore('pos', {
                     lines: this.cart.map((line) => ({
                         product_id: line.product_id,
                         product_name: line.name,
+                        notes: line.notes ?? null,
                         quantity: line.quantity,
                         unit_price_cents: line.price_cents,
                         total_cents: line.price_cents * line.quantity,
@@ -326,6 +353,12 @@ export const usePos = defineStore('pos', {
                         with_tip: sale.with_tip,
                         lines: sale.lines,
                         payment: sale.payment,
+                        // La hora en que el cajero cobro DE VERDAD. paid_at
+                        // lo pone el servidor al recibirla, y con mal wifi
+                        // eso puede ser minutos despues: sin esto, la cocina
+                        // recibe como recien llegado un pedido por el que el
+                        // cliente ya esta reclamando.
+                        sold_at: new Date(sale.created_at).toISOString(),
                     });
                     // El total que el cliente pago debe ser el que el
                     // servidor registro: si el dispositivo tenia una regla

@@ -26,8 +26,12 @@ const countFor = (categoryId) => pos.products.filter((product) =>
 const itemCount = computed(() => pos.cart.reduce((sum, line) => sum + line.quantity, 0));
 
 // Cuántas unidades de este producto ya van en la orden: el botón de la
-// tarjeta lo dice sin que haya que mirar el ticket.
-const inCart = (productId) => pos.cart.find((line) => line.product_id === productId)?.quantity ?? 0;
+// tarjeta lo dice sin que haya que mirar el ticket. Se SUMAN las líneas,
+// porque un producto anotado abre línea aparte y el contador tiene que
+// seguir diciendo la verdad.
+const inCart = (productId) => pos.cart
+    .filter((line) => line.product_id === productId)
+    .reduce((total, line) => total + line.quantity, 0);
 
 const submitting = ref(false);
 const tenderedCents = computed(() => toCents(tendered.value));
@@ -59,13 +63,27 @@ function initials(name) {
 }
 
 function addOne(line) {
-    pos.addToCart({
-        id: line.product_id,
-        name: line.name,
-        price_cents: line.price_cents,
-        itbis_exempt: line.itbis_exempt,
-        image_url: line.image_url,
-    });
+    // Sumar sobre ESTA linea, no sobre la primera del producto: si esta
+    // lleva «sin cebolla», el + tiene que dar otro sin cebolla.
+    line.quantity += 1;
+    pos.saveDraft();
+}
+
+// La nota que va a leer quien cocina. Se escribe con un teclado en pantalla
+// pero con atajos primero: en una barra llena, «Sin cebolla» tiene que ser
+// un toque, no doce.
+const noting = ref(null);
+const noteText = ref('');
+const atajos = ['Sin cebolla', 'Sin picante', 'Para llevar', 'Bien cocido', 'Sin hielo'];
+
+function openNote(line) {
+    noting.value = line;
+    noteText.value = line.notes ?? '';
+}
+
+function saveNote() {
+    pos.setLineNote(noting.value.key, noteText.value);
+    noting.value = null;
 }
 
 function openPayment() {
@@ -192,7 +210,7 @@ function printFrom(kind) {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
                     <p>Toca un producto<br>para empezar la orden.</p>
                 </div>
-                <div v-for="line in pos.cart" :key="line.product_id" class="line">
+                <div v-for="line in pos.cart" :key="line.key" class="line">
                     <span class="line-thumb">
                         <img v-if="line.image_url" :src="line.image_url" :alt="line.name" loading="lazy">
                         <span v-else class="thumb-fallback" :style="{ background: tint(line.name) }">
@@ -202,15 +220,19 @@ function printFrom(kind) {
                     <div class="line-info">
                         <span class="line-name">{{ line.name }}</span>
                         <span class="line-unit money">{{ money(line.price_cents) }} c/u</span>
+                        <button class="line-note" :class="{ set: line.notes }" @click="openNote(line)">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                            <span>{{ line.notes ?? 'Nota' }}</span>
+                        </button>
                         <strong class="line-total money">{{ money(line.price_cents * line.quantity) }}</strong>
                     </div>
                     <div class="line-side">
                         <div class="stepper">
-                            <button class="step" @click="pos.removeFromCart(line.product_id)">−</button>
+                            <button class="step" @click="pos.removeFromCart(line.key)">−</button>
                             <span class="qty">{{ line.quantity }}</span>
                             <button class="step step-add" @click="addOne(line)">+</button>
                         </div>
-                        <button class="line-drop" title="Quitar de la orden" @click="pos.dropLine(line.product_id)">
+                        <button class="line-drop" title="Quitar de la orden" @click="pos.dropLine(line.key)">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>
                         </button>
                     </div>
@@ -238,6 +260,32 @@ function printFrom(kind) {
                 </button>
             </div>
         </aside>
+
+        <div v-if="noting" class="overlay" @click.self="noting = null">
+            <div class="sheet">
+                <div class="sheet-head">
+                    <h2>{{ noting.name }}</h2>
+                    <button class="icon-btn" @click="noting = null">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                    </button>
+                </div>
+
+                <p class="note-hint">Lo que va a leer quien lo prepara.</p>
+
+                <div class="chips">
+                    <button v-for="atajo in atajos" :key="atajo" type="button" class="chip-btn"
+                        @click="noteText = atajo">{{ atajo }}</button>
+                </div>
+
+                <label class="field"><span>Nota</span>
+                    <input v-model="noteText" type="text" maxlength="120" placeholder="Sin cebolla"
+                        autocapitalize="sentences" autocomplete="off" @keyup.enter="saveNote()">
+                </label>
+
+                <button class="btn-primary" @click="saveNote()">Guardar</button>
+                <button v-if="noting.notes" class="btn-soft" @click="noteText = ''; saveNote()">Quitar la nota</button>
+            </div>
+        </div>
 
         <div v-if="paying" class="overlay" @click.self="paying = false">
             <div class="sheet">
@@ -319,9 +367,12 @@ function printFrom(kind) {
                         Lo cobrado
                         <span class="done-block-count">{{ lastUnits }} articulo(s)</span>
                     </p>
-                    <div v-for="line in lastTicket.lines" :key="line.product_id" class="done-line">
+                    <div v-for="(line, i) in lastTicket.lines" :key="i" class="done-line">
                         <span class="done-line-qty">{{ line.quantity }}×</span>
-                        <span class="done-line-name">{{ line.product_name }}</span>
+                        <span class="done-line-name">
+                            {{ line.product_name }}
+                            <em v-if="line.notes" class="done-line-note">{{ line.notes }}</em>
+                        </span>
                         <span class="done-line-unit money">{{ money(line.unit_price_cents) }}</span>
                         <strong class="done-line-total money">{{ money(line.total_cents) }}</strong>
                     </div>
@@ -496,6 +547,19 @@ function printFrom(kind) {
 .line-name { font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .line-unit { font-size: .72rem; color: var(--muted); }
 .line-total { font-size: .88rem; font-weight: 600; }
+
+/* La nota se ve siempre, puesta o no: si hubiera que descubrirla con una
+   pulsación larga, nadie la usaría en una barra llena. */
+.line-note {
+    display: flex; align-items: center; gap: .28rem; margin: .1rem 0;
+    padding: 0; background: none; border: 0; cursor: pointer;
+    font-size: .72rem; color: var(--muted); text-align: left;
+}
+.line-note svg { width: .78rem; height: .78rem; flex: none; }
+.line-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line-note.set { color: var(--warn); font-weight: 600; }
+
+.note-hint { margin: 0 0 .6rem; font-size: .82rem; color: var(--muted); }
 .line-side { display: flex; flex-direction: column; align-items: flex-end; gap: .35rem; }
 .stepper {
     display: flex; align-items: center; gap: .1rem;
@@ -601,6 +665,7 @@ function printFrom(kind) {
 .done-line { display: flex; align-items: baseline; gap: .5rem; font-size: .84rem; }
 .done-line-qty { min-width: 1.7rem; font-weight: 700; color: var(--text); }
 .done-line-name { flex: 1; min-width: 0; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.done-line-note { display: block; font-size: .74rem; font-style: normal; color: var(--warn); }
 .done-line-unit { color: var(--muted); font-size: .76rem; white-space: nowrap; }
 .done-line-total { min-width: 4.6rem; text-align: right; white-space: nowrap; }
 

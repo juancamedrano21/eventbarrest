@@ -14,6 +14,7 @@ use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Sales\Models\CashSession;
 use App\Domains\Sales\Models\Order;
 use App\Http\Controllers\Controller;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,8 +39,12 @@ class PosOrderController extends Controller
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'integer'],
             'lines.*.quantity' => ['required', 'numeric'],
+            'lines.*.notes' => ['sometimes', 'nullable', 'string', 'max:120'],
             'payment.method' => ['required', 'in:cash,card,transfer'],
             'payment.tendered_cents' => ['required', 'integer', 'min:0'],
+            // La hora del dispositivo. Opcional a propósito: un borrador
+            // guardado antes de que existiera este campo sigue sincronizando.
+            'sold_at' => ['sometimes', 'nullable', 'date'],
         ]);
 
         $session = CashSession::query()->findOrFail($data['cash_session_id']);
@@ -61,6 +66,7 @@ class PosOrderController extends Controller
                 (bool) ($data['with_tip'] ?? false),
                 SalesChannel::Pos,
                 $data['customer_name'] ?? null,
+                filled($data['sold_at'] ?? null) ? CarbonImmutable::parse((string) $data['sold_at']) : null,
             );
 
             // La señal de alta se captura AQUÍ: el cobro relee con lock y
@@ -124,6 +130,7 @@ class PosOrderController extends Controller
                 'id' => $line->id,
                 'product_id' => $line->product_id,
                 'product_name' => $line->product_name,
+                'notes' => $line->notes,
                 'quantity' => (float) $line->quantity,
                 'unit_price_cents' => $line->unit_price_cents,
                 'total_cents' => $line->total_cents,

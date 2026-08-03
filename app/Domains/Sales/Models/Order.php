@@ -52,6 +52,7 @@ use Illuminate\Support\Str;
  * @property int|null $order_number
  * @property int $number_scope
  * @property Carbon|null $paid_at
+ * @property Carbon|null $device_sold_at cuándo cobró el cajero según SU reloj
  * @property Carbon|null $voided_at
  * @property string|null $void_reason
  * @property-read Collection<int, OrderLine> $lines
@@ -79,6 +80,7 @@ class Order extends Model
             'channel' => SalesChannel::class,
             'order_number' => 'integer',
             'paid_at' => 'datetime',
+            'device_sold_at' => 'datetime',
             'voided_at' => 'datetime',
         ];
     }

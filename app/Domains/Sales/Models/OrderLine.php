@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Sales\Models;
 
+use App\Domains\Catalog\Enums\DispatchArea;
 use App\Domains\Catalog\Models\Product;
 use App\Domains\Operations\Models\OperatingUnit;
 use App\Domains\Sales\Eloquent\SalesHistoryBuilder;
@@ -18,9 +19,20 @@ use Illuminate\Database\Query\Builder;
  * el catálogo puede cambiar mañana, la venta de hoy no. itbis_cents es cero
  * cuando el producto era exento al vender. Inmutable tras crear.
  *
+ * `dispatch` también se congela: de qué área sale esto vive en la categoría,
+ * que es mutable, y recategorizar un producto no debe reescribir qué
+ * comandas fueron de cocina el mes pasado. Puede ser null en líneas
+ * anteriores a la columna cuyo producto ya no existe.
+ *
+ * `notes` es lo único de aquí que no es un hecho económico: es lo que hay
+ * que leer antes de cocinar («sin cebolla»), y viaja con la línea porque
+ * es de ESE plato, no del pedido entero.
+ *
  * @property int $order_id
  * @property int $product_id
  * @property string $product_name
+ * @property DispatchArea|null $dispatch
+ * @property string|null $notes
  * @property string $quantity
  * @property int $unit_price_cents
  * @property int $total_cents
@@ -30,11 +42,12 @@ class OrderLine extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['product_name', 'quantity', 'unit_price_cents', 'total_cents', 'itbis_cents'];
+    protected $fillable = ['product_name', 'dispatch', 'notes', 'quantity', 'unit_price_cents', 'total_cents', 'itbis_cents'];
 
     protected function casts(): array
     {
         return [
+            'dispatch' => DispatchArea::class,
             'unit_price_cents' => 'integer',
             'total_cents' => 'integer',
             'itbis_cents' => 'integer',

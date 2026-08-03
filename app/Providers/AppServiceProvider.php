@@ -35,10 +35,16 @@ class AppServiceProvider extends ServiceProvider
             View::share('panelLayout', 'event-panel.layout');
         }
 
-        // El login del POS es la única puerta pública de la API: 5 intentos
-        // por minuto por email+IP frenan fuerza bruta y credential stuffing.
+        // El login del POS es una puerta pública de la API: 5 intentos por
+        // minuto por usuario+IP frenan fuerza bruta y credential stuffing.
+        //
+        // La llave se compone con `username`, que es lo que ese endpoint
+        // valida de verdad. Decía `email`, que nunca llega, así que la llave
+        // efectiva era «|IP»: en un festival, donde todas las cajas salen por
+        // el mismo NAT, la sexta tablet recibía 429 sin que nadie fallara —
+        // y encima ThrottleRequests cuenta también los ACIERTOS.
         RateLimiter::for('pos-login', fn (Request $request) => Limit::perMinute(5)
-            ->by($request->input('email').'|'.$request->ip()));
+            ->by($request->input('username').'|'.$request->ip()));
 
         //
     }
