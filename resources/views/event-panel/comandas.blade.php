@@ -45,7 +45,15 @@
                         {{-- Que la pantalla eligió sola tiene que decirse: una
                              pantalla que decide por ti sin avisarte acaba
                              enseñándole el evento equivocado a alguien con prisa. --}}
-                        <span class="text-gray-500">— elegido solo, por ser el que está en marcha.</span>
+                        @if ($eventoEnMarcha)
+                            <span class="text-gray-500">— elegido solo, por ser el que está en marcha.</span>
+                        @else
+                            {{-- Sin evento en marcha se cae al último que hubo, y hay que
+                                 decirlo: si no, alguien con prisa lee «en marcha» sobre un
+                                 festival que terminó hace tres semanas y da por bueno que
+                                 no hay nadie esperando. --}}
+                            <span class="text-amber-700">— ningún evento en marcha ahora; este es el último que hubo.</span>
+                        @endif
                     @endif
                     @if ($comercio !== null)
                         <span class="text-gray-500">· solo <strong class="font-medium text-gray-700">{{ $comercio->name }}</strong>.</span>
@@ -349,7 +357,17 @@
                     : (document.hidden ? 'En segundo plano: cada 30 segundos.' : 'Se actualiza sola cada 5 segundos.');
             }
 
+            // Una petición en vuelo a la vez. Con setInterval y una función
+            // asíncrona, un servidor que tarde más de cinco segundos hace que
+            // las peticiones se apilen: cada vuelta lanza otra sobre la
+            // anterior, y a partir de ahí el servidor va peor por culpa de la
+            // propia pantalla que lo está midiendo.
+            let enVuelo = false;
+
             async function refrescar() {
+                if (enVuelo) return;
+                enVuelo = true;
+
                 try {
                     const cabeceras = { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
                     if (etag) cabeceras['If-None-Match'] = etag;
@@ -379,6 +397,8 @@
                     // Sin red no se grita: la franja de frescura ya lo cuenta,
                     // y un cartel rojo por cada sondeo perdido enseñaría a la
                     // gente a ignorarlos justo cuando importan.
+                } finally {
+                    enVuelo = false;
                 }
             }
 

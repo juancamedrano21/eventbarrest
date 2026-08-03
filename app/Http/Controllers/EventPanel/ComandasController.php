@@ -56,6 +56,9 @@ class ComandasController extends Controller
 {
     use AuthorizesOrganizerPanel;
 
+    /** Si el evento que se está mirando está en marcha AHORA o solo es el último que hubo. */
+    private bool $eventoEnMarcha = false;
+
     /**
      * A partir de cuánta espera un comercio se pinta en rojo.
      *
@@ -79,6 +82,7 @@ class ComandasController extends Controller
 
         return view('event-panel.comandas', [
             'evento' => $evento,
+            'eventoEnMarcha' => $this->eventoEnMarcha,
             'comercio' => $comercio,
             'cuerpo' => $cuerpo,
             'umbral' => self::SEGUNDOS_DE_ATASCO,
@@ -181,6 +185,13 @@ class ComandasController extends Controller
             ->where('ends_at', '>=', $ahora)
             ->orderByDesc('starts_at')
             ->first();
+
+        // Se recuerda CÓMO se eligió, porque la pantalla no puede decir lo
+        // mismo en los dos casos: «el que está en marcha» y «el último que
+        // hubo» son frases distintas, y afirmar la primera cuando fue la
+        // segunda le enseña a alguien con prisa un festival que terminó hace
+        // tres semanas mientras cree estar mirando el de esta noche.
+        $this->eventoEnMarcha = $enMarcha !== null;
 
         return $enMarcha ?? Event::query()->orderByDesc('starts_at')->first();
     }
