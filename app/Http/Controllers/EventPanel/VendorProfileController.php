@@ -24,6 +24,7 @@ use App\Domains\Identity\Exceptions\RoleTemplateException;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Inventory\Models\InventoryItem;
 use App\Domains\Inventory\Models\StockLevel;
+use App\Domains\Kitchen\Queries\KitchenTimings;
 use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Operations\Enums\OperatingUnitStatus;
 use App\Domains\Platform\Models\FoodType;
@@ -125,7 +126,21 @@ class VendorProfileController extends Controller
         $conteo30 = (clone $ordenes30)->count();
         $bruto30 = (int) (clone $ordenes30)->sum('total_cents');
 
+        // Los tiempos de despacho de ESTE comercio, sobre sus propios puestos.
+        //
+        // La pantalla del evento compara comercios entre sí; aquí la pregunta
+        // es otra: por qué este va lento. Son los mismos números y el mismo
+        // parcial —una segunda copia divergiría, y entonces el organizador
+        // vería una cifra distinta en cada pantalla del mismo puesto—, solo
+        // que acotados a los puestos del comercio y de los últimos treinta
+        // días, que es la ventana del resto de esta página.
+        $puestosDelComercio = EventOutlet::query()
+            ->where('vendor_id', $record->id)
+            ->pluck('id')
+            ->all();
+
         return view('event-panel.vendors.show', [
+            'tiempos' => app(KitchenTimings::class)->forUnits($puestosDelComercio, $inicio30, now()),
             'serie' => $serie,
             'topProductos' => $topProductos,
             'conteo30' => $conteo30,
