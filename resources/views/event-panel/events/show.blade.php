@@ -16,6 +16,8 @@
         <div class="flex items-center gap-2">
             <a href="{{ route('event-panel.events.stock', $event) }}"
                 class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Mercancía</a>
+            <a href="{{ route('event-panel.events.timings', $event) }}"
+                class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Tiempos</a>
             <a href="{{ route('event-panel.events.settlement', $event) }}"
                 class="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-500">
                 {{ $event->status->value === 'settled' ? 'Ver liquidación' : 'Liquidación' }}

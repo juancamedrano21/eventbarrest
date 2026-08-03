@@ -19,6 +19,12 @@
                 <p class="truncate text-xs text-gray-500">{{ auth()->user()?->tenant?->name }}</p>
             </div>
             <div class="ml-auto flex items-center gap-2">
+                {{-- Los tiempos son un reporte de unidad: el mismo permiso que
+                     abre el detalle de una venta. Sin él, ni el enlace. --}}
+                @can(\App\Domains\Identity\Enums\Permission::ReportsViewUnit->value)
+                    <a href="{{ route('event-vendor.timings') }}"
+                        class="rounded-lg border px-3 py-1.5 text-sm {{ request()->routeIs('event-vendor.timings') ? 'border-sky-200 bg-sky-50 text-sky-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50' }}">Tiempos</a>
+                @endcan
                 @if (auth()->user()?->canOperateThePos())
                     <a href="/pos" target="_blank" class="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">POS</a>
                 @endif

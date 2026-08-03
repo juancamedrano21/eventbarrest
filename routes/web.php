@@ -15,6 +15,7 @@ use App\Http\Controllers\Business\TeamController;
 use App\Http\Controllers\EventPanel\DashboardController;
 use App\Http\Controllers\EventPanel\EventsController;
 use App\Http\Controllers\EventPanel\EventStockController;
+use App\Http\Controllers\EventPanel\EventTimingsController;
 use App\Http\Controllers\EventPanel\SettingsController as EventPanelSettingsController;
 use App\Http\Controllers\EventPanel\SettlementController;
 use App\Http\Controllers\EventPanel\TeamController as EventPanelTeamController;
@@ -28,6 +29,7 @@ use App\Http\Controllers\EventVendor\CatalogController as ComercioCatalogControl
 use App\Http\Controllers\EventVendor\HomeController as ComercioHomeController;
 use App\Http\Controllers\EventVendor\InventoryController as ComercioInventoryController;
 use App\Http\Controllers\EventVendor\SalesController as ComercioSalesController;
+use App\Http\Controllers\EventVendor\TimingsController as ComercioTimingsController;
 use App\Http\Middleware\EnsureBusinessUser;
 use App\Http\Middleware\EnsureEventVendorUser;
 use App\Models\User;
@@ -91,6 +93,7 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::get('/eventos/{event}/mercancia', [EventStockController::class, 'show'])->name('events.stock');
     Route::post('/eventos/{event}/mercancia/entregar', [EventStockController::class, 'allocate'])->name('events.stock.allocate');
     Route::post('/eventos/{event}/mercancia/devolver', [EventStockController::class, 'returnStock'])->name('events.stock.return');
+    Route::get('/eventos/{event}/tiempos', [EventTimingsController::class, 'show'])->name('events.timings');
     Route::get('/comercios/{vendor}', [VendorProfileController::class, 'show'])->name('vendors.show');
     Route::get('/comercios/{vendor}/ventas/{order}', [VendorSalesController::class, 'show'])->name('vendors.sales.show');
     Route::post('/comercios/{vendor}/usuarios', [VendorProfileController::class, 'storeUser'])->name('vendors.users.store');
@@ -129,6 +132,10 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
 Route::middleware(['auth', EnsureEventVendorUser::class])->prefix('event-vendor')->name('event-vendor.')->group(function (): void {
     Route::get('/', ComercioHomeController::class)->name('home');
     Route::get('/ventas/{order}', [ComercioSalesController::class, 'show'])->name('sales.show');
+    // Cuánto esperó su gente. Sin {event} en la ruta: el comercio mira SUS
+    // puestos, y la jornada se elige por ?dia= — no hay nada que un id en la
+    // URL pudiera decir aquí que el contexto no diga ya mejor.
+    Route::get('/tiempos', ComercioTimingsController::class)->name('timings');
     Route::post('/categorias', [ComercioCatalogController::class, 'storeCategory'])->name('categories.store');
     Route::post('/productos', [ComercioCatalogController::class, 'storeProduct'])->name('products.store');
     Route::post('/productos/{product}', [ComercioCatalogController::class, 'updateProduct'])->name('products.update');
