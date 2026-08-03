@@ -31,19 +31,26 @@ async function vuelta() {
     programar(pantalla.proximaEspera());
 }
 
-if (hasToken()) {
-    vuelta();
-}
+// El bucle arranca SIEMPRE, con token o sin el, y es la propia vuelta la que
+// decide si hay algo que pedir.
+//
+// Arrancarlo solo cuando ya habia token —que es lo que hacia antes— dejaba
+// la tablet recien dada de alta con el tablero congelado para siempre: el
+// alta cargaba el tablero una vez y nadie volvia a preguntar hasta la
+// siguiente recarga de la pagina. En una tablet colgada de una pared eso es
+// una pantalla que parece viva y no lo esta, que es el peor fallo posible
+// aqui. Lo unico que lo delataba era el reloj de frescura subiendo.
+vuelta();
 
 // Volver a mirar la pantalla, o recuperar la senal, pregunta YA: esperar tres
 // segundos con la tablet en la mano ya se nota.
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && hasToken()) programar(0);
+    if (document.visibilityState === 'visible') programar(0);
 });
 
 window.addEventListener('online', () => {
     pantalla.online = true;
-    if (hasToken()) programar(0);
+    programar(0);
 });
 
 window.addEventListener('offline', () => {
