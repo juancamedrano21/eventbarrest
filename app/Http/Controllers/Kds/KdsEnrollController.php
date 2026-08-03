@@ -62,6 +62,21 @@ class KdsEnrollController extends Controller
             'device_name' => ['required', 'string', 'max:80'],
             // Null = la tablet vigila las dos áreas del puesto.
             'area' => ['nullable', Rule::enum(DispatchArea::class)],
+            // Con qué se reconoce al aparato que ya estuvo colgado aquí. Es
+            // OPCIONAL de verdad: solo la trae el APK, que la lee de su
+            // puente; la misma pantalla abierta en un navegador no tiene
+            // ninguna y se da de alta igual, con su fila nueva.
+            //
+            // NO ES UNA CREDENCIAL, y por eso no aparece en ninguna otra
+            // ruta: llega aquí, junto al código y al PIN, y no descuenta
+            // nada de ellos. Quien la presenta tiene que teclear los dos
+            // igual que la primera vez.
+            //
+            // El formato se acota a lo que puede ser un identificador
+            // —hex, guiones, poco más— porque esta cadena acaba en un WHERE
+            // y en una columna de 64: lo que no quepa en eso no es una
+            // identidad, es alguien probando.
+            'device_identity' => ['nullable', 'string', 'max:64', 'regex:/^[A-Za-z0-9_.:-]+$/'],
         ]);
 
         $llave = $this->llaveDelFreno((string) $data['codigo'], (string) $request->ip());
@@ -79,6 +94,7 @@ class KdsEnrollController extends Controller
                 (string) $data['pin'],
                 (string) $data['device_name'],
                 filled($data['area'] ?? null) ? DispatchArea::from((string) $data['area']) : null,
+                filled($data['device_identity'] ?? null) ? (string) $data['device_identity'] : null,
             );
         } catch (KitchenException $rechazo) {
             RateLimiter::hit($llave);

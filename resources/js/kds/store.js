@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { api, setToken, hasToken } from './api';
+import { leerIdentidad } from './bateria';
 
 // Cada cuanto se pregunta. Con la pestana delante, 3 s; oculta, 15 s — una
 // tablet en un armario no tiene que castigar al servidor.
@@ -99,6 +100,15 @@ export const usePantalla = defineStore('kds', {
             try {
                 const data = await api.enrolar({
                     codigo, pin, device_name: nombre, area: area || null,
+                    // Quien es este aparato, para que el servidor le devuelva
+                    // SU fila si ya estuvo colgado en este puesto en vez de
+                    // fabricarle otra. Va aqui y en ningun otro sitio: el
+                    // sondeo ya va firmado con el token.
+                    //
+                    // No abre nada por su cuenta. El codigo y el PIN de arriba
+                    // siguen siendo lo unico que deja entrar; esto solo decide
+                    // en que fila se escribe una vez han pasado.
+                    device_identity: leerIdentidad(),
                 });
                 setToken(data.token);
                 this.dispositivo = data.device;

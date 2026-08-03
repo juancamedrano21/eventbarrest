@@ -52,6 +52,14 @@ use Illuminate\Support\Str;
  * nada. Lo que sí es secreto, el PIN, no se filtra: acertar el puesto no
  * acorta el camino porque el resultado se decide al final y el bloqueo
  * cuenta igual.
+ *
+ * SOBRE LA IDENTIDAD DEL APARATO. Llega opcional, en el alta y solo en el
+ * alta, y sirve para UNA cosa: no fabricar una fila nueva cada vez que la
+ * misma tablet se vuelve a colgar. NO ES UNA CREDENCIAL y el orden de este
+ * método lo demuestra —se mira después de que el código y el PIN hayan
+ * pasado, nunca antes, y nunca en su lugar—. Si valiera para saltarse el
+ * PIN, cualquiera que averiguase una cadena de dieciséis caracteres que el
+ * propio aparato reparte entraría en un puesto ajeno.
  */
 class EnrollKdsDevice
 {
@@ -69,11 +77,18 @@ class EnrollKdsDevice
 
     private const MINUTOS_DE_BLOQUEO = 15;
 
-    public function __invoke(string $codigo, string $pin, string $deviceName, ?DispatchArea $area): EnrolledDevice
-    {
+    public function __invoke(
+        string $codigo,
+        string $pin,
+        string $deviceName,
+        ?DispatchArea $area,
+        ?string $identidad = null,
+    ): EnrolledDevice {
         // El código se dicta y se teclea: llega con guiones, con espacios y
         // en minúscula. Todo eso es el mismo código.
         $codigo = mb_strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $codigo));
+
+        $identidad = $this->identidad($identidad);
 
         $vendor = $codigo === '' ? null : Vendor::query()->withoutTenancy()
             ->where('kds_code', $codigo)
@@ -95,7 +110,7 @@ class EnrollKdsDevice
 
         $tenant = $this->cuentaOperable($vendor, $unidad);
 
-        return DB::transaction(function () use ($tenant, $vendor, $unidad, $deviceName, $area): EnrolledDevice {
+        return DB::transaction(function () use ($tenant, $vendor, $unidad, $deviceName, $area, $identidad): EnrolledDevice {
             // El PIN bueno limpia la cuenta de fallos del puesto: lo que el
             // freno persigue son las rachas a ciegas, no el dedo torpe de
             // quien acabó entrando.
@@ -111,17 +126,126 @@ class EnrollKdsDevice
                 $tenant,
                 fn (): KdsDevice => app(VendorContext::class)->runAs(
                     $vendor,
-                    fn (): KdsDevice => KdsDevice::create([
-                        'operating_unit_id' => $unidad->id,
-                        'name' => $this->nombre($deviceName),
-                        'area' => $area,
-                        'token_hash' => hash('sha256', $claro),
-                    ]),
+                    fn (): KdsDevice => $this->filaDelAparato($unidad, $deviceName, $area, $identidad, $claro),
                 ),
             );
 
             return EnrolledDevice::from($claro, $device);
         });
+    }
+
+    /**
+     * La fila que le toca a este aparato: la suya de siempre si ya estuvo
+     * colgado en este puesto, y una nueva si no.
+     *
+     * Es el corazón del encargo. Sin identidad —una pantalla abierta en un
+     * navegador cualquiera— no hay con qué reconocer a nadie y nace una fila,
+     * exactamente como antes.
+     */
+    private function filaDelAparato(
+        OperatingUnit $unidad,
+        string $deviceName,
+        ?DispatchArea $area,
+        ?string $identidad,
+        string $claro,
+    ): KdsDevice {
+        if ($identidad !== null) {
+            $this->apagarloEnLosDemasPuestos($identidad, $unidad);
+
+            $suya = KdsDevice::query()
+                ->where('operating_unit_id', $unidad->id)
+                ->where('device_identity', $identidad)
+                ->first();
+
+            if ($suya !== null) {
+                return $this->recolgar($suya, $deviceName, $area, $claro);
+            }
+        }
+
+        return KdsDevice::create([
+            'operating_unit_id' => $unidad->id,
+            'name' => $this->nombre($deviceName),
+            'area' => $area,
+            'device_identity' => $identidad,
+            'token_hash' => hash('sha256', $claro),
+        ]);
+    }
+
+    /**
+     * La tablet vuelve a su sitio: token nuevo, revocación levantada y el
+     * nombre y el área que se acaban de teclear.
+     *
+     * Se reutiliza la fila —y no se crea otra— porque la que se recuelga es
+     * LA MISMA tablet, y `kitchen_tickets` guarda en started_by_device_id y
+     * ready_by_device_id qué aparato tocó cada comanda. Una fila nueva por
+     * cada reconexión parte ese rastro en trozos: al reclamar un plato que
+     * nunca salió, el panel enseñaría una tablet muerta que ya no existe en
+     * la ventanilla.
+     *
+     * Vale también para una fila REVOCADA. Que la revocación se levante sola
+     * al dar el PIN no debilita nada: revocar apaga un token, y quien vuelve
+     * a entrar lo hace tecleando el código y el PIN igual que la primera vez.
+     * Lo contrario —que revocar dejase el aparato vetado para siempre—
+     * obligaría a un botón de «desvetar» en el panel el día que alguien
+     * revoque la tablet equivocada en pleno servicio.
+     */
+    private function recolgar(KdsDevice $device, string $deviceName, ?DispatchArea $area, string $claro): KdsDevice
+    {
+        $device->setAttribute('name', $this->nombre($deviceName));
+        $device->setAttribute('area', $area);
+        $device->setAttribute('token_hash', hash('sha256', $claro));
+
+        // El token viejo deja de valer en el acto: es el mismo campo. La
+        // tablet que se quedó sin él no puede volver a usarlo, y si alguien
+        // se lo copió, tampoco.
+        $device->setAttribute('revoked_at', null);
+
+        $device->guardarReenrolamiento();
+
+        return $device;
+    }
+
+    /**
+     * Un aparato está en un sitio a la vez.
+     *
+     * Si esta misma identidad tiene filas vivas en OTROS puestos, son de un
+     * alta anterior de donde la tablet ya no está: dejarlas vivas mantendría
+     * abierta la puerta de un puesto que ese aparato dejó de atender, y el
+     * panel seguiría contando una pantalla que allí no hay.
+     *
+     * SOLO DENTRO DE ESTE COMERCIO, y esa es la parte que hay que leer
+     * despacio. Se apaga lo que hay bajo la cuenta y el comercio cuyo PIN
+     * se acaba de acertar, nunca más allá. Barrer por identidad a lo ancho
+     * de la plataforma sonaría más completo y sería un regalo: presentar la
+     * identidad de una tablet ajena —una cadena que no es secreta— apagaría
+     * la pantalla de otro sin haber tecleado un solo PIN suyo.
+     */
+    private function apagarloEnLosDemasPuestos(string $identidad, OperatingUnit $unidad): void
+    {
+        $enOtroSitio = KdsDevice::query()
+            ->where('device_identity', $identidad)
+            ->where('operating_unit_id', '!=', $unidad->id)
+            ->whereNull('revoked_at')
+            ->get();
+
+        foreach ($enOtroSitio as $device) {
+            app(RevokeKdsDevice::class)($device);
+        }
+    }
+
+    /**
+     * La identidad tal como se guarda, o null si no vino ninguna.
+     *
+     * La cadena vacía y una llena de espacios son lo mismo que no traerla:
+     * el puente devuelve '' cuando el sistema no da el identificador, y si
+     * eso llegara a la columna, TODAS las tabletas sin identidad de un puesto
+     * colisionarían en el único y se fundirían en una sola fila.
+     */
+    private function identidad(?string $identidad): ?string
+    {
+        $limpia = trim((string) $identidad);
+
+        return $limpia === '' ? null : mb_substr($limpia, 0, 64);
     }
 
     /**
