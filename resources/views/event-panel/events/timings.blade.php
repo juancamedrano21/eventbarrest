@@ -52,5 +52,8 @@
         // El organizador compara comercios entre sí: aquí el nombre de cada
         // uno es la mitad de la tabla.
         'comparaComercios' => true,
+        // Y el salto de lo que ya pasó a lo que está pasando ahora, con el
+        // evento que se está mirando ya puesto.
+        'enlaceEnVivo' => route('event-panel.comandas', ['evento' => $event->id]),
     ])
 @endsection

@@ -16,9 +16,22 @@
                          varios comercios a la vez y necesita el nombre de
                          cada uno en la tabla; false en el del comercio, donde
                          esa columna repetiría su propio nombre en cada fila.
+
+      $enlaceEnVivo      string|null, OPCIONAL. URL del tablero de comandas en
+                         vivo, ya filtrado por lo que se esté mirando aquí.
+                         Cuando viene se pinta el botón «Ver las comandas en
+                         vivo»; cuando no viene no se pinta nada, y por eso es
+                         opcional: este parcial lo incluyen tres pantallas y no
+                         todas tienen adónde llevar. Es el puente entre las dos
+                         mitades de la misma pregunta — arriba, cuánto se tardó
+                         anoche; al otro lado, quién está esperando ahora.
 --}}
 
 @php
+    // No lo pasan todas las pantallas que incluyen esto, y el parcial no lee
+    // NADA del contexto: sin enlace, sin botón.
+    $enlaceEnVivo = $enlaceEnVivo ?? null;
+
     // El mínimo lo fija la consulta, no la pantalla: si allí se sube, aquí se
     // sube solo y las dos frases siguen diciendo lo mismo.
     $minimo = \App\Domains\Kitchen\Queries\TimingSummary::MINIMO_DE_COMANDAS;
@@ -71,6 +84,19 @@
 
     $conActividad = $informe->breakdown->filter(fn ($fila): bool => $fila->hasActivity());
 @endphp
+
+{{-- Va fuera del «si hay datos» a conciencia: cuando no hay ni una comanda
+     que cronometrar es justo cuando más falta hace poder mirar si ahora mismo
+     hay alguien esperando. --}}
+@if ($enlaceEnVivo !== null)
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-5 py-3">
+        <p class="text-sm text-gray-500">
+            Esto ya pasó. Para ver lo que hay en la cola ahora mismo, comercio por comercio:
+        </p>
+        <a href="{{ $enlaceEnVivo }}"
+            class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">Ver las comandas en vivo</a>
+    </div>
+@endif
 
 @if ($informe->isEmpty())
     <div class="rounded-xl border border-gray-200 bg-white px-5 py-12 text-center">

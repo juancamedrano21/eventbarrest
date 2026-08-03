@@ -527,7 +527,14 @@
             tiempos desde el evento.
         </p>
 
-        @include('event-panel.events.partials.tiempos', ['informe' => $tiempos, 'comparaComercios' => false])
+        @include('event-panel.events.partials.tiempos', [
+            'informe' => $tiempos,
+            'comparaComercios' => false,
+            // Los tiempos cuentan lo que ya pasó; el botón lleva a lo que está
+            // pasando. Filtrado por este comercio, que es de quien se está
+            // hablando en esta pantalla.
+            'enlaceEnVivo' => route('event-panel.comandas', ['comercio' => $vendor->id]),
+        ])
     </div>
 
     {{-- Tab: Usuarios --}}

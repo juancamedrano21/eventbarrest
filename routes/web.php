@@ -12,6 +12,7 @@ use App\Http\Controllers\Business\MenuController as BusinessMenuController;
 use App\Http\Controllers\Business\SalesController as BusinessSalesController;
 use App\Http\Controllers\Business\SettingsController;
 use App\Http\Controllers\Business\TeamController;
+use App\Http\Controllers\EventPanel\ComandasController;
 use App\Http\Controllers\EventPanel\DashboardController;
 use App\Http\Controllers\EventPanel\EventsController;
 use App\Http\Controllers\EventPanel\EventStockController;
@@ -74,6 +75,14 @@ Route::redirect('/login', '/entrar');
 
 Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(function (): void {
     Route::get('/', DashboardController::class)->name('home');
+    // Las comandas de todos los comercios, en vivo. DOS GET Y NINGÚN POST, y
+    // no es un olvido: el tablero del organizador es de solo lectura porque
+    // marcar una comanda es un acto de quien la cocina — si se pudiera marcar
+    // desde la oficina, los tiempos dejarían de medir la cocina. No lleva
+    // {event} en la ruta porque casi siempre se abre sin pensar en cuál: el
+    // evento vivo se resuelve solo, y `?evento=` / `?comercio=` afinan.
+    Route::get('/comandas', [ComandasController::class, 'show'])->name('comandas');
+    Route::get('/comandas/feed', [ComandasController::class, 'feed'])->name('comandas.feed');
     Route::get('/comercios', [VendorsController::class, 'index'])->name('vendors.index');
     Route::post('/comercios', [VendorsController::class, 'store'])->name('vendors.store');
     Route::post('/comercios/{vendor}/datos', [VendorsController::class, 'update'])->name('vendors.update');

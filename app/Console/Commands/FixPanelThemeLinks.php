@@ -37,6 +37,21 @@ class FixPanelThemeLinks extends Command
         '/panel' => '/event-panel',
     ];
 
+    /**
+     * Pantallas que nacieron DESPUÉS de comprar el tema y que su menú no
+     * puede conocer. Cada una dice detrás de qué enlace se cuelga.
+     *
+     * @var array<string, array{texto: string, despues_de: string}>
+     */
+    private const ENTRADAS = [
+        // Se mira DURANTE el evento, no para configurarlo: por eso va pegada
+        // a Eventos y no al final con los ajustes.
+        '/event-panel/comandas' => ['texto' => 'Comandas', 'despues_de' => '/event-panel/eventos'],
+    ];
+
+    /** Las del tema, copiadas tal cual para que la entrada nueva no desentone. */
+    private const CLASES = 'flex gap-x-3 py-2 px-3 text-sm text-sidebar-nav-foreground rounded-lg hover:bg-sidebar-nav-hover focus:outline-hidden focus:bg-sidebar-nav-focus ';
+
     public function handle(): int
     {
         $layout = resource_path('panel-theme/views/layout.blade.php');
@@ -74,19 +89,73 @@ class FixPanelThemeLinks extends Command
             ) ?? $html;
         }
 
+        $html = $this->ponerLasEntradasQueFaltan($html);
+
         if ($html === $original) {
-            $this->info('Los enlaces del tema ya estaban al día.');
+            $this->info('El menú del tema ya estaba al día.');
 
             return self::SUCCESS;
         }
 
         File::put($layout, $html);
-        $this->info('Enlaces del tema actualizados.');
+        $this->info('Menú del tema actualizado.');
 
         foreach (self::ENLACES as $viejo => $nuevo) {
             $this->line("  {$viejo} → ".($nuevo ?? 'eliminado'));
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Añade al menú las puertas que nacieron después de comprar el tema.
+     *
+     * Es idempotente a conciencia: si el enlace ya está, no hace nada. Este
+     * comando se ejecuta cada vez que alguien restaura el ZIP, y también
+     * cuando ya estaba puesto — duplicar la entrada del menú en cada pasada
+     * sería peor que no tenerla.
+     */
+    private function ponerLasEntradasQueFaltan(string $html): string
+    {
+        foreach (self::ENTRADAS as $href => $entrada) {
+            if (str_contains($html, 'href="'.$href.'"')) {
+                continue;
+            }
+
+            $ancla = '</a>';
+            $posicion = mb_strpos($html, 'href="'.$entrada['despues_de'].'"');
+
+            if ($posicion === false) {
+                $this->warn("No encontré dónde colgar «{$entrada['texto']}»: el tema cambió de forma.");
+
+                continue;
+            }
+
+            // Se cuelga justo después del enlace de referencia, cerrando su
+            // etiqueta: así hereda su sitio en la lista sin tocar el marcado
+            // de alrededor, que es de otro y puede cambiar en cualquier
+            // versión del tema.
+            $cierre = mb_strpos($html, $ancla, $posicion);
+
+            if ($cierre === false) {
+                continue;
+            }
+
+            $nuevo = sprintf(
+                '<a class="%s" href="%s">%s%s</a>',
+                self::CLASES,
+                $href,
+                PHP_EOL.'                      ',
+                $entrada['texto'].PHP_EOL.'                    ',
+            );
+
+            $html = mb_substr($html, 0, $cierre + mb_strlen($ancla))
+                .$nuevo
+                .mb_substr($html, $cierre + mb_strlen($ancla));
+
+            $this->line("  + {$entrada['texto']} → {$href}");
+        }
+
+        return $html;
     }
 }
