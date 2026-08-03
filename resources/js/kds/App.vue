@@ -8,8 +8,11 @@ import BuscarOverlay from './components/BuscarOverlay.vue';
 const pantalla = usePantalla();
 const buscando = ref(false);
 
+// 24 horas: «21:40» se lee de un vistazo y «09:40 p. m.» no. Y es la hora
+// del SERVIDOR, que es contra la que se cuentan todas las esperas: una
+// tablet con el reloj corrido no puede desmentir a la pantalla.
 const hora = computed(() => new Date(pantalla.reloj)
-    .toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' }));
+    .toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', hour12: false }));
 
 // El estado de la red se cuenta con la FRESCURA, no con navigator.onLine:
 // una tablet puede estar «en línea» conectada a un router que no llega a
