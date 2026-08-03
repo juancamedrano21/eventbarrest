@@ -19,6 +19,21 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // A esta aplicación se llega SIEMPRE por delante de un proxy que
+        // termina el TLS: el túnel de pruebas, y mañana el balanceador de
+        // producción. Sin esto Laravel ve la petición como http —el proxy le
+        // habla en claro por dentro— y construye todas sus URLs con http://:
+        // los assets de Vite se bloquean por contenido mixto, las redirecciones
+        // del login sacan al usuario de la sesión segura, y la cookie de sesión
+        // no se marca como Secure.
+        //
+        // Se confía en cualquier proxy porque no hay forma de conocer de
+        // antemano las direcciones de un túnel ni las de un balanceador
+        // gestionado. Es seguro mientras nadie pueda hablar con el servidor
+        // saltándose el proxy — el día que se exponga el puerto directamente,
+        // esta línea deja de valer y hay que acotar las direcciones.
+        $middleware->trustProxies(at: '*');
+
         // Las páginas de Filament reautorizan en CADA petición de Livewire
         // (hook de hidratación), no solo al montar: buscar en una tabla,
         // paginar o abrir un modal pasan por el endpoint global de Livewire,
