@@ -274,7 +274,7 @@
 
                 return `
                     <span class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs ${tono}"
-                        data-tablet data-medido="${esc(t.measured_at || '')}">
+                        data-tablet data-medido="${esc(t.measured_at || '')}" data-visto="${esc(t.seen_at || '')}">
                         <span class="font-medium">${esc(t.unit_name)}</span>
                         <span class="opacity-60">${esc(t.name)}</span>
                         <span class="font-semibold">${sinDato ? 'sin dato' : esc(t.percent) + ' %'}</span>
@@ -393,9 +393,19 @@
                 const caduca = (datos.battery || {}).stale_seconds || 300;
 
                 document.querySelectorAll('[data-tablet]').forEach((chip) => {
-                    const iso = chip.getAttribute('data-medido');
-                    const s = iso ? desde(iso) : null;
-                    const viejo = s !== null && s >= caduca;
+                    const medido = chip.getAttribute('data-medido');
+                    const s = medido ? desde(medido) : null;
+
+                    // Lo que decide si el número es de fiar NO es cuándo se
+                    // midió, sino cuándo se supo de la tablet. Una batería
+                    // quieta al 64 % no se vuelve a medir —guardarla otra vez
+                    // sería decir «medido ahora» de la misma lectura—, así que
+                    // su marca envejece aunque la tablet conteste cada tres
+                    // segundos. Mirar la medida daría por muerta a una tablet
+                    // perfectamente viva solo por tener la batería estable.
+                    const visto = chip.getAttribute('data-visto');
+                    const desdeQueSeSupo = visto ? desde(visto) : null;
+                    const viejo = desdeQueSeSupo === null || desdeQueSeSupo >= caduca;
 
                     // Borde punteado = esto es un recuerdo, no una medida. Lo
                     // mismo para la que nunca dijo nada: en las dos el número
@@ -407,7 +417,9 @@
 
                     edad.textContent = s === null
                         ? 'nunca lo ha dicho'
-                        : (viejo ? 'sin noticias hace ' + enPalabras(s) : 'hace ' + enPalabras(s));
+                        : (viejo
+                            ? 'sin noticias hace ' + enPalabras(desdeQueSeSupo ?? s)
+                            : 'hace ' + enPalabras(s));
                     edad.classList.toggle('font-medium', viejo);
                     edad.classList.toggle('opacity-60', !viejo);
                 });

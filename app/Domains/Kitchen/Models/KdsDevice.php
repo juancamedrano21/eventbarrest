@@ -29,6 +29,7 @@ use Illuminate\Support\Carbon;
  * @property int $vendor_id
  * @property string $name
  * @property DispatchArea|null $area Null = vigila las dos áreas del puesto
+ * @property string|null $device_identity Null = se dio de alta sin puente (un navegador)
  * @property string $token_hash
  * @property Carbon|null $last_seen_at
  * @property int|null $battery_percent Null = no lo sabemos, que NO es cero
@@ -54,9 +55,18 @@ class KdsDevice extends Model
         'operating_unit_id',
         'name',
         'area',
+        'device_identity',
         'token_hash',
         'last_seen_at',
     ];
+
+    /**
+     * Solo guardarReenrolamiento() la enciende, y solo mientras dura ese
+     * save. Es la misma figura que el transitionWrite de KitchenTicket: el
+     * guard no se relaja, se le abre UNA puerta con nombre para que en el
+     * sitio de la llamada se lea qué se está haciendo.
+     */
+    private bool $reenrolando = false;
 
     protected static function booted(): void
     {
@@ -65,7 +75,18 @@ class KdsDevice extends Model
             // es fabricar otro encima del rastro del primero. vendor_id lo
             // frena antes BelongsToVendor; se queda en la lista para que la
             // regla se lea completa aquí y no dependa del orden de los hooks.
-            foreach (['token_hash', 'operating_unit_id', 'vendor_id'] as $columna) {
+            //
+            // El token sale de la lista SOLO durante un reenrolamiento, que
+            // es el caso que la regla nunca contempló: la tablet que se
+            // vuelve a colgar en SU puesto y vuelve a dar el PIN. Ahí no se
+            // está fabricando otro dispositivo, se está renovando el secreto
+            // del mismo — y por eso el puesto y el comercio siguen sin poder
+            // moverse ni con la bandera puesta.
+            $inmutables = $device->reenrolando
+                ? ['operating_unit_id', 'vendor_id']
+                : ['token_hash', 'operating_unit_id', 'vendor_id'];
+
+            foreach ($inmutables as $columna) {
                 if ($device->isDirty($columna)) {
                     throw new KitchenException(
                         'Un dispositivo no se muda de puesto ni cambia de token: revócalo y enrólalo de nuevo.',
@@ -73,7 +94,39 @@ class KdsDevice extends Model
                     );
                 }
             }
+
+            // La identidad no cambia NUNCA, ni reenrolando. Es la respuesta a
+            // «qué aparato es este», y una fila que cambiase de aparato se
+            // llevaría consigo el rastro de las comandas que despachó el
+            // anterior. Una tablet distinta es una fila distinta.
+            if ($device->isDirty('device_identity')) {
+                throw new KitchenException(
+                    'La identidad de un dispositivo no se reescribe: enrola el aparato nuevo aparte.',
+                    'kds_device_identity_immutable',
+                );
+            }
         });
+    }
+
+    /**
+     * La única puerta por la que se reescribe el token de una tablet que ya
+     * existe: la que se descolgó y se volvió a colgar en su mismo puesto.
+     *
+     * El llamador coloca antes lo que el alta acaba de decidir —token nuevo,
+     * nombre, área, y `revoked_at` a null si venía revocada— y esto lo
+     * persiste. Se reutiliza la fila y no se crea otra porque una tablet que
+     * se recuelga es la misma tablet: su historial —qué comandas empezó,
+     * cuáles dio por listas— tiene que seguir siendo suyo.
+     */
+    public function guardarReenrolamiento(): void
+    {
+        $this->reenrolando = true;
+
+        try {
+            $this->save();
+        } finally {
+            $this->reenrolando = false;
+        }
     }
 
     protected function casts(): array

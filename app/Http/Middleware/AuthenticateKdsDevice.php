@@ -207,7 +207,13 @@ class AuthenticateKdsDevice
             return;
         }
 
-        if ($nivel !== null) {
+        // La marca solo se mueve cuando se movió la MEDIDA. Bumpearla en cada
+        // latido diría «medido ahora mismo» de una lectura que es la misma de
+        // hace media hora: es falso, y además reescribiría la fila cada minuto
+        // aunque no hubiera pasado nada, cambiando el ETag del panel por
+        // gusto. Lo que dice si la tablet sigue viva es last_seen_at, que está
+        // justo debajo y sí se toca siempre.
+        if ($nivel !== null && ($nivel !== $device->battery_percent || $cargando !== $device->battery_charging)) {
             $device->battery_percent = $nivel;
             $device->battery_charging = $cargando;
             $device->battery_at = now();

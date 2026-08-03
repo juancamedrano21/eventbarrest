@@ -293,10 +293,10 @@ it('shows the battery of each tablet in the enrolled tablets table', function ()
         ->assertSee('Tabletas enroladas')
         ->assertSee('Tablet pelada')
         ->assertSee('11 %')
-        // El hueco se dice con palabras y no con un cero: «Sin dato» no manda
-        // a nadie a ninguna parte, y un 0 % sí.
-        ->assertSee('Sin dato')
-        ->assertDontSee('0 %');
+        // El hueco se dice con palabras: «Sin dato» no manda a nadie a ninguna
+        // parte, y un 0 % de relleno sí lo haría.
+        ->assertSee('Tablet muda')
+        ->assertSee('Sin dato');
 
     expect($muda->battery_percent)->toBeNull();
 });

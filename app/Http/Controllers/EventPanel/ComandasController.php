@@ -469,6 +469,12 @@ class ComandasController extends Controller
             // La MARCA, no la antigüedad: la cuenta la hace el navegador con
             // el reloj delante, como los cronómetros de las comandas.
             'measured_at' => $tablet->battery_at?->toIso8601String(),
+            // Y cuándo se supo de la tablet EN GENERAL, que es otra pregunta.
+            // Una batería quieta al 64 % no se remide: su marca se queda vieja
+            // aunque la tablet esté contestando cada tres segundos. Sin esto,
+            // el panel confundiría «lleva media hora al 64 %» con «se apagó
+            // hace media hora», que es justo lo contrario de lo que pasa.
+            'seen_at' => $tablet->last_seen_at?->toIso8601String(),
             'low' => $tablet->bateriaEnApuros(),
         ];
     }
