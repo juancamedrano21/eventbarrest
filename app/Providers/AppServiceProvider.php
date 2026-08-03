@@ -46,6 +46,16 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('pos-login', fn (Request $request) => Limit::perMinute(5)
             ->by($request->input('username').'|'.$request->ip()));
 
+        // El alta de una tablet: techo absoluto contra una inundación, por
+        // código de comercio + IP. Es a propósito holgado —diez por minuto—
+        // porque este limitador cuenta también los ACIERTOS, y en un montaje
+        // todas las tabletas salen por el mismo NAT: apretarlo aquí dejaría
+        // fuera a la sexta tablet sin que nadie se hubiera equivocado. El
+        // freno que de verdad protege el PIN cuenta solo los fallos y está
+        // escrito a mano en KdsEnrollController.
+        RateLimiter::for('kds-enrolar', fn (Request $r) => Limit::perMinute(10)
+            ->by(mb_strtoupper((string) $r->input('codigo')).'|'.$r->ip()));
+
         //
     }
 }

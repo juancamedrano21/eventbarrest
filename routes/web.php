@@ -20,6 +20,7 @@ use App\Http\Controllers\EventPanel\SettlementController;
 use App\Http\Controllers\EventPanel\TeamController as EventPanelTeamController;
 use App\Http\Controllers\EventPanel\VendorCatalogController;
 use App\Http\Controllers\EventPanel\VendorInventoryController;
+use App\Http\Controllers\EventPanel\VendorKdsController;
 use App\Http\Controllers\EventPanel\VendorProfileController;
 use App\Http\Controllers\EventPanel\VendorSalesController;
 use App\Http\Controllers\EventPanel\VendorsController;
@@ -52,6 +53,11 @@ Route::view('/pos', 'pos', ['modalidad' => 'business', 'titulo' => 'POS', 'manif
     ->name('pos');
 Route::view('/event-pos', 'pos', ['modalidad' => 'event', 'titulo' => 'POS Eventos', 'manifest' => '/event-pos-manifest.webmanifest'])
     ->name('event-pos');
+
+// La pantalla de cocina, del mismo palo: cascarón público y toda la
+// autorización en la API, pero por token de DISPOSITIVO en vez de por
+// usuario — quien la mira no se identifica, la tablet sí.
+Route::view('/event-kds', 'kds', ['titulo' => 'Comandas'])->name('event-kds');
 
 // El panel NUEVO (Blade + Preline, ADR-006): convive con Filament hasta la
 // paridad. La autenticación es la misma sesión del panel clásico.
@@ -94,6 +100,14 @@ Route::middleware(['auth'])->prefix('event-panel')->name('event-panel.')->group(
     Route::post('/comercios/{vendor}/eventos/{event}/retirar', [VendorProfileController::class, 'removeFromEvent'])->name('vendors.events.remove');
     Route::post('/comercios/{vendor}/puestos', [VendorProfileController::class, 'storeOutlet'])->name('vendors.outlets.store');
     Route::post('/comercios/{vendor}/puestos/{outlet}', [VendorProfileController::class, 'updateOutlet'])->name('vendors.outlets.update');
+    // Las tabletas del KDS. Tres permisos distintos en cinco rutas: el
+    // código es del comercio, el PIN es del puesto y las tabletas son
+    // dispositivos — quien gestiona una cosa no tiene por qué tocar las otras.
+    Route::post('/comercios/{vendor}/codigo-kds', [VendorKdsController::class, 'regenerateCode'])->name('vendors.kds.code');
+    Route::post('/comercios/{vendor}/puestos/{outlet}/pin-kds', [VendorKdsController::class, 'rotatePin'])->name('vendors.kds.pin');
+    Route::post('/comercios/{vendor}/puestos/{outlet}/pin-kds/desbloquear', [VendorKdsController::class, 'unlockPin'])->name('vendors.kds.pin.unlock');
+    Route::post('/comercios/{vendor}/tabletas/revocar-todas', [VendorKdsController::class, 'revokeAll'])->name('vendors.kds.devices.revoke-all');
+    Route::post('/comercios/{vendor}/tabletas/{device}/revocar', [VendorKdsController::class, 'revokeDevice'])->name('vendors.kds.devices.revoke');
     Route::post('/comercios/{vendor}/categorias', [VendorCatalogController::class, 'storeCategory'])->name('vendors.categories.store');
     Route::post('/comercios/{vendor}/productos', [VendorCatalogController::class, 'storeProduct'])->name('vendors.products.store');
     Route::post('/comercios/{vendor}/productos/{product}', [VendorCatalogController::class, 'updateProduct'])->name('vendors.products.update');

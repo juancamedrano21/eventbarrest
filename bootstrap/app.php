@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use App\Domains\Kitchen\Exceptions\KitchenException;
 use App\Domains\Sales\Exceptions\SalesException;
 use App\Domains\Tenancy\Middleware\SetTenantContext;
+use App\Http\Middleware\AuthenticateKdsDevice;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -30,6 +32,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             SetTenantContext::class,
         ]);
+
+        // La puerta de la tablet. Alias y no grupo: se monta en las rutas del
+        // KDS y en ningún sitio más, porque es la única cadena de la
+        // plataforma donde el actor no es una persona.
+        $middleware->alias([
+            'kds.device' => AuthenticateKdsDevice::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Las reglas del dominio de ventas son errores operables del POS,
@@ -40,6 +49,14 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             return null;
+        });
+
+        // El tablero de cocina solo lo consume la tablet, así que aquí no hay
+        // rama HTML que atender: siempre JSON. Y el status lo trae la propia
+        // excepción — perder la carrera contra otra tablet es un 409, no un
+        // 422, y la app repinta en vez de culpar a quien tocó.
+        $exceptions->render(function (KitchenException $e) {
+            return response()->json(['code' => $e->errorCode, 'message' => $e->getMessage()], $e->httpStatus);
         });
 
         $exceptions->shouldRenderJsonWhen(

@@ -1,0 +1,17 @@
+{
+    "name": "EventBarRest Comandas · Cocina",
+    "short_name": "Comandas",
+    "start_url": "/event-kds",
+    "display": "standalone",
+    "orientation": "landscape",
+    "background_color": "#090e1a",
+    "theme_color": "#090e1a",
+    "icons": [
+        {
+            "src": "/kds-icon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        }
+    ]
+}

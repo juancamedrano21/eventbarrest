@@ -3,6 +3,77 @@
 @section('title', $vendor->name)
 
 @section('content')
+    {{-- Todo lo del KDS se prepara aquí arriba, en bloque. Nada de la forma
+         en línea con paréntesis: se empareja con el primer cierre ajeno del
+         archivo y se traga las directivas de en medio. --}}
+    @php
+        $codigoKds = $vendor->getAttribute('kds_code');
+
+        // Las tabletas se piden desde la vista porque el controlador del
+        // perfil no es de esta pantalla. Es la única consulta que este Blade
+        // hace por su cuenta; el día que crezca, que suba al controlador.
+        $tabletas = \App\Domains\Kitchen\Models\KdsDevice::query()
+            ->where('vendor_id', $vendor->id)
+            ->with('unit')
+            ->orderBy('name')
+            ->get();
+
+        // Las apagadas se quedan en la lista, al final: la pregunta que trae
+        // aquí al organizador suele ser «¿ya revoqué esa?».
+        [$tabletasVivas, $tabletasApagadas] = $tabletas->partition(fn ($t): bool => ! $t->estaRevocada());
+        $tabletas = $tabletasVivas->concat($tabletasApagadas);
+
+        $puestosConPin = $outlets->filter(fn ($o): bool => filled($o->getAttribute('kds_pin_hash')))->count();
+
+        $fechaKds = fn ($valor): string => $valor === null
+            ? '—'
+            : \Illuminate\Support\Carbon::parse((string) $valor)->timezone($tz)->locale('es')->translatedFormat('j \d\e F');
+
+        $horaKds = fn ($valor): string => $valor === null
+            ? 'Nunca'
+            : \Illuminate\Support\Carbon::parse((string) $valor)->timezone($tz)->format('d M, h:i a');
+
+        // Null significa bloqueo ya vencido: la fecha se queda escrita en la
+        // fila, y mostrarla como un bloqueo vigente asustaría sin motivo.
+        $bloqueoKds = function ($outlet) use ($tz) {
+            $valor = $outlet->getAttribute('kds_pin_locked_until');
+
+            if ($valor === null) {
+                return null;
+            }
+
+            $hasta = \Illuminate\Support\Carbon::parse((string) $valor)->timezone($tz);
+
+            return $hasta->isFuture() ? $hasta : null;
+        };
+
+        $nombreDelPuesto = fn (int $id): string => $outlets->firstWhere('id', $id)?->name ?? 'Puesto';
+    @endphp
+
+    {{-- El PIN en claro, una sola vez. Va arriba del todo y fuera de las
+         pestañas a propósito: la pantalla recuerda la última pestaña abierta,
+         así que dentro de una podría no llegar a verse nunca. --}}
+    @if (session('kdsPins'))
+        <div class="mb-6 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4">
+            <p class="font-medium text-amber-900">
+                Apunta {{ count(session('kdsPins')) === 1 ? 'este PIN ahora' : 'estos PIN ahora' }}: no se vuelven a mostrar.
+            </p>
+            <ul class="mt-3 space-y-2">
+                @foreach (session('kdsPins') as $puestoId => $pin)
+                    <li class="flex flex-wrap items-center gap-3">
+                        <span class="text-sm text-amber-900">{{ $nombreDelPuesto((int) $puestoId) }}</span>
+                        <code class="rounded-lg border border-amber-300 bg-white px-3 py-1.5 font-mono text-lg tracking-[0.35em] text-gray-800">{{ $pin }}</code>
+                        <button type="button" data-copiar="{{ $pin }}"
+                            class="rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs text-amber-800 hover:bg-amber-100">Copiar</button>
+                    </li>
+                @endforeach
+            </ul>
+            <p class="mt-3 text-xs text-amber-800">
+                Solo guardamos su huella cifrada: ni nosotros podemos leerlo después. Si se pierde, se rota otro.
+            </p>
+        </div>
+    @endif
+
     {{-- Encabezado del perfil --}}
     <div class="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div class="flex items-start gap-4">
@@ -19,6 +90,18 @@
                 <span>Contacto: {{ $vendor->contact_name ?? '—' }} {{ $vendor->contact_phone ? '· '.$vendor->contact_phone : '' }}</span>
                 @if ($vendor->vendorType)<span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $vendor->vendorType->name }}</span>@endif
                 @if ($vendor->foodType)<span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">{{ $vendor->foodType->name }}</span>@endif
+                @if ($codigoKds)
+                    {{-- El código se dicta por teléfono en medio del montaje:
+                         que se pueda copiar de un clic ahorra el error de leer
+                         una letra por otra. No es un secreto — lo que autoriza
+                         es el PIN del puesto. --}}
+                    <span class="inline-flex items-center gap-1.5">
+                        <span class="text-gray-400">Código KDS</span>
+                        <code class="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs tracking-widest text-gray-700">{{ $codigoKds }}</code>
+                        <button type="button" data-copiar="{{ $codigoKds }}" title="Copiar el código"
+                            class="rounded border border-gray-200 px-1.5 py-0.5 text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-800">Copiar</button>
+                    </span>
+                @endif
             </div>
             </div>
         </div>
@@ -245,6 +328,153 @@
 
 
     </div>
+
+    {{-- Pantallas de cocina (KDS) --}}
+    <section class="mt-6 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xs">
+        <header class="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-5 py-4">
+            <div>
+                <h2 class="font-medium text-gray-800">Pantallas de cocina</h2>
+                <p class="mt-0.5 max-w-2xl text-xs text-gray-500">
+                    Una tablet se cuelga una vez: se teclea el código del comercio y el PIN de su puesto, y a partir de ahí entra sola cada mañana.
+                    El código no es secreto —se dicta por teléfono—; lo que autoriza es el PIN.
+                </p>
+            </div>
+            <div class="flex items-center gap-3">
+                @if ($codigoKds)
+                    <code class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-sm tracking-widest text-gray-700">{{ $codigoKds }}</code>
+                    <button type="button" data-copiar="{{ $codigoKds }}"
+                        class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-800">Copiar</button>
+                @endif
+                <form method="POST" action="{{ route('event-panel.vendors.kds.code', $vendor) }}"
+                    onsubmit="return confirm('El código actual dejará de servir para colgar tabletas nuevas. Las que ya están puestas siguen funcionando. ¿Emitir uno nuevo?')">
+                    @csrf
+                    <button type="submit" class="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 hover:bg-gray-50 hover:text-gray-800">
+                        {{ $codigoKds ? 'Regenerar código' : 'Emitir código' }}
+                    </button>
+                </form>
+            </div>
+        </header>
+
+        {{-- El PIN, puesto por puesto: es de la ventanilla, no del comercio.
+             Quien lleva la barra norte no tiene por qué poder colgar una
+             pantalla en la cocina sur. --}}
+        <ul class="divide-y divide-gray-200">
+            @forelse ($outlets as $outlet)
+                <li class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+                    <div class="min-w-0">
+                        <p class="text-gray-800">{{ $outlet->name }}</p>
+                        @if (filled($outlet->getAttribute('kds_pin_hash')))
+                            <p class="text-xs text-gray-500">
+                                PIN activo · rotado el {{ $fechaKds($outlet->getAttribute('kds_pin_set_at')) }}
+                            </p>
+                        @else
+                            <p class="text-xs text-gray-400">Sin PIN: este puesto todavía no admite tabletas.</p>
+                        @endif
+                    </div>
+                    <div class="flex items-center gap-2">
+                        @if ($bloqueo = $bloqueoKds($outlet))
+                            <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs text-amber-800">
+                                Bloqueado hasta las {{ $bloqueo->format('h:i a') }}
+                            </span>
+                        @endif
+                        @if (filled($outlet->getAttribute('kds_pin_hash')))
+                            <form method="POST" action="{{ route('event-panel.vendors.kds.pin.unlock', [$vendor, $outlet]) }}">
+                                @csrf
+                                <button type="submit"
+                                    class="rounded-lg border px-2.5 py-1 text-xs {{ $bloqueo ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-gray-200 text-gray-700 hover:bg-gray-50' }}">
+                                    Desbloquear
+                                </button>
+                            </form>
+                        @endif
+                        <form method="POST" action="{{ route('event-panel.vendors.kds.pin', [$vendor, $outlet]) }}"
+                            onsubmit="return confirm('Se emitirá un PIN nuevo para {{ $outlet->name }} y solo se mostrará una vez. Las tabletas ya colgadas seguirán funcionando. ¿Seguimos?')">
+                            @csrf
+                            <button type="submit" class="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                                {{ filled($outlet->getAttribute('kds_pin_hash')) ? 'Rotar PIN' : 'Generar PIN' }}
+                            </button>
+                        </form>
+                    </div>
+                </li>
+            @empty
+                <li class="px-5 py-6 text-sm text-gray-500">Sin puestos todavía: el PIN es de la ventanilla, así que primero hay que crear una.</li>
+            @endforelse
+        </ul>
+
+        {{-- Las tabletas colgadas. El nombre es lo único que las distingue a
+             la hora de decidir cuál se apaga, y la última vez vista es lo que
+             dice si esa que nadie encuentra sigue viva. --}}
+        <div class="border-t border-gray-200">
+            <div class="flex items-center gap-2 px-5 py-4">
+                <h3 class="font-medium text-gray-800">Tabletas enroladas</h3>
+                <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ $tabletasVivas->count() }}</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="border-y border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                        <tr>
+                            <th class="px-5 py-3 font-medium">Tablet</th>
+                            <th class="px-5 py-3 font-medium">Vigila</th>
+                            <th class="px-5 py-3 font-medium">Última vez vista</th>
+                            <th class="px-5 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        @forelse ($tabletas as $tableta)
+                            <tr class="{{ $tableta->estaRevocada() ? 'bg-gray-50 text-gray-400' : 'hover:bg-gray-50' }}">
+                                <td class="px-5 py-3">
+                                    <p class="{{ $tableta->estaRevocada() ? '' : 'text-gray-800' }}">{{ $tableta->name }}</p>
+                                    <p class="text-xs text-gray-500">{{ $tableta->unit?->name ?? '—' }}</p>
+                                </td>
+                                <td class="px-5 py-3">
+                                    <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600">
+                                        {{ $tableta->area?->getLabel() ?? 'Barra y cocina' }}
+                                    </span>
+                                </td>
+                                <td class="px-5 py-3 text-gray-500">{{ $horaKds($tableta->last_seen_at) }}</td>
+                                <td class="px-5 py-3 text-right">
+                                    @if ($tableta->estaRevocada())
+                                        <span class="text-xs text-gray-400">Revocada el {{ $fechaKds($tableta->revoked_at) }}</span>
+                                    @else
+                                        <form method="POST" action="{{ route('event-panel.vendors.kds.devices.revoke', [$vendor, $tableta]) }}"
+                                            onsubmit="return confirm('{{ $tableta->name }} dejará de entrar en el acto. Para volver a usarla habrá que enrolarla de nuevo con el código y el PIN. ¿Revocarla?')">
+                                            @csrf
+                                            <button type="submit" class="rounded-lg border border-gray-200 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50">Revocar</button>
+                                        </form>
+                                    @endif
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="4" class="px-5 py-10 text-center text-gray-500">
+                                    Ninguna tablet colgada todavía. En la pantalla se teclea el código de arriba y el PIN de su puesto, y ya no se vuelve a teclear nada.
+                                </td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        {{-- El martillo. Rotar cierra las altas futuras y revocar mata las
+             sesiones vivas: son cosas distintas y por eso van separadas
+             arriba. Pero el caso real —falta una tablet y nadie sabe cuál—
+             necesita las dos a la vez, y buscarlas por separado con el
+             festival encima es justo cuando se olvida la mitad. --}}
+        <div class="flex flex-wrap items-center justify-between gap-3 border-t border-red-100 bg-red-50 px-5 py-4">
+            <p class="max-w-2xl text-xs text-red-800">
+                <span class="font-medium">¿Falta una tablet y no sabes cuál era?</span>
+                Apaga {{ $tabletasVivas->count() }} tableta(s) y cambia {{ $puestosConPin }} PIN de golpe.
+                Después habrá que volver a colgar una por una las que sí están: nadie entrará con lo que ya se sabía.
+            </p>
+            <form method="POST" action="{{ route('event-panel.vendors.kds.devices.revoke-all', $vendor) }}"
+                onsubmit="return confirm('Se apagan TODAS las tabletas de {{ $vendor->name }} y se cambian los PIN de sus puestos. Habrá que enrolar de nuevo, una por una, todas las que sigan en pie. ¿Seguimos?')">
+                @csrf
+                <button type="submit" class="rounded-lg bg-red-600 px-3.5 py-2 text-sm font-medium text-white hover:bg-red-500">
+                    Rotar PIN y revocar TODAS
+                </button>
+            </form>
+        </div>
+    </section>
     </div>
 
     @include('vendors.tabs.menu')
@@ -461,6 +691,22 @@
                 grid: { borderColor: '#e5e7eb', strokeDashArray: 3 },
                 tooltip: { y: { formatter: (v) => 'RD$ ' + v.toLocaleString('es-DO', { minimumFractionDigits: 2 }) } },
             }).render();
+        });
+    </script>
+
+    {{-- Copiar el código o un PIN. Delegado en el documento porque los
+         botones aparecen y desaparecen con el flash, y engancharlos uno a uno
+         al cargar dejaría muerto justo el del PIN recién emitido. --}}
+    <script>
+        document.addEventListener('click', function (evento) {
+            const boton = evento.target.closest('[data-copiar]');
+            if (!boton) return;
+
+            const original = boton.textContent;
+            navigator.clipboard?.writeText(boton.dataset.copiar).then(function () {
+                boton.textContent = 'Copiado';
+                setTimeout(() => { boton.textContent = original; }, 1500);
+            });
         });
     </script>
 

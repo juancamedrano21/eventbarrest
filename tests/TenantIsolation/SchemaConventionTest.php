@@ -42,6 +42,31 @@ $platformTables = [
     'food_types',
 ];
 
+/**
+ * Los únicos índices únicos GLOBALES que la plataforma acepta, por nombre.
+ * Uno por uno y con su motivo escrito: si algún día hay que añadir otro,
+ * que cueste explicarlo aquí antes que en producción.
+ *
+ * `vendors_kds_code_unique_global` — el código que se teclea en una tablet
+ * del KDS para decir de qué comercio es. La tablet lo teclea SIN saber a
+ * qué cuenta pertenece su comercio, así que resolverlo es forzosamente
+ * cross-tenant y componer el índice con tenant_id lo dejaría inservible:
+ * dos organizadores podrían repartir el mismo código y la tablet no tendría
+ * forma de elegir.
+ *
+ * La excepción no relaja nada, aprieta. Un único global es estrictamente
+ * MÁS restrictivo que el compuesto — hace la colisión IMPOSIBLE en vez de
+ * solo detectable dentro de una cuenta. Y el peligro concreto que persigue
+ * la regla —que un upsert de una cuenta resuelva su conflicto contra la
+ * fila de otra— aquí no puede darse: TenantScopedBuilder::upsert() lanza
+ * SIEMPRE, para cualquier modelo con BelongsToTenant, sin excepción.
+ *
+ * @var array<int, string>
+ */
+$globalUniqueIndexes = [
+    'vendors_kds_code_unique_global',
+];
+
 $businessTables = fn (): array => collect(Schema::getTableListing(schemaQualified: false))
     ->reject(fn (string $table): bool => in_array($table, $platformTables, true))
     ->values()
@@ -56,10 +81,16 @@ it('gives every business table a NOT NULL tenant_id', function () use ($business
     }
 });
 
-it('composes every unique index with tenant_id', function () use ($businessTables): void {
+it('composes every unique index with tenant_id', function () use ($businessTables, $globalUniqueIndexes): void {
     foreach ($businessTables() as $table) {
         foreach (Schema::getIndexes($table) as $index) {
             if (! $index['unique'] || $index['primary']) {
+                continue;
+            }
+
+            // Exceptuado por nombre, con su motivo arriba: la lista es corta
+            // a propósito y nadie entra en ella sin argumentarlo.
+            if (in_array($index['name'], $globalUniqueIndexes, true)) {
                 continue;
             }
 

@@ -29,3 +29,8 @@ Thumbs.db
 # Preline Pro (código licenciado, se restaura desde el ZIP comprado)
 /public/panel-theme
 /resources/panel-theme
+
+# Base SQLite que aparece si algo corre con DB_CONNECTION=sqlite y el
+# DB_DATABASE del .env: es un artefacto, la base de verdad es MySQL.
+/bole-rest
+*.sqlite
