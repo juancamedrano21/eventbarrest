@@ -56,6 +56,14 @@ class AuthenticateKdsDevice
      */
     private const SEGUNDOS_ENTRE_LATIDOS = 60;
 
+    /**
+     * Cuánto tiene que moverse el nivel de batería para saltarse el minuto
+     * de espera y escribirse en el acto. Cinco puntos no es ruido de
+     * medición: una tablet que baja cinco puntos entre dos sondeos se está
+     * cayendo a plomo, y eso es justo lo que hay que ver pronto.
+     */
+    private const PUNTOS_DE_CAIDA_URGENTE = 5;
+
     public function handle(Request $request, Closure $next): Response
     {
         $claro = $request->bearerToken();
@@ -88,7 +96,7 @@ class AuthenticateKdsDevice
         // y ready_by_device_id salen de aquí.
         $request->attributes->set('kds_device', $device);
 
-        $this->latido($device);
+        $this->latido($device, $request);
 
         return $next($request);
     }
@@ -163,12 +171,23 @@ class AuthenticateKdsDevice
     }
 
     /**
-     * El «sigo viva» del panel. Se escribe con save() y no con saveQuietly()
-     * para que el guard de identidad de KdsDevice siga corriendo: si algún
-     * día alguien mete otra columna en este camino, que reviente aquí.
+     * El «sigo viva» del panel, y de paso cuánta batería le queda. Se escribe
+     * con save() y no con saveQuietly() para que el guard de identidad de
+     * KdsDevice siga corriendo: si algún día alguien mete otra columna en
+     * este camino, que reviente aquí. (Las tres de la batería no lo
+     * disparan, y hay un test que lo sostiene: el guard mira token_hash,
+     * operating_unit_id y vendor_id, y ninguna de las tres se toca aquí.)
+     *
+     * DE QUÉ DISPOSITIVO SE ESCRIBE LA BATERÍA. Del que salió del TOKEN, y
+     * nunca de ninguno que venga en la petición. La cabecera trae un número
+     * y nada más: no hay id de dispositivo que mandar, así que una tablet no
+     * tiene por dónde escribir la batería de la de al lado ni equivocándose.
      */
-    private function latido(KdsDevice $device): void
+    private function latido(KdsDevice $device, Request $request): void
     {
+        $nivel = $this->nivelDeLaCabecera($request);
+        $cargando = $this->cargaDeLaCabecera($request);
+
         $ultimo = $device->last_seen_at;
 
         // El umbral se calcula sobre now() y NUNCA sobre $ultimo: Carbon es
@@ -176,12 +195,96 @@ class AuthenticateKdsDevice
         // atributo del modelo en memoria y dejaría la fila sucia con una
         // hora inventada, lista para que el siguiente save() de cualquiera
         // la persistiera.
-        if ($ultimo !== null && $ultimo->greaterThan(now()->subSeconds(self::SEGUNDOS_ENTRE_LATIDOS))) {
+        $tocaPorTiempo = $ultimo === null
+            || ! $ultimo->greaterThan(now()->subSeconds(self::SEGUNDOS_ENTRE_LATIDOS));
+
+        // El matiz que la batería añade al freno del latido: hay cambios que
+        // no aguantan un minuto guardados en la memoria de un proceso PHP
+        // que se muere al acabar la petición. Quien acaba de enchufar la
+        // tablet quiere verlo en el panel ya, y una caída a plomo es
+        // exactamente el aviso que llega tarde si se espera al minuto.
+        if (! $tocaPorTiempo && ! $this->cambioQueNoEspera($device, $nivel, $cargando)) {
             return;
         }
 
+        if ($nivel !== null) {
+            $device->battery_percent = $nivel;
+            $device->battery_charging = $cargando;
+            $device->battery_at = now();
+        }
+
+        // Y si esta vez no vino nada, lo de antes se QUEDA. Borrarlo sería
+        // cambiar «la última vez que lo supimos estaba al 12 %» por «no
+        // sabemos nada», que es peor información; para eso está battery_at,
+        // que dice de cuándo es y deja que el panel decida si ya no sirve.
+
         $device->last_seen_at = now();
         $device->save();
+    }
+
+    /**
+     * ¿Trae esta lectura algo que no puede esperar al siguiente minuto?
+     *
+     * Sin lectura no hay novedad, y la primera de todas siempre lo es: el
+     * panel lleva desde el enrolamiento pintando la tablet en gris.
+     */
+    private function cambioQueNoEspera(KdsDevice $device, ?int $nivel, ?bool $cargando): bool
+    {
+        if ($nivel === null) {
+            return false;
+        }
+
+        if ($device->battery_percent === null) {
+            return true;
+        }
+
+        // Enchufar o desenchufar es un HECHO, no una medida: no tiene
+        // margen que superar. Se compara solo cuando la tablet sabe decirlo
+        // —si dejó de saberlo, dejar de saber algo no es una urgencia y se
+        // guardará con el latido del minuto.
+        if ($cargando !== null && $cargando !== $device->battery_charging) {
+            return true;
+        }
+
+        return abs($nivel - $device->battery_percent) >= self::PUNTOS_DE_CAIDA_URGENTE;
+    }
+
+    /**
+     * El nivel que dice la tablet, o null si no dice nada que se pueda creer.
+     *
+     * Todo lo que no sea un entero de 0 a 100 se IGNORA en silencio en vez
+     * de rechazar la petición: al otro lado hay una pantalla de cocina, y
+     * quedarse sin comandas porque el WebView devolvió una cadena rara sería
+     * cambiar un adorno del panel por el servicio de la noche.
+     */
+    private function nivelDeLaCabecera(Request $request): ?int
+    {
+        $crudo = $request->header('X-Kds-Bateria');
+
+        if (! is_string($crudo)) {
+            return null;
+        }
+
+        $nivel = filter_var(trim($crudo), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 0, 'max_range' => 100],
+        ]);
+
+        return is_int($nivel) ? $nivel : null;
+    }
+
+    /**
+     * Enchufada (1), no enchufada (0) o no se sabe (cualquier otra cosa,
+     * incluida la ausencia de la cabecera). Estricto a propósito: aquí un
+     * «casi» no existe, y tratar una cadena vacía como «no carga» pintaría
+     * cargadores desenchufados que sí lo están.
+     */
+    private function cargaDeLaCabecera(Request $request): ?bool
+    {
+        return match ($request->header('X-Kds-Cargando')) {
+            '1' => true,
+            '0' => false,
+            default => null,
+        };
     }
 
     private function rechazo(string $code, string $message): JsonResponse

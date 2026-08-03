@@ -31,6 +31,9 @@ use Illuminate\Support\Carbon;
  * @property DispatchArea|null $area Null = vigila las dos áreas del puesto
  * @property string $token_hash
  * @property Carbon|null $last_seen_at
+ * @property int|null $battery_percent Null = no lo sabemos, que NO es cero
+ * @property bool|null $battery_charging
+ * @property Carbon|null $battery_at
  * @property Carbon|null $revoked_at
  * @property-read OperatingUnit|null $unit
  */
@@ -38,6 +41,14 @@ class KdsDevice extends Model
 {
     use BelongsToTenant;
     use BelongsToVendor;
+
+    /**
+     * Por debajo de aquí y sin cargador, la tablet no llega al final del
+     * servicio. Es un número de operación y no de electrónica: da margen
+     * para que alguien cruce el recinto con un cable antes de que la
+     * pantalla se apague en plena cola.
+     */
+    public const BATERIA_EN_APUROS = 20;
 
     protected $fillable = [
         'operating_unit_id',
@@ -70,6 +81,13 @@ class KdsDevice extends Model
         return [
             'area' => DispatchArea::class,
             'last_seen_at' => 'datetime',
+            // 'integer' y 'boolean' respetan el null: castean lo que hay y
+            // dejan el hueco en su sitio. Con ellos, un `=== null` distingue
+            // «no lo sé» de «está a cero», que es toda la gracia de estas
+            // tres columnas.
+            'battery_percent' => 'integer',
+            'battery_charging' => 'boolean',
+            'battery_at' => 'datetime',
             'revoked_at' => 'datetime',
         ];
     }
@@ -92,6 +110,49 @@ class KdsDevice extends Model
     public function estaRevocada(): bool
     {
         return $this->revoked_at !== null;
+    }
+
+    /**
+     * ¿Ha llegado a decirnos alguna vez cuánta batería le queda?
+     *
+     * Existe para que el panel no tenga que escribir `!== null` sobre una
+     * columna donde el null significa algo muy concreto. Quien no lo sabe se
+     * pinta en gris —«sin dato»— y jamás en rojo: avisar de una batería
+     * agotada que nadie ha medido es la forma más rápida de que se deje de
+     * mirar el aviso de verdad.
+     */
+    public function sabeSuBateria(): bool
+    {
+        return $this->battery_percent !== null;
+    }
+
+    /**
+     * La que hay que ir a enchufar.
+     *
+     * Cargando NO está en apuros aunque marque 4 %: ya hay un cable puesto y
+     * el aviso solo serviría para mandar a alguien a un puesto donde el
+     * problema está resuelto.
+     */
+    public function bateriaEnApuros(): bool
+    {
+        return $this->battery_percent !== null
+            && $this->battery_percent <= self::BATERIA_EN_APUROS
+            && $this->battery_charging !== true;
+    }
+
+    /**
+     * Cuánto hace que se midió, en segundos, o null si nunca se midió.
+     *
+     * El panel lo necesita porque el nivel y su hora se leen juntos o no se
+     * leen: un 8 % de hace seis horas es una tablet que ya se apagó, y un
+     * 8 % de hace tres segundos es una carrera con un cable en la mano.
+     */
+    public function antiguedadDeLaBateria(): ?int
+    {
+        // Carbon 3 devuelve float aquí; el panel pinta segundos enteros.
+        return $this->battery_at === null
+            ? null
+            : (int) $this->battery_at->diffInSeconds(absolute: true);
     }
 
     /**

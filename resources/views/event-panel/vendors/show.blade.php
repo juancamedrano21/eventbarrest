@@ -409,12 +409,27 @@
                 <h3 class="font-medium text-gray-800">Tabletas enroladas</h3>
                 <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{{ $tabletasVivas->count() }}</span>
             </div>
+
+            {{-- Aquí la batería no tiene dos escalones como en el tablero en
+                 vivo, y es a propósito: ésta es la pantalla del montaje, no la
+                 de la noche. La pregunta que se hace aquí es «¿cuál dejo
+                 cargando antes de abrir?», y para eso un 12 % y un 6 % son la
+                 misma respuesta. El escalón de urgencia vive en «Comandas en
+                 vivo», que es donde sirve para decidir a cuál se corre primero. --}}
+            <p class="px-5 pb-3 text-xs text-gray-500">
+                La batería la manda la propia tablet cuando pregunta por sus comandas, así que
+                <strong class="font-medium text-gray-600">«Sin dato» no es cero</strong>: es una tablet que nunca lo ha dicho —el
+                navegador en el que se abrió no sabe leerla— y no hay nada que ir a enchufar. Se marca la que está por debajo del
+                {{ \App\Domains\Kitchen\Models\KdsDevice::BATERIA_EN_APUROS }} % <em>sin</em> cargador: con el cable puesto ya se
+                está resolviendo sola. La hora de al lado es cuándo se midió, que es la mitad del dato.
+            </p>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
                     <thead class="border-y border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                         <tr>
                             <th class="px-5 py-3 font-medium">Tablet</th>
                             <th class="px-5 py-3 font-medium">Vigila</th>
+                            <th class="px-5 py-3 font-medium">Batería</th>
                             <th class="px-5 py-3 font-medium">Última vez vista</th>
                             <th class="px-5 py-3"></th>
                         </tr>
@@ -431,6 +446,21 @@
                                         {{ $tableta->area?->getLabel() ?? 'Barra y cocina' }}
                                     </span>
                                 </td>
+                                <td class="px-5 py-3">
+                                    @if ($tableta->estaRevocada())
+                                        {{-- De una tablet revocada no hay batería que vigilar: ya no
+                                             entra, y su último nivel solo serviría para mandar a
+                                             alguien a buscar una pantalla que se llevaron ayer. --}}
+                                        <span class="text-xs text-gray-400">—</span>
+                                    @elseif (! $tableta->sabeSuBateria())
+                                        <span class="text-xs text-gray-400">Sin dato</span>
+                                    @else
+                                        <span class="inline-block rounded-full px-2.5 py-0.5 text-xs {{ $tableta->bateriaEnApuros() ? 'bg-rose-50 font-medium text-rose-700' : 'bg-gray-100 text-gray-600' }}">
+                                            {{ $tableta->battery_percent }} %@if ($tableta->battery_charging) · cargando @endif
+                                        </span>
+                                        <p class="mt-0.5 text-xs text-gray-400">{{ $horaKds($tableta->battery_at) }}</p>
+                                    @endif
+                                </td>
                                 <td class="px-5 py-3 text-gray-500">{{ $horaKds($tableta->last_seen_at) }}</td>
                                 <td class="px-5 py-3 text-right">
                                     @if ($tableta->estaRevocada())
@@ -446,7 +476,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="px-5 py-10 text-center text-gray-500">
+                                <td colspan="5" class="px-5 py-10 text-center text-gray-500">
                                     Ninguna tablet colgada todavía. En la pantalla se teclea el código de arriba y el PIN de su puesto, y ya no se vuelve a teclear nada.
                                 </td>
                             </tr>

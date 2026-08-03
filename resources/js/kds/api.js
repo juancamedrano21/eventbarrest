@@ -4,6 +4,8 @@
 // Las claves de almacenamiento son PROPIAS y no las del POS aunque compartan
 // origen: si fueran las mismas, el logout del cajero mataria la sesion de la
 // cocina en mitad del servicio.
+import { leerBateria } from './bateria';
+
 const BASE = '/api/kds';
 
 let token = localStorage.getItem('kds_token');
@@ -53,11 +55,41 @@ async function request(method, path, body = null, extraHeaders = {}) {
     return { ...data, etag: response.headers.get('ETag') };
 }
 
+/**
+ * La bateria viaja EN CABECERA y no en la URL, y esa es toda la decision.
+ *
+ * Metida en la query seria un parametro mas que cambia cada pocos minutos, y
+ * con el cambiaria la URL: adios al If-None-Match, adios al 304, y cada
+ * tablet se bajaria el tablero entero cada tres segundos toda la noche. En
+ * cabecera no toca ni el ETag ni la cache, y el servidor la lee de paso.
+ *
+ * Nunca lanza: si no hay dato, no hay cabeceras y ya esta. El sondeo del
+ * tablero no se rompe por no saber la propia bateria.
+ */
+async function cabecerasDeBateria() {
+    const lectura = await leerBateria().catch(() => null);
+
+    if (!lectura) return {};
+
+    const cabeceras = { 'X-Kds-Bateria': String(lectura.nivel) };
+
+    // Se OMITE cuando no se sabe, en vez de mandar un 0: para el servidor un
+    // hueco es «no lo se» y un 0 es «desenchufada», y no son lo mismo.
+    if (lectura.cargando !== null) {
+        cabeceras['X-Kds-Cargando'] = lectura.cargando ? '1' : '0';
+    }
+
+    return cabeceras;
+}
+
 export const api = {
     // El alta de la tablet: se hace UNA vez, en el montaje del evento.
     enrolar: (payload) => request('POST', '/enrolar', payload),
     salir: () => request('POST', '/salir'),
-    comandas: (etag) => request('GET', '/comandas', null, etag ? { 'If-None-Match': etag } : {}),
+    comandas: async (etag) => request('GET', '/comandas', null, {
+        ...(etag ? { 'If-None-Match': etag } : {}),
+        ...(await cabecerasDeBateria()),
+    }),
     avanzar: (orderId, area, from, to) => request('POST', `/comandas/${orderId}/${area}/estado`, { from, to }),
     buscar: (q) => request('GET', `/buscar?q=${encodeURIComponent(q)}`),
 };

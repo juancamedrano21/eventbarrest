@@ -8,12 +8,14 @@ use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\EventOutlet;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Identity\Enums\Permission;
+use App\Domains\Kitchen\Models\KdsDevice;
 use App\Domains\Kitchen\Queries\KitchenBoard;
 use App\Domains\Kitchen\Queries\KitchenLineView;
 use App\Domains\Kitchen\Queries\KitchenTicketView;
 use App\Domains\Sales\Models\Order;
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\EventPanel\Concerns\AuthorizesOrganizerPanel;
+use Illuminate\Database\Eloquent\Collection as ModelCollection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
@@ -51,6 +53,19 @@ use Symfony\Component\HttpFoundation\Response;
  * minutos», ni «hay 3 comercios atascados», que también depende del reloj.
  * Viajan MARCAS DE TIEMPO y el umbral en segundos; quién está en rojo y
  * cuánto lleva esperando lo calcula el navegador, que tiene el reloj delante.
+ *
+ * LA BATERÍA DE LAS TABLETAS VIAJA AQUÍ Y NO EN OTRA PANTALLA porque el
+ * organizador ya está mirando ésta. Una tablet que se apaga a las once deja
+ * un puesto ciego igual de bien que una comanda atascada, con la diferencia
+ * de que esto se evita con un cable y quince segundos de aviso. Se manda
+ * `measured_at` —la marca, nunca «hace 4 minutos»— por la misma razón que
+ * todo lo demás, y hay que decir su precio en voz alta: como la batería SÍ
+ * entra en el hash, cada tablet que refresca su nivel es un cambio real del
+ * tablero, y el middleware del KDS deja pasar uno por tablet y minuto. Con
+ * veinte tabletas eso son veinte cambios por minuto y el 304 se emite bastante
+ * menos que antes. Es el precio correcto: sacar la batería del hash la
+ * congelaría hasta que se moviera una comanda, y entonces el aviso llegaría
+ * tarde justo en el puesto tranquilo, que es donde nadie está mirando.
  */
 class ComandasController extends Controller
 {
@@ -69,6 +84,30 @@ class ComandasController extends Controller
      * es él quien decide el color: aquí no sabemos qué hora es en su pantalla.
      */
     public const SEGUNDOS_DE_ATASCO = 720;
+
+    /**
+     * Por debajo de aquí la tablet se pinta en rojo y no en ámbar.
+     *
+     * El escalón de «hay que ir con un cable» es de KdsDevice y vale 20: es
+     * una regla del dominio, la misma para todo el que pregunte. Éste otro es
+     * solo del panel, y por eso vive aquí: no cambia lo que hay que hacer
+     * —enchufarla— sino a cuál se corre primero cuando hay tres avisadas y una
+     * sola persona libre. Al 8 % ya no da tiempo a terminar la conversación.
+     */
+    public const BATERIA_CRITICA = 10;
+
+    /**
+     * Cuánto puede callar una tablet antes de que su nivel deje de ser un dato
+     * y pase a ser un recuerdo.
+     *
+     * La tablet pregunta por el tablero cada tres segundos y el servidor le
+     * anota la batería como mucho una vez por minuto. Cinco minutos de
+     * silencio, entonces, no son un sondeo perdido: son una pantalla apagada,
+     * sin cobertura o desenchufada de la corriente y de la red a la vez. El
+     * nivel se sigue enseñando —es lo último que supimos— pero la pantalla
+     * dice que es viejo, porque un 80 % de hace tres horas no es un 80 %.
+     */
+    public const SEGUNDOS_SIN_NOTICIAS = 300;
 
     /**
      * La pantalla. Se pinta ya servida con el primer tablero, para que abrirla
@@ -254,16 +293,33 @@ class ComandasController extends Controller
             fn (KitchenTicketView $tarjeta): int => (int) ($deQuePuesto->get($tarjeta->orderId) ?? 0),
         );
 
+        $tabletas = $this->tabletasDe($puestos);
+
         $comercios = [];
 
         foreach ($puestos->groupBy(fn (EventOutlet $puesto): int => (int) $puesto->vendor_id) as $vendorId => $suyos) {
             $unidades = [];
+            $pantallas = [];
+            $sinCable = 0;
             $contadores = ['pending' => 0, 'in_progress' => 0, 'ready' => 0];
             $masVieja = null;
             $numeroMasViejo = null;
             $nombre = '';
 
             foreach ($suyos as $puesto) {
+                // Las tabletas se recogen ANTES del `continue` de más abajo, y
+                // eso no es casualidad: el puesto sin nada pendiente se salta
+                // el resto del bucle, y es justo el puesto tranquilo donde una
+                // tablet al 6 % pasa desapercibida hasta que entra la primera
+                // comanda de la noche y ya no hay pantalla que la reciba.
+                foreach ($tabletas->where('operating_unit_id', $puesto->id) as $tablet) {
+                    $pantallas[] = $this->pantalla($tablet, $puesto);
+
+                    if ($tablet->bateriaEnApuros()) {
+                        $sinCable++;
+                    }
+                }
+
                 // Todos los puestos del grupo son del mismo comercio, así que
                 // basta con el primero. Un puesto de evento SIEMPRE tiene
                 // comercio —EventOutlet lo exige al crearse— y por eso aquí no
@@ -317,6 +373,13 @@ class ComandasController extends Controller
                 'oldest_since' => $masVieja,
                 'oldest_number' => $numeroMasViejo,
                 'units' => $unidades,
+                // Las tabletas van en el comercio y no dentro de `units`
+                // porque `units` solo trae los puestos con algo abierto: una
+                // tablet moribunda no puede depender de que ese puesto tenga
+                // cola justo ahora para que se la vea. Cada pantalla dice de
+                // qué puesto es, que es lo que hacía falta.
+                'tablets' => $pantallas,
+                'low_battery' => $sinCable,
             ];
         }
 
@@ -349,13 +412,80 @@ class ComandasController extends Controller
             ],
             'vendor' => $comercio === null ? null : ['id' => $comercio->id, 'name' => $comercio->name],
             'threshold_seconds' => self::SEGUNDOS_DE_ATASCO,
+            'battery' => $this->umbralesDeBateria(),
             'totals' => [
                 'pending' => array_sum(array_column($comercios, 'pending')),
                 'in_progress' => array_sum(array_column($comercios, 'in_progress')),
                 'ready' => array_sum(array_column($comercios, 'ready')),
                 'open' => array_sum(array_column($comercios, 'open')),
+                'low_battery' => array_sum(array_column($comercios, 'low_battery')),
             ],
             'vendors' => $comercios,
+        ];
+    }
+
+    /**
+     * Las tabletas que siguen colgadas en esos puestos.
+     *
+     * Las revocadas se quedan fuera y no es un detalle: revocar una tablet es
+     * decir que ya no está: pintar su última batería en el tablero de la noche
+     * mandaría a alguien a buscar una pantalla que se llevaron ayer.
+     *
+     * @param  Collection<int, EventOutlet>  $puestos
+     * @return ModelCollection<int, KdsDevice>
+     */
+    private function tabletasDe(Collection $puestos): ModelCollection
+    {
+        return KdsDevice::query()
+            ->whereIn('operating_unit_id', $puestos->pluck('id'))
+            ->whereNull('revoked_at')
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * Lo que hace falta para pintar una batería, sin pintarla.
+     *
+     * `percent` y `charging` pueden ser null los dos, y ese null es el dato:
+     * quiere decir que nadie lo ha medido. El navegador lo pinta en gris y
+     * jamás en rojo, porque avisar de una batería agotada que nunca se midió
+     * es la forma más rápida de que se deje de mirar el aviso de verdad.
+     *
+     * `low` lo decide el servidor con la regla del dominio —el mismo
+     * `bateriaEnApuros()` que cuenta la tira de indicadores— para que la cifra
+     * de arriba y los chips de abajo no puedan discrepar nunca. Al navegador
+     * solo le queda elegir entre ámbar y rojo.
+     *
+     * @return array<string, mixed>
+     */
+    private function pantalla(KdsDevice $tablet, EventOutlet $puesto): array
+    {
+        return [
+            'id' => $tablet->id,
+            'name' => $tablet->name,
+            'unit_name' => $puesto->name,
+            'percent' => $tablet->battery_percent,
+            'charging' => $tablet->battery_charging,
+            // La MARCA, no la antigüedad: la cuenta la hace el navegador con
+            // el reloj delante, como los cronómetros de las comandas.
+            'measured_at' => $tablet->battery_at?->toIso8601String(),
+            'low' => $tablet->bateriaEnApuros(),
+        ];
+    }
+
+    /**
+     * Los tres números con los que el navegador decide el color y las
+     * palabras. Viajan en el cuerpo por lo mismo que `threshold_seconds`: la
+     * pantalla no tiene por qué llevar copiada una regla del servidor.
+     *
+     * @return array<string, int>
+     */
+    private function umbralesDeBateria(): array
+    {
+        return [
+            'low' => KdsDevice::BATERIA_EN_APUROS,
+            'critical' => self::BATERIA_CRITICA,
+            'stale_seconds' => self::SEGUNDOS_SIN_NOTICIAS,
         ];
     }
 
@@ -414,7 +544,8 @@ class ComandasController extends Controller
             'event' => null,
             'vendor' => null,
             'threshold_seconds' => self::SEGUNDOS_DE_ATASCO,
-            'totals' => ['pending' => 0, 'in_progress' => 0, 'ready' => 0, 'open' => 0],
+            'battery' => $this->umbralesDeBateria(),
+            'totals' => ['pending' => 0, 'in_progress' => 0, 'ready' => 0, 'open' => 0, 'low_battery' => 0],
             'vendors' => [],
         ];
     }
