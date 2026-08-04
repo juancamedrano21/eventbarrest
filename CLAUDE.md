@@ -36,7 +36,7 @@ Después, según el trabajo:
 
 Cuando un documento y el código se contradigan, **manda el código** — y avisa.
 
-## Los tres repos
+## Los tres repos, y cómo se rompen entre sí
 
 | Ruta | Qué es |
 |---|---|
@@ -45,6 +45,24 @@ Cuando un documento y el código se contradigan, **manda el código** — y avis
 | `../payrone-table-kds/` | La app Android del KDS (Kotlin + WebView). Repo propio |
 
 Cada uno se commitea por separado. `eventbarrest/` está en el `.gitignore` de la raíz.
+
+**No son independientes.** El APK es un cascarón de ~700 líneas: **la pantalla que
+enseña la vive en `eventbarrest`**. Un cambio aquí puede dejar la tablet inútil sin que
+nada falle en el navegador ni en los tests, y sin que nadie se entere hasta el festival.
+
+Antes de tocar cualquiera de estos, abre `../payrone-table-kds/`:
+
+| Si tocas… | Puede romper |
+|---|---|
+| `resources/views/kds.blade.php` — **el contenedor `<div id="kds">`** | El vigía del APK y la **única salida** de su pantalla de error dependen de que ese id exista y tenga hijos. Renombrarlo, envolverlo o montar el KDS en otro elemento deja la tablet con el cartel de error puesto **para siempre**, con el servidor perfectamente encendido |
+| `resources/js/kds/**` | Corre **dentro del WebView de la tablet**, no solo en el navegador. `npm run build` en `eventbarrest` cambia lo que ejecuta el APK sin tocar su repo. Y el WebView es más viejo que Chrome de escritorio: por eso se evitó `AbortSignal.timeout` y se usa `AbortController` a mano |
+| Añadir un recurso externo al KDS (fuente, CDN, script de métricas) | El APK **intercepta y corta todo lo que no venga de su servidor** (`shouldInterceptRequest`). Funciona en el navegador y sale roto en la tablet |
+| `app/Http/Controllers/Kds/**`, `AuthenticateKdsDevice` | El contrato del alta y del tablero: `device_identity`, las cabeceras `X-Kds-Bateria` / `X-Kds-Cargando`, el ETag. El puente nativo del APK las manda |
+| La clave de firma del APK (en el otro repo) | Cambia el `ANDROID_ID`, que está acotado por firma → **duplica toda la flota** en `kds_devices`. La salida limpia es revocar la flota **antes** de rodar el APK nuevo |
+
+**Al terminar un cambio en cualquiera de los tres, el CHANGELOG que se actualiza es
+siempre el de la raíz** (`docs/CHANGELOG.md`): es la memoria común. El APK usa el área
+`APK (tablet)`.
 
 ---
 
