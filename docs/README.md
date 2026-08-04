@@ -6,6 +6,17 @@ Documentación de arquitectura, decisiones y estado del proyecto.
 tiene la puesta en marcha: MAMP, migraciones, seeders de demo y los tres candados del
 CI (`pint`, `phpstan`, `pest`).
 
+## Empieza por aquí
+
+**[CHANGELOG.md](CHANGELOG.md) — la memoria completa del proyecto.** Cada hito que se
+construyó, **por qué** se decidió así, qué se descartó, y las **garantías** que dejó
+establecidas, con sus hashes de commit. Incluye un **glosario** de los términos propios
+(comanda, puerta por audiencia, penitencia, índice ciego…) y un **índice de garantías
+transversales**: las reglas que atraviesan todo el sistema y no se pueden romper.
+
+Está pensado para que cualquier persona —o cualquier IA— tenga el contexto completo sin
+leer archivo por archivo. **Si vas a tocar código, lee antes la garantía de su hito.**
+
 ## Cómo leer esta documentación
 
 No todo está igual de fresco. Antes de fiarte de un documento, mira esta columna:
@@ -21,6 +32,8 @@ No todo está igual de fresco. Antes de fiarte de un documento, mira esta column
 | [07 — Diseño de UI y Paneles](07-diseno-ui.md) | Superficies, UX del POS, marca blanca | Parcial: las puertas las manda el ADR-007 |
 | [08 — Estructura del Proyecto](08-estructura-proyecto.md) | Stack con versiones, carpetas, convenciones | Vigente |
 | [09 — Convergencia con la spec de festivales](09-analisis-spec-festival.md) | Qué de la spec del equipo ya existe y qué no | Análisis, 27-jul |
+| [10 — Plan de la app móvil](10-plan-app-movil-asistente.md) | Fases, gates, riesgos y decisión de stack de la app del asistente | Vigente, 04-ago |
+| [11 — Especificación de la app móvil](11-app-movil-especificacion.md) | Los 14 módulos de la app, lo transversal y la puerta `event-app` | Vigente, 04-ago |
 
 Cuando un documento y el código se contradigan, **manda el código**; el documento está
 pendiente de actualizar y agradecemos el aviso.
@@ -35,7 +48,9 @@ pendiente de actualizar y agradecemos el aviso.
 | [ADR-004](adr/ADR-004-facturacion-electronica.md) | NCF por bloques por terminal; e-CF en fase 2 | **No — decidido, sin construir** |
 | [ADR-005](adr/ADR-005-pos-sunmi-capacitor.md) | PWA + wrapper Capacitor para SUNMI | Solo la PWA; el wrapper no existe |
 | [ADR-006](adr/ADR-006-panel-app-blade-preline.md) | Los paneles de cuenta migran de Filament a Blade + Alpine + Preline | Sí |
-| [ADR-007](adr/ADR-007-puerta-por-audiencia-comercio.md) | Una puerta por audiencia y por modalidad (con adenda del 05-ago) | Sí, salvo `/business` |
+| [ADR-007](adr/ADR-007-puerta-por-audiencia-comercio.md) | Una puerta por audiencia y por modalidad | Sí, completo |
+| [ADR-008](adr/ADR-008-business-la-casa-del-negocio.md) | `/business` es la casa del negocio; `/app` (Filament) se apaga | Sí |
+| [ADR-009](adr/ADR-009-kds-comandas-de-cocina.md) | La comanda es un hecho nuevo, no una edición de la venta | Sí |
 
 El ADR-003 se implementó sin lotes: el POS envía **orden por orden** a
 `POST /api/pos/orders` con un `client_ref` (UUID del cliente) como clave de
@@ -103,8 +118,9 @@ del sistema.
 
 ## Qué está construido
 
-359 tests pasando (`vendor/bin/pest --parallel`), incluida la suite de aislamiento
-multi-tenant que corre en cada push.
+580 tests pasando (`vendor/bin/pest --parallel`), incluida la suite de aislamiento
+multi-tenant que corre en cada push. La historia completa, con el porqué de cada
+decisión, está en el [CHANGELOG](CHANGELOG.md).
 
 **Ventas.** El dominio completo y cerrado: sesiones de caja con una sola abierta por
 unidad (índice único con columna generada), órdenes con sus líneas y sus cobros, y las
@@ -154,6 +170,21 @@ abiertas, serie diaria, desglose por comercio y comisión por evento. Los días 
 en **hora del negocio** (`America/Santo_Domingo`): una venta de las 9 de la noche es del
 día que el bar vivió, no del que dice UTC.
 
+**KDS (comandas de cocina).** Tablet en la cocina con el tablero de tres estados
+(pendiente, en preparación, lista), donde **pendiente es la ausencia de fila**: la
+comanda es un hecho nuevo y la venta sigue siendo inmutable ([ADR-009](adr/ADR-009-kds-comandas-de-cocina.md)).
+Alta por código de comercio + PIN de puesto, identidad estable de la tablet, batería
+vigilada desde el panel, y los tres tiempos medidos (espera del cliente, cola y
+preparación) con mediana y p90. Tiene su propia app Android
+(repo `payrone-table-kds`): WebView a pantalla completa con vigía contra la pantalla
+negra y reintento automático.
+
+**Liquidación del evento.** Estado de cuenta congelado por comercio, con la comisión
+cobrada y lo liquidado blindado contra cambios hacia atrás. Más el cuadre de mercancía
+del evento (asignado − vendido − mermas − devuelto).
+
+**`/business`.** La casa del negocio independiente, completa; `/app` (Filament) se apagó.
+
 ## Qué NO está construido
 
 Para que nadie lo busque en el código:
@@ -161,14 +192,14 @@ Para que nadie lo busque en el código:
 - **Fiscalidad NCF / e-CF.** Decidida en el ADR-004, sin una línea escrita: no hay
   secuencias, ni bloques, ni comprobantes. Lo único que existe es el permiso
   `fiscal.manage`.
-- **La puerta `/business`** del mundo negocio (el POS de sucursal sí funciona).
-- **Liquidación del evento.** `events.settle` existe como permiso, no como pantalla.
-- **Reportes de unidad** (`reports.view_unit`) con series, y los cierres de caja del
-  encargado en `/event-vendor`.
-- **Mesas, comandas y KDS**, e impresión de tickets.
+- **Mesas** e impresión de tickets desde el servidor.
 - **Wrapper Capacitor / SUNMI** y pagos integrados (ADR-005, fase 3).
-- **Wallet cashless** (ver el [doc 09](09-analisis-spec-festival.md)).
+- **Wallet cashless**, **cuenta del asistente** y **pasarela de pago online**: los tres
+  gaps grandes que bloquean la app móvil (ver el [doc 11](11-app-movil-especificacion.md)).
+- **Boletería**: es iniciativa aparte; la app la integrará desde Boletu.
 - **Sync de catálogo por delta versionado**: hoy baja completo.
+- **Despliegue productivo del backend**: hoy corre tras un túnel ngrok con
+  `APP_DEBUG=true`. Es el gate de cualquier API pública.
 
 ## Archivos históricos
 
