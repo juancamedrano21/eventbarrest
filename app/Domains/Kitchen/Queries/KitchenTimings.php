@@ -448,14 +448,13 @@ class KitchenTimings
             'vendorName' => $this->texto($fila->vendor_name) ?? (string) $fila->unit_name,
             'unitId' => (int) $fila->unit_id,
             'unitName' => (string) $fila->unit_name,
-            // Mixta se resuelve hacia cocina igual que en el tablero: una
-            // espera atribuida a la barra cuando era un plato solo consigue
-            // que nadie mire donde hay que mirar.
+            // La misma regla que el tablero, y por la misma puerta: si este
+            // informe la copiara a mano, el día que cambie diría una cosa
+            // distinta de la pantalla que dice medir. Mixta cae en cocina —el
+            // porqué está en DispatchArea::porDefecto().
             'area' => $area !== null
                 ? DispatchArea::coerce($area)
-                : (OperatingUnitKind::coerce((string) $fila->unit_kind) === OperatingUnitKind::Bar
-                    ? DispatchArea::Bar
-                    : DispatchArea::Kitchen),
+                : DispatchArea::porDefecto(OperatingUnitKind::coerce((string) $fila->unit_kind)),
         ];
     }
 

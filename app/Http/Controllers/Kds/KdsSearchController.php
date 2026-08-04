@@ -8,7 +8,7 @@ use App\Domains\Catalog\Enums\DispatchArea;
 use App\Domains\Kitchen\Enums\KitchenTicketStatus;
 use App\Domains\Kitchen\Models\KdsDevice;
 use App\Domains\Kitchen\Models\KitchenTicket;
-use App\Domains\Operations\Enums\OperatingUnitKind;
+use App\Domains\Kitchen\Queries\KitchenBoard;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\OrderLine;
@@ -28,9 +28,10 @@ use Illuminate\Http\Request;
  * pantalla, la única respuesta posible del puesto es «no me aparece», que
  * es exactamente lo que no se le puede decir a alguien que ya pagó.
  *
- * Por eso busca en TODO EL DÍA del puesto y no en la ventana del tablero, y
- * por eso responde con HORAS y no con estados a secas: «lista a las 8:14»
- * cierra la conversación, «lista» la abre.
+ * Por eso busca en TODO EL DÍA del puesto —y nunca en menos que la ventana
+ * del tablero, pase lo que pase con el reloj—, y por eso responde con HORAS
+ * y no con estados a secas: «lista a las 8:14» cierra la conversación,
+ * «lista» la abre.
  *
  * Se busca por número público y por nombre del cliente, que son las dos
  * cosas que la persona puede decir de memoria mirando su recibo.
@@ -64,7 +65,18 @@ class KdsSearchController extends Controller
 
         // El día del puesto en hora local: a las once de la noche de un
         // festival, «hoy» sigue siendo hoy, y en UTC ya sería mañana.
-        $desde = today((string) config('app.business_timezone'))->utc();
+        $inicioDelDia = today((string) config('app.business_timezone'))->utc();
+
+        // Y NUNCA MÁS TARDE QUE LA VENTANA DEL TABLERO. El día de calendario
+        // se reinicia a las 00:00, que en un festival es la hora punta: la
+        // búsqueda se vaciaba de golpe mientras el tablero —doce horas
+        // rodantes— seguía enseñando la misma tarjeta. La cocinera veía la
+        // comanda en la pantalla y esta pantalla le contestaba que esa venta
+        // no existe, que es justo la respuesta que no se le puede dar a
+        // alguien que ya pagó. Lo que se busca CONTIENE lo que se pinta.
+        $ventanaDelTablero = KitchenBoard::inicioDeLaVentana();
+
+        $desde = $inicioDelDia->lessThan($ventanaDelTablero) ? $inicioDelDia : $ventanaDelTablero;
 
         $ordenes = Order::query()
             ->whereIn('operating_unit_id', $device->unidadesVigiladas())
@@ -121,7 +133,7 @@ class KdsSearchController extends Controller
      */
     private function areas(Order $orden, EloquentCollection $comandas, ?DispatchArea $delDispositivo): array
     {
-        $porDefecto = $this->areaPorDefecto($orden);
+        $porDefecto = DispatchArea::porDefecto($orden->operatingUnit?->kind);
         $unidades = [];
 
         foreach ($orden->lines as $linea) {
@@ -162,18 +174,5 @@ class KdsSearchController extends Controller
         }
 
         return $areas;
-    }
-
-    /**
-     * Dónde cae una línea que no congeló su área. La misma regla que
-     * KitchenBoard —Barra → barra; Cocina y mixta → cocina—, repetida aquí
-     * porque allí es privada: un plato que no aparece es un cliente de pie,
-     * y una bebida colada entre los platos es, como mucho, una molestia.
-     */
-    private function areaPorDefecto(Order $orden): DispatchArea
-    {
-        return $orden->operatingUnit?->kind === OperatingUnitKind::Bar
-            ? DispatchArea::Bar
-            : DispatchArea::Kitchen;
     }
 }

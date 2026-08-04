@@ -10,6 +10,7 @@ use App\Domains\Kitchen\Exceptions\KitchenException;
 use App\Domains\Kitchen\Models\KitchenTicket;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
+use Illuminate\Contracts\Database\Query\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -45,7 +46,12 @@ class AdvanceKitchenTicket
         return DB::transaction(function () use ($orderId, $area, $desde, $hasta, $deviceId): KitchenTicket {
             // Con scopes: la venta de otra cuenta o de otro comercio no
             // existe para quien toca, y lo que no existe da 404 y no 403.
-            $order = Order::query()->whereKey($orderId)->first()
+            //
+            // El puesto viaja EAGER porque abajo hace falta su modalidad
+            // para repartir las líneas sin área congelada, y esta orden es
+            // una recién traída de la base: sin el `with` dependeríamos de
+            // que el lazy loading siga permitido para no romper el reparto.
+            $order = Order::query()->whereKey($orderId)->with('operatingUnit')->first()
                 ?? throw KitchenException::ordenDeOtroPuesto();
 
             // Con lock: dos tablets sobre el mismo puesto se serializan aquí
@@ -75,12 +81,31 @@ class AdvanceKitchenTicket
                 throw KitchenException::ordenNoCobrada();
             }
 
+            // LA MISMA REGLA DE ÁREA QUE EL TABLERO, y no un
+            // `where('dispatch', $area)` a secas. NULL no casa con nada en
+            // SQL, así que la tarjeta que el tablero sí pinta —porque manda
+            // las líneas sin área congelada al área del puesto— se quedaba
+            // aquí sin ninguna línea: el guard de abajo contestaba 422 a
+            // cada toque y la comanda se quedaba clavada en la pantalla
+            // toda la noche sin forma de cerrarla.
+            $porDefecto = DispatchArea::porDefecto($order->operatingUnit?->kind);
+
             // UNIDADES, no líneas. Es la misma cuenta que hace KitchenBoard
             // para las comandas que todavía no tienen fila, y su docblock lo
             // exige: la que sale del tablero y la que se congela aquí tienen
             // que decir lo mismo, o «3 unidades» se convertirá en «2» en
-            // cuanto alguien toque la tarjeta.
-            $lineas = $order->lines()->where('dispatch', $area)->get(['quantity']);
+            // cuanto alguien toque la tarjeta. Y no hay vuelta atrás:
+            // items_count es inmutable en cuanto la fila nace.
+            $lineas = $order->lines()
+                ->where(function (Builder $consulta) use ($area, $porDefecto): void {
+                    $consulta->where('dispatch', $area);
+
+                    if ($area === $porDefecto) {
+                        $consulta->orWhereNull('dispatch');
+                    }
+                })
+                ->get(['quantity']);
+
             $items = (int) round($lineas->sum(fn ($linea): float => (float) $linea->quantity));
 
             if ($lineas->isEmpty()) {

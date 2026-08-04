@@ -300,6 +300,35 @@ it('counts the same units before and after somebody touches the card', function 
         ->toBe(3);
 });
 
+it('counts the same units when one of the lines never froze its area', function (): void {
+    $orden = venderYCobrar([
+        ['product_id' => $this->taco->id, 'quantity' => 2],
+        ['product_id' => $this->refresco->id, 'quantity' => 3],
+    ]);
+
+    // Solo el refresco pierde el área: una venta mezclada donde una línea es
+    // de las de antes de la columna. En un puesto MIXTO cae a cocina, junto
+    // a los tacos, así que la tarjeta de cocina lleva cinco cosas.
+    DB::table('order_lines')
+        ->where('order_id', $orden->id)
+        ->where('product_id', $this->refresco->id)
+        ->update(['dispatch' => null]);
+
+    expect(tableroDe($this->puesto)->sole()->itemsCount)->toBe(5);
+
+    enElPuesto(fn () => app(AdvanceKitchenTicket::class)(
+        $orden, DispatchArea::Kitchen, KitchenTicketStatus::Pending, KitchenTicketStatus::InProgress,
+    ));
+
+    // Y la fila congela las MISMAS cinco. Congelaba dos —solo las líneas con
+    // el área escrita— y no había vuelta atrás: items_count es inmutable en
+    // cuanto la fila nace, así que la tarjeta se quedaba mintiendo para
+    // siempre delante del cocinero.
+    expect(enElPuesto(fn () => KitchenTicket::query()->where('order_id', $orden->id)->sole())->items_count)
+        ->toBe(5)
+        ->and(tableroDe($this->puesto)->sole()->itemsCount)->toBe(5);
+});
+
 it('drops a fully refunded sale that never entered the kitchen', function (): void {
     // Se cobró, se devolvió entera, y nadie llegó a tocarla. Nadie va a
     // cocinar eso jamás.

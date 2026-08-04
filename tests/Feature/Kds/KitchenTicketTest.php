@@ -21,6 +21,7 @@ use App\Domains\Sales\Actions\PlaceOrder;
 use App\Domains\Sales\Enums\PaymentMethod;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
 
 /**
  * El toque en la tarjeta del tablero: quién mueve una comanda, desde dónde
@@ -277,6 +278,38 @@ it('keeps an order that was never paid out of the kitchen', function (): void {
 
     expect($tocar)->toThrow(KitchenException::class, 'Solo se cocina una venta cobrada.')
         ->and(comoLaTabletDelPuesto(fn () => KitchenTicket::query()->count()))->toBe(0);
+});
+
+it('moves a card whose lines never froze an area, instead of leaving it stuck forever', function (): void {
+    $orden = ventaYaCobrada([['product_id' => $this->cerveza->id, 'quantity' => 2]]);
+
+    // Así son las líneas anteriores a la columna, y las de un producto ya
+    // borrado. Se escriben en crudo porque el modelo no deja tocar la
+    // historia, que es justo lo que hace que estas filas sigan ahí.
+    DB::table('order_lines')->where('order_id', $orden->id)->update(['dispatch' => null]);
+
+    // El puesto es MIXTO, así que lo que no trae área cae a cocina y es la
+    // tarjeta de cocina la que sale pintada en la pantalla. Antes esa
+    // tarjeta era intocable: la acción buscaba `dispatch = 'kitchen'`, NULL
+    // no casa con nada en SQL, y cada toque contestaba 422. Una comanda
+    // zombi colgada de la pared del festival toda la noche.
+    $comanda = comoLaTabletDelPuesto(fn () => app(AdvanceKitchenTicket::class)(
+        $orden, DispatchArea::Kitchen,
+        KitchenTicketStatus::Pending, KitchenTicketStatus::InProgress,
+    ));
+
+    expect($comanda->exists)->toBeTrue()
+        ->and($comanda->status)->toBe(KitchenTicketStatus::InProgress)
+        ->and($comanda->items_count)->toBe(2);
+
+    // Y la regla elige UN área, no reparte a las dos: en la barra no hay
+    // nada que servir y el guard sigue guardando.
+    $tocarLaBarra = fn () => comoLaTabletDelPuesto(fn () => app(AdvanceKitchenTicket::class)(
+        $orden, DispatchArea::Bar,
+        KitchenTicketStatus::Pending, KitchenTicketStatus::InProgress,
+    ));
+
+    expect($tocarLaBarra)->toThrow(KitchenException::class);
 });
 
 it('refuses an area that has nothing to dispatch', function (): void {

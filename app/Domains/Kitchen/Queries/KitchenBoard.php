@@ -7,11 +7,11 @@ namespace App\Domains\Kitchen\Queries;
 use App\Domains\Catalog\Enums\DispatchArea;
 use App\Domains\Kitchen\Enums\KitchenTicketStatus;
 use App\Domains\Kitchen\Models\KitchenTicket;
-use App\Domains\Operations\Enums\OperatingUnitKind;
 use App\Domains\Sales\Enums\OrderStatus;
 use App\Domains\Sales\Models\Order;
 use App\Domains\Sales\Models\OrderLine;
 use App\Domains\Sales\Models\Refund;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -28,10 +28,10 @@ use Illuminate\Support\Collection;
  * Las áreas de cada venta se derivan de `order_lines.dispatch`, que se
  * congeló al vender. Una línea con dispatch NULL —residuo de antes de que
  * existiera la columna, o de un producto ya borrado— no se descarta: cae al
- * área que declare `operating_units.kind` (Barra → barra; Cocina y MIXTA →
- * cocina). Mixta se resuelve hacia cocina a conciencia: un plato que no
- * aparece en el tablero de cocina es un cliente esperando de pie, mientras
- * que una bebida colada entre los platos es, como mucho, una molestia.
+ * área que declare `operating_units.kind`. Esa regla NO se escribe aquí:
+ * vive en DispatchArea::porDefecto(), porque el que decide si la comanda
+ * avanza es AdvanceKitchenTicket y tiene que repartir las líneas
+ * exactamente igual que este tablero o pinta tarjetas intocables.
  *
  * Tres consultas fijas y ninguna dentro de un bucle — el tablero se pide
  * cada pocos segundos desde cada tablet del festival, y una consulta por
@@ -60,6 +60,21 @@ class KitchenBoard
     private const MINUTOS_EN_LISTA = 20;
 
     /**
+     * Desde cuándo mira el tablero.
+     *
+     * Público y estático porque la búsqueda del «¿y lo mío?» tiene que
+     * CONTENER siempre a esta ventana, y no puede contenerla si la calcula
+     * por su cuenta: mientras la búsqueda miraba el día de calendario local,
+     * a las 00:00 —la hora punta de un festival— se vaciaba de golpe y
+     * dejaba a la cocinera con la tarjeta delante en la pantalla y una
+     * búsqueda jurando que esa venta no existe.
+     */
+    public static function inicioDeLaVentana(): Carbon
+    {
+        return now()->subHours(self::HORAS_DE_VENTANA);
+    }
+
+    /**
      * @param  array<int, int>  $unitIds
      * @return Collection<int, KitchenTicketView>
      */
@@ -75,7 +90,7 @@ class KitchenBoard
         $ordenes = Order::query()
             ->whereIn('operating_unit_id', $unitIds)
             ->where('status', OrderStatus::Paid)
-            ->where('paid_at', '>=', now()->subHours(self::HORAS_DE_VENTANA))
+            ->where('paid_at', '>=', self::inicioDeLaVentana())
             ->with(['lines', 'operatingUnit'])
             ->orderBy('paid_at')
             // Desempate estable: dos ventas del mismo segundo tienen que
@@ -213,7 +228,7 @@ class KitchenBoard
      */
     private function lineasPorArea(Order $orden): array
     {
-        $porDefecto = $this->areaPorDefecto($orden);
+        $porDefecto = DispatchArea::porDefecto($orden->operatingUnit?->kind);
         $sueltas = [];
 
         foreach ($orden->lines as $linea) {
@@ -229,14 +244,6 @@ class KitchenBoard
         }
 
         return $ordenadas;
-    }
-
-    /** Dónde cae una línea que no congeló su área. */
-    private function areaPorDefecto(Order $orden): DispatchArea
-    {
-        return $orden->operatingUnit?->kind === OperatingUnitKind::Bar
-            ? DispatchArea::Bar
-            : DispatchArea::Kitchen;
     }
 
     /**
