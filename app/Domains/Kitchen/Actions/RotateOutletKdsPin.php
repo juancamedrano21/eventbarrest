@@ -21,6 +21,43 @@ use Illuminate\Support\Facades\Hash;
  * solo sirve para dejar entrar a la siguiente. Si fuese al revés, cambiar
  * el PIN a mitad del festival apagaría todas las pantallas del puesto a la
  * vez. Para apagar una tablet está RevokeKdsDevice, de una en una.
+ *
+ * Y AQUÍ SE ESCRIBE EL ÍNDICE CIEGO, que es lo que hace barato el alta.
+ *
+ * `EnrollKdsDevice` ya no prueba el bcrypt contra todos los puestos del
+ * comercio: `kds_pin_index` le dice a cuál preguntar y gasta UNO. Pero ese
+ * índice se deriva del PIN EN CLARO, y el PIN en claro existe exactamente en
+ * dos sitios de la aplicación: en el alta, cuando el cocinero lo teclea, y
+ * aquí, que es donde nace.
+ *
+ * Mientras esto no lo escribiera, el índice solo aparecía con la primera alta
+ * CORRECTA — o sea, el día del montaje, cuando todos los puestos son recién
+ * emitidos y ninguno se ha usado todavía, no existía para ninguno y cada
+ * petición anónima volvía a costar un bcrypt por puesto. Medido: treinta
+ * puestos recién creados desde el panel, treinta comprobaciones por intento.
+ * Justo el día que más gente teclea y menos margen hay.
+ *
+ * Escribiéndolo aquí, un puesto sin índice deja de ser el caso normal y pasa a
+ * ser lo que de verdad es: el residuo de los PIN emitidos antes de que la
+ * columna existiera, que no se pueden indexar sin volver a emitirlos y que se
+ * curan solos con la primera alta buena.
+ *
+ * Y NO TOCA NINGUNA CUENTA DE FALLOS, porque ya no hay ninguna que sea del
+ * puesto: la racha de intentos a ciegas es del COMERCIO —un intento fallido no
+ * identifica ningún puesto— y vive en su fila. Rotar el PIN de una barra no dice
+ * nada sobre si alguien está probando PIN contra el código del comercio, así que
+ * tampoco apaga ese aviso; se apaga solo en quince minutos. Ver
+ * EnrollKdsDevice::anotarFallo.
+ *
+ * LAS DOS COLUMNAS VAN JUNTAS O NO VA NINGUNA. `kds_pin_indexed_hash` guarda la
+ * huella de las tres cosas de las que depende el índice —el comercio con el que
+ * se saló, el `kds_pin_hash` para el que se calculó y la llave con la que se
+ * derivó—, y sin ella este método sería
+ * el que estropeara el alta en vez de abaratarla: reescribe el hash, así que un
+ * índice del PIN VIEJO al lado del hash del NUEVO dejaría al cocinero que teclea
+ * BIEN recibiendo «revisa el código y el PIN». Un índice cuya huella no
+ * corresponde sencillamente no se usa. El porqué de la mitad de la llave —y la
+ * avería global que cerró— está en `EnrollKdsDevice::huellaDelIndice`.
  */
 class RotateOutletKdsPin
 {
@@ -33,11 +70,21 @@ class RotateOutletKdsPin
         $unit->setAttribute('kds_pin_hash', Hash::make($pin));
         $unit->setAttribute('kds_pin_set_at', now());
 
-        // Un PIN nuevo estrena cuenta: el bloqueo que dejaron los intentos
-        // contra el PIN viejo ya no protege nada y solo estorbaría al que
-        // acaba de recibir el bueno.
-        $unit->setAttribute('kds_pin_failed_attempts', 0);
-        $unit->setAttribute('kds_pin_locked_until', null);
+        // El índice y su huella, en la MISMA escritura que el hash: es lo que
+        // impide que exista un instante —ni una fila guardada a medias— en el
+        // que el índice hable de un PIN y el hash de otro. La huella se calcula
+        // del hash que se acaba de poner, no del que hubiera antes.
+        $unit->setAttribute(
+            'kds_pin_index',
+            EnrollKdsDevice::indiceDelPin((int) $unit->getAttribute('vendor_id'), $pin),
+        );
+        $unit->setAttribute(
+            'kds_pin_indexed_hash',
+            EnrollKdsDevice::huellaDelIndice(
+                (int) $unit->getAttribute('vendor_id'),
+                (string) $unit->getAttribute('kds_pin_hash'),
+            ),
+        );
 
         $unit->save();
 

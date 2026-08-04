@@ -129,6 +129,42 @@ it('rotates the outlet pin and shows it exactly once', function (): void {
         ->assertDontSee('no se vuelven a mostrar');
 });
 
+it('leaves the pin it just issued already indexed', function (): void {
+    // Este botón es donde nacen TODOS los PIN de la plataforma, así que es donde
+    // tiene que nacer el índice ciego con el que el alta localiza el puesto sin
+    // probar el bcrypt contra todos. Mientras el índice solo lo escribía un alta
+    // correcta, el día del montaje —cuando todos los puestos son recién emitidos
+    // y ninguno se ha usado— no había índice para ninguno y cada petición
+    // anónima volvía a costar un bcrypt POR PUESTO. Medido: treinta puestos
+    // recién emitidos, treinta comprobaciones por intento.
+    //
+    // Se rota por la ruta de verdad y con la dueña de verdad, no llamando a la
+    // acción: lo que se fija es lo que deja el panel.
+    $respuesta = $this->actingAs($this->duena)
+        ->post("/event-panel/comercios/{$this->comercio->id}/puestos/{$this->puesto->id}/pin-kds")
+        ->assertRedirect();
+
+    $pin = $respuesta->getSession()->get('kdsPins')[$this->puesto->id];
+
+    $puesto = releerElPuestoDelPanel($this->organizador, $this->puesto->id);
+
+    // Las dos columnas, y cuadradas entre sí: un índice cuya huella no
+    // corresponda al hash de al lado no se usa, así que escribir solo una sería
+    // no escribir ninguna.
+    expect($puesto->getAttribute('kds_pin_index'))
+        ->toBe(EnrollKdsDevice::indiceDelPin((int) $puesto->getAttribute('vendor_id'), $pin))
+        ->and($puesto->getAttribute('kds_pin_indexed_hash'))
+        ->toBe(EnrollKdsDevice::huellaDelIndice(
+            (int) $puesto->getAttribute('vendor_id'), (string) $puesto->getAttribute('kds_pin_hash'),
+        ));
+
+    // Y la primera tablet del montaje entra a la primera con ese PIN, que es lo
+    // único que el cocinero nota de todo esto.
+    $codigo = (string) Vendor::query()->withoutTenancy()->findOrFail($this->comercio->id)->getAttribute('kds_code');
+
+    expect(app(EnrollKdsDevice::class)($codigo, $pin, 'Tablet ventanilla', null)->device->exists)->toBeTrue();
+});
+
 it('refuses to rotate the pin without the outlets permission', function (): void {
     // Almacén es de la cuenta, así que pasa la frontera de audiencia: lo
     // único que le falta es el permiso de puestos.
@@ -141,17 +177,19 @@ it('refuses to rotate the pin without the outlets permission', function (): void
     expect(releerElPuestoDelPanel($this->organizador, $this->puesto->id)->getAttribute('kds_pin_hash'))->toBeNull();
 });
 
-it('unlocks the outlet without changing its pin', function (): void {
-    $pin = app(TenantContext::class)->runAs($this->organizador, function (): string {
-        $pin = app(RotateOutletKdsPin::class)($this->puesto);
+it('clears the blind streak notice without changing the pin', function (): void {
+    $pin = app(TenantContext::class)->runAs(
+        $this->organizador,
+        fn (): string => app(RotateOutletKdsPin::class)($this->puesto),
+    );
 
-        // Como si diez intentos a ciegas hubieran dejado el puesto en
-        // penitencia justo el día del montaje.
-        $this->puesto->setAttribute('kds_pin_locked_until', now()->addMinutes(15));
-        $this->puesto->save();
-
-        return $pin;
-    });
+    // Como si diez intentos a ciegas contra el código del comercio —que está
+    // impreso y pegado en la pared— hubieran dejado la racha encendida en mitad
+    // del montaje. NO BLOQUEA NADA: el PIN bueno entra igual mientras dura; lo
+    // único que hace es dejar de gastar CPU en contestar que no. La racha es del
+    // comercio, así que se escribe en su fila y no en la de sus puestos.
+    Vendor::query()->withoutTenancy()->whereKey($this->comercio->id)
+        ->update(['kds_blind_attempts' => 0, 'kds_blind_pause_until' => now()->addMinutes(15)]);
 
     $huella = releerElPuestoDelPanel($this->organizador, $this->puesto->id)->getAttribute('kds_pin_hash');
 
@@ -159,16 +197,61 @@ it('unlocks the outlet without changing its pin', function (): void {
         ->post("/event-panel/comercios/{$this->comercio->id}/puestos/{$this->puesto->id}/pin-kds/desbloquear")
         ->assertRedirect();
 
-    $puesto = releerElPuestoDelPanel($this->organizador, $this->puesto->id);
+    // Se apaga la cuenta DEL COMERCIO, no la de un puesto de los treinta, y el
+    // PIN se queda donde estaba.
+    $comercio = Vendor::query()->withoutTenancy()->findOrFail($this->comercio->id);
 
-    expect($puesto->getAttribute('kds_pin_locked_until'))->toBeNull()
-        ->and($puesto->getAttribute('kds_pin_hash'))->toBe($huella);
+    expect($comercio->getAttribute('kds_blind_pause_until'))->toBeNull()
+        ->and((int) $comercio->getAttribute('kds_blind_attempts'))->toBe(0)
+        ->and(releerElPuestoDelPanel($this->organizador, $this->puesto->id)->getAttribute('kds_pin_hash'))
+        ->toBe($huella);
 
-    // El que lleva el PIN escrito sigue entrando: desbloquear no reparte
-    // nada nuevo por el recinto.
-    $codigo = (string) Vendor::query()->withoutTenancy()->findOrFail($this->comercio->id)->getAttribute('kds_code');
+    // El que lleva el PIN escrito sigue entrando: esto no reparte nada nuevo
+    // por el recinto.
+    $codigo = (string) $comercio->getAttribute('kds_code');
 
     expect(app(EnrollKdsDevice::class)($codigo, $pin, 'Tablet ventanilla', null)->device->exists)->toBeTrue();
+});
+
+it('never tells the organizer that an outlet is locked when nothing is', function (): void {
+    // El panel no puede afirmar nada que no sea cierto, y esta pantalla se lee a
+    // las dos de la madrugada. Diez peticiones anónimas con un PIN inventado
+    // contra el código impreso en la pared encendían «Bloqueado hasta las 02:41»
+    // en TODAS las barras del comercio, con un botón de «Desbloquear» al lado que
+    // soltaba una sola. Nada estaba bloqueado —el PIN correcto entra igual—, así
+    // que el organizador leía una alarma falsa que cualquier desconocido podía
+    // encender a voluntad, y llamaba a alguien.
+    $pin = app(TenantContext::class)->runAs(
+        $this->organizador,
+        fn (): string => app(RotateOutletKdsPin::class)($this->puesto),
+    );
+
+    $codigo = (string) Vendor::query()->withoutTenancy()->findOrFail($this->comercio->id)->getAttribute('kds_code');
+
+    for ($intento = 1; $intento <= 10; $intento++) {
+        $this->withHeader('X-Forwarded-For', '203.0.113.'.$intento)
+            ->postJson('/api/kds/enrolar', [
+                'codigo' => $codigo,
+                'pin' => '000000',
+                'device_name' => 'Tablet',
+                'area' => null,
+            ])->assertStatus(422);
+    }
+
+    $this->actingAs($this->duena)
+        ->get("/event-panel/comercios/{$this->comercio->id}")
+        ->assertOk()
+        // Lo que sí es verdad y sí sirve: alguien está tecleando cosas raras
+        // contra un código suyo. Sin forma de alarma y sin botón, porque no hay
+        // ninguna acción que tomar: se apaga sola.
+        ->assertSee('Alguien está probando PIN contra el código de este comercio', false)
+        ->assertSee('No hay nada bloqueado y no hay nada que hacer', false)
+        ->assertDontSee('Bloqueado hasta las')
+        ->assertDontSee('Desbloquear');
+
+    // Y la tablet de la cocina se cuelga igual con el aviso encendido, que es lo
+    // que hace falsa la palabra «bloqueado».
+    expect(app(EnrollKdsDevice::class)($codigo, $pin, 'Tablet de la cocina', null)->device->exists)->toBeTrue();
 });
 
 it('revokes a single tablet and leaves it out', function (): void {

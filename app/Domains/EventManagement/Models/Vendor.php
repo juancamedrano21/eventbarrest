@@ -30,6 +30,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * Solo existe en cuentas de organizador: un bar independiente de la
  * plataforma es una cuenta propia, no un negocio de evento (doc 01).
  *
+ * `kds_blind_attempts` y `kds_blind_pause_until` viven aquí y no en sus
+ * puestos porque un intento de alta de tablet fallido no identifica ningún
+ * puesto —el índice ciego se deriva del propio PIN— y sí identifica el
+ * comercio: trae su código. NO deciden quién entra ni bloquean nada; lo único
+ * que hacen es dejar de comprar CPU para contestar que no. El porqué está en
+ * EnrollKdsDevice::anotarFallo.
+ *
  * @property int $id
  * @property string $name
  * @property string|null $rnc
@@ -40,6 +47,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int|null $vendor_type_id
  * @property int|null $food_type_id
  * @property ItbisMode|null $itbis_mode
+ * @property int $kds_blind_attempts
+ * @property string|null $kds_blind_pause_until
  */
 class Vendor extends Model
 {

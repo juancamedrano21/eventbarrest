@@ -33,10 +33,14 @@
             ? 'Nunca'
             : \Illuminate\Support\Carbon::parse((string) $valor)->timezone($tz)->format('d M, h:i a');
 
-        // Null significa bloqueo ya vencido: la fecha se queda escrita en la
-        // fila, y mostrarla como un bloqueo vigente asustaría sin motivo.
-        $bloqueoKds = function ($outlet) use ($tz) {
-            $valor = $outlet->getAttribute('kds_pin_locked_until');
+        // Hasta cuándo dura la pausa que dejó una racha de PIN a ciegas contra
+        // el código de ESTE COMERCIO. Es un hecho del comercio y no de sus
+        // puestos —un intento fallido no dice contra qué puesto iba— y sobre
+        // todo NO ES UN BLOQUEO: el PIN correcto cuelga tabletas igual mientras
+        // dura. Null si ya venció: la fecha se queda escrita en la fila, y
+        // pintarla como si siguiera pasando algo sería avisar de nada.
+        $rachaKds = (function () use ($vendor, $tz) {
+            $valor = $vendor->getAttribute('kds_blind_pause_until');
 
             if ($valor === null) {
                 return null;
@@ -45,7 +49,7 @@
             $hasta = \Illuminate\Support\Carbon::parse((string) $valor)->timezone($tz);
 
             return $hasta->isFuture() ? $hasta : null;
-        };
+        })();
 
         $nombreDelPuesto = fn (int $id): string => $outlets->firstWhere('id', $id)?->name ?? 'Puesto';
     @endphp
@@ -356,6 +360,27 @@
             </div>
         </header>
 
+        {{-- Alguien está probando PIN contra el código de este comercio.
+             ESTO NO ES UNA ALARMA Y NO PIDE NADA, y por eso va en gris y sin
+             botón: no hay ninguna acción que tomar. Nada está bloqueado —el PIN
+             correcto cuelga tabletas igual mientras dura—, la pausa se apaga
+             sola y quien la enciende es cualquiera que lea el código impreso en
+             la pared del puesto. Antes esto era un cartel ámbar que decía
+             «Bloqueado hasta las 02:41» en las treinta barras a la vez, con un
+             botón de «Desbloquear» que soltaba una: un organizador que lo leía a
+             las dos de la madrugada concluía que su cocina no podía colgar
+             tabletas y llamaba a alguien, y era mentira. Lo que sí es verdad y
+             sí sirve es esto: hay alguien tecleando cosas raras contra un código
+             suyo. --}}
+        @if ($rachaKds)
+            <p class="border-b border-gray-200 bg-gray-50 px-5 py-3 text-xs text-gray-600">
+                <span class="font-medium text-gray-700">Alguien está probando PIN contra el código de este comercio.</span>
+                Hubo una racha de intentos fallidos; el aviso se apaga solo a las {{ $rachaKds->format('h:i a') }}.
+                No hay nada bloqueado y no hay nada que hacer: el PIN correcto sigue colgando tabletas igual.
+                Si sospechas que un PIN se filtró, rótalo abajo.
+            </p>
+        @endif
+
         {{-- El PIN, puesto por puesto: es de la ventanilla, no del comercio.
              Quien lleva la barra norte no tiene por qué poder colgar una
              pantalla en la cocina sur. --}}
@@ -373,20 +398,6 @@
                         @endif
                     </div>
                     <div class="flex items-center gap-2">
-                        @if ($bloqueo = $bloqueoKds($outlet))
-                            <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs text-amber-800">
-                                Bloqueado hasta las {{ $bloqueo->format('h:i a') }}
-                            </span>
-                        @endif
-                        @if (filled($outlet->getAttribute('kds_pin_hash')))
-                            <form method="POST" action="{{ route('event-panel.vendors.kds.pin.unlock', [$vendor, $outlet]) }}">
-                                @csrf
-                                <button type="submit"
-                                    class="rounded-lg border px-2.5 py-1 text-xs {{ $bloqueo ? 'border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100' : 'border-gray-200 text-gray-700 hover:bg-gray-50' }}">
-                                    Desbloquear
-                                </button>
-                            </form>
-                        @endif
                         <form method="POST" action="{{ route('event-panel.vendors.kds.pin', [$vendor, $outlet]) }}"
                             onsubmit="return confirm('Se emitirá un PIN nuevo para {{ $outlet->name }} y solo se mostrará una vez. Las tabletas ya colgadas seguirán funcionando. ¿Seguimos?')">
                             @csrf

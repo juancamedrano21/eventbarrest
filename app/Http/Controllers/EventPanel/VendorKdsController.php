@@ -83,10 +83,20 @@ class VendorKdsController extends Controller
     }
 
     /**
-     * Suelta el bloqueo sin cambiar el PIN. Es la contrapartida obligatoria
-     * del freno: el código del comercio es público, así que cualquiera puede
-     * quemar los intentos de un puesto y dejarlo sin poder colgar tabletas
-     * justo el día del montaje.
+     * Apaga a mano el aviso de «alguien está probando PIN contra este código».
+     *
+     * Ya no rescata a nadie, y por eso el panel no ofrece botón: la racha no
+     * cierra ninguna puerta —el PIN correcto cuelga tabletas igual mientras
+     * dura— y caduca sola. Antes sí hacía falta, cuando la racha bloqueaba los
+     * puestos y cualquiera que leyera el código impreso en la pared podía
+     * dejar una cocina sin colgar tabletas el día del montaje; eso ya no
+     * ocurre.
+     *
+     * La ruta se conserva porque apagar un aviso que se sabe falso —el
+     * organizador que acaba de ver a alguien tecleando en la tablet— es
+     * razonable, y porque quitarla es romper una URL. Recibe un puesto por
+     * compatibilidad con esa URL, pero lo que limpia es la racha del COMERCIO:
+     * una fila, no una de treinta.
      */
     public function unlockPin(Request $request, int $vendor, int $outlet): RedirectResponse
     {
@@ -96,7 +106,7 @@ class VendorKdsController extends Controller
 
         app(UnlockOutletKdsPin::class)($record);
 
-        return back()->with('status', $record->name.' vuelve a admitir intentos. El PIN sigue siendo el mismo.');
+        return back()->with('status', 'Aviso apagado. Nada había cambiado para las tabletas: el PIN sigue siendo el mismo y seguía funcionando.');
     }
 
     /** Apagar una tablet concreta: la de la ventanilla que se mojó. */

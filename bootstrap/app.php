@@ -32,6 +32,29 @@ return Application::configure(basePath: dirname(__DIR__))
         // gestionado. Es seguro mientras nadie pueda hablar con el servidor
         // saltándose el proxy — el día que se exponga el puerto directamente,
         // esta línea deja de valer y hay que acotar las direcciones.
+        //
+        // CONSECUENCIA QUE HAY QUE SABER ANTES DE ESCRIBIR UN LIMITADOR: como
+        // se confía en cualquier proxy, se confía también en su
+        // X-Forwarded-For, así que hoy `$request->ip()` es un valor que
+        // ESCRIBE quien llama. Los frenos que la usan en su llave —el alta del
+        // KDS, `pos-login`, LoginController y el de /saas-admin/login, que es
+        // de Filament y solo mira la IP— se esquivan cambiando la cabecera en
+        // cada petición.
+        //
+        // Se probó a quitar HEADER_X_FORWARDED_FOR del juego de cabeceras y
+        // SALE PEOR: sin ella, `ip()` colapsa a la dirección del borde para
+        // todo el mundo, y esos mismos frenos pasan a ser cubos únicos de
+        // plataforma —cinco peticiones por minuto, sin credenciales, dejan al
+        // staff fuera de /saas-admin y a una cajera concreta fuera de su caja
+        // mientras quien ataca quiera—. Un freno esquivable estorba menos que
+        // un freno que se puede volver del revés.
+        //
+        // La condición para arreglarlo de verdad es de despliegue, no de
+        // código: acotar `at:` a los rangos reales del borde (el del túnel en
+        // local, el del balanceador en Railway). Hecho eso —y solo entonces—
+        // X-Forwarded-For vuelve a ser creíble y la IP vuelve a discriminar.
+        // Mientras tanto, lo que sujeta esta plataforma son los frenos que NO
+        // dependen de la IP: los que cuentan fallos por cuenta o por comercio.
         $middleware->trustProxies(at: '*');
 
         // Las páginas de Filament reautorizan en CADA petición de Livewire

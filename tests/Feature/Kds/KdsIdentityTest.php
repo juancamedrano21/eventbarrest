@@ -8,6 +8,7 @@ use App\Domains\EventManagement\Actions\CreateVendor;
 use App\Domains\EventManagement\Actions\InviteVendorToEvent;
 use App\Domains\EventManagement\Enums\EventStatus;
 use App\Domains\EventManagement\Models\Event;
+use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\Kitchen\Actions\EnrollKdsDevice;
 use App\Domains\Kitchen\Actions\RevokeKdsDevice;
 use App\Domains\Kitchen\Actions\RotateOutletKdsPin;
@@ -65,6 +66,19 @@ function montarUnComercio(string $cuenta, string $comercio, string $puesto): arr
             'pin' => app(RotateOutletKdsPin::class)($unidad),
         ];
     });
+}
+
+/**
+ * El comercio leído de la base sin contexto de cuenta, que es donde vive la
+ * racha de intentos a ciegas: un intento fallido no identifica ningún puesto
+ * —el índice ciego se deriva del propio PIN— y sí identifica el comercio.
+ */
+function comercioDelKds(int $id): Vendor
+{
+    /** @var Vendor $comercio */
+    $comercio = Vendor::query()->withoutTenancy()->findOrFail($id);
+
+    return $comercio;
 }
 
 /** Ejecuta lo que debe fallar y devuelve el fallo, para poder mirarlo por dentro. */
@@ -135,9 +149,8 @@ it('refuses a closed outlet even with the right pin', function (): void {
     expect(KdsDevice::query()->withoutTenancy()->count())->toBe(0);
 
     // Y el PIN bueno no le gasta intentos a nadie: quien acierta no es
-    // quien está probando a ciegas.
-    $this->puesto->refresh();
-    expect((int) $this->puesto->kds_pin_failed_attempts)->toBe(0);
+    // quien está probando a ciegas, aunque su puesto esté cerrado.
+    expect((int) comercioDelKds((int) $this->vendor->id)->getAttribute('kds_blind_attempts'))->toBe(0);
 });
 
 it('refuses a tablet once the event is over', function (): void {
@@ -152,33 +165,62 @@ it('refuses a tablet once the event is over', function (): void {
     expect($error->errorCode)->toBe('kds_enrollment_rejected');
 });
 
-it('locks the outlet on the tenth failure and unlocking releases it', function (): void {
+it('counts the tenth blind failure without ever shutting out the right pin', function (): void {
+    // Este test decía antes lo contrario: que al décimo fallo «con el puesto en
+    // penitencia ni siquiera el PIN bueno entra». Eso ERA la denegación de
+    // servicio del encargo — el código del comercio está impreso y pegado en el
+    // puesto, así que cualquiera quemaba diez intentos y dejaba a la cocina sin
+    // poder colgar tabletas con su PIN CORRECTO—. La penitencia se queda, porque
+    // un freno que no se puede alcanzar es código muerto, pero su consecuencia
+    // ya no es cerrar la puerta: es dejar de gastar bcrypt en contestar que no.
     for ($intento = 1; $intento <= 10; $intento++) {
         rechazoDelKds(fn () => app(EnrollKdsDevice::class)(
             (string) $this->vendor->kds_code, '000000', 'Tablet', null,
         ));
     }
 
-    $this->puesto->refresh();
-    expect($this->puesto->kds_pin_locked_until)->not->toBeNull();
+    // La racha es del COMERCIO —es lo único que un intento fallido identifica—
+    // y no de sus puestos: replicarla en ellos era lo que encendía un cartel de
+    // «Bloqueado» en las treinta barras a la vez sin que ninguna lo estuviera.
+    expect(comercioDelKds((int) $this->vendor->id)->getAttribute('kds_blind_pause_until'))->not->toBeNull();
 
-    // Con el puesto en penitencia ni siquiera el PIN bueno entra.
-    rechazoDelKds(fn () => app(EnrollKdsDevice::class)(
-        (string) $this->vendor->kds_code, $this->pin, 'Tablet', null,
-    ));
-
-    // El botón existe porque el código del comercio es público: sin él,
-    // cualquiera deja un puesto fuera de juego el día del montaje.
-    app(UnlockOutletKdsPin::class)($this->puesto);
-
+    // Y con la penitencia encendida, el PIN bueno entra a la primera.
     $enrolada = app(EnrollKdsDevice::class)((string) $this->vendor->kds_code, $this->pin, 'Tablet', null);
 
     expect($enrolada->device->operating_unit_id)->toBe($this->puesto->id);
 
-    // Entrar con el PIN bueno borra el rastro de los fallos.
-    $this->puesto->refresh();
-    expect((int) $this->puesto->kds_pin_failed_attempts)->toBe(0);
-    expect($this->puesto->kds_pin_locked_until)->toBeNull();
+    // Entrar con el PIN bueno rompe la racha: lo que el freno persigue son las
+    // tandas de PIN inventados, no el dedo torpe de quien acabó entrando.
+    $comercio = comercioDelKds((int) $this->vendor->id);
+
+    expect((int) $comercio->getAttribute('kds_blind_attempts'))->toBe(0);
+    expect($comercio->getAttribute('kds_blind_pause_until'))->toBeNull();
+});
+
+it('clears the whole vendor streak, not one outlet of thirty', function (): void {
+    // Esta acción ya no rescata a ninguna cocina —la racha no cierra ninguna
+    // puerta— y por eso el panel no ofrece su botón. Lo que sí tiene que hacer,
+    // mientras su ruta siga registrada, es apagar lo que dice apagar: la cuenta
+    // ENTERA del comercio. Mientras la racha se escribía replicada en los
+    // puestos, esto limpiaba UNO y los otros veintinueve seguían encendidos.
+    for ($intento = 1; $intento <= 10; $intento++) {
+        rechazoDelKds(fn () => app(EnrollKdsDevice::class)(
+            (string) $this->vendor->kds_code, '000000', 'Tablet', null,
+        ));
+    }
+
+    expect(comercioDelKds((int) $this->vendor->id)->getAttribute('kds_blind_pause_until'))->not->toBeNull();
+
+    app(UnlockOutletKdsPin::class)($this->puesto);
+
+    $comercio = comercioDelKds((int) $this->vendor->id);
+
+    expect((int) $comercio->getAttribute('kds_blind_attempts'))->toBe(0);
+    expect($comercio->getAttribute('kds_blind_pause_until'))->toBeNull();
+
+    // Y el PIN sigue siendo el mismo: no hay que repartir nada por el recinto.
+    expect(app(EnrollKdsDevice::class)((string) $this->vendor->kds_code, $this->pin, 'Tablet', null)->device->exists)
+        ->toBeTrue();
 });
 
 it('keeps already enrolled tablets alive when the pin is rotated', function (): void {
