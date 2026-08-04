@@ -1,0 +1,605 @@
+<title>ProyectoRest — Arquitectura y diseño v0.3</title>
+<style>
+:root{
+  --paper:#f6f9f7; --surface:#ffffff; --ink:#182420; --ink-soft:#46554f;
+  --muted:#6c7b74; --line:#dfe7e2; --accent:#0e6b54; --accent-ink:#0a5442;
+  --accent-soft:#e3f2ec; --amber:#a66a12; --amber-soft:#f8edda;
+  --code-bg:#eef4f0; --sans:"Avenir Next","Avenir","Seravek","Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  --serif:"Charter","Bitstream Charter","Sitka Text",Cambria,Georgia,serif;
+  --mono:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#111815; --surface:#1a221e; --ink:#e8eeea; --ink-soft:#b7c4bd;
+    --muted:#8a988f; --line:#2a342f; --accent:#57c79f; --accent-ink:#7dd6b3;
+    --accent-soft:#16362b; --amber:#e0a54c; --amber-soft:#3a2e17; --code-bg:#202a25;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#111815; --surface:#1a221e; --ink:#e8eeea; --ink-soft:#b7c4bd;
+  --muted:#8a988f; --line:#2a342f; --accent:#57c79f; --accent-ink:#7dd6b3;
+  --accent-soft:#16362b; --amber:#e0a54c; --amber-soft:#3a2e17; --code-bg:#202a25;
+}
+:root[data-theme="light"]{
+  --paper:#f6f9f7; --surface:#ffffff; --ink:#182420; --ink-soft:#46554f;
+  --muted:#6c7b74; --line:#dfe7e2; --accent:#0e6b54; --accent-ink:#0a5442;
+  --accent-soft:#e3f2ec; --amber:#a66a12; --amber-soft:#f8edda; --code-bg:#eef4f0;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--serif);font-size:1.02rem;line-height:1.7}
+a{color:var(--accent-ink);text-decoration:none}
+a:hover{text-decoration:underline}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+.shell{display:grid;grid-template-columns:250px minmax(0,1fr);max-width:1200px;margin:0 auto}
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:2.2rem 1.4rem 2rem;border-right:1px solid var(--line)}
+nav.toc .brand{font-family:var(--sans);font-weight:600;font-size:.95rem;letter-spacing:.02em;margin:0 0 .2rem}
+nav.toc .brand-sub{font-family:var(--sans);font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.14em;margin:0 0 1.6rem}
+nav.toc ol{list-style:none;margin:0;padding:0;font-family:var(--sans);font-size:.85rem}
+nav.toc li{margin:0}
+nav.toc a{display:flex;gap:.55rem;padding:.42rem .5rem;border-radius:6px;color:var(--ink-soft)}
+nav.toc a:hover{background:var(--accent-soft);text-decoration:none;color:var(--accent-ink)}
+nav.toc .n{font-family:var(--mono);font-size:.72rem;color:var(--muted);min-width:1.6rem;padding-top:.15rem}
+main{padding:2.6rem 3rem 4rem;min-width:0}
+header.doc{border-bottom:1px solid var(--line);padding-bottom:1.8rem;margin-bottom:2.6rem}
+.eyebrow{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spacing:.16em;color:var(--accent-ink);font-weight:600;margin:0 0 .6rem}
+h1{font-family:var(--sans);font-weight:600;font-size:clamp(1.8rem,3.4vw,2.35rem);line-height:1.15;margin:0 0 .8rem;text-wrap:balance}
+.lede{font-size:1.12rem;color:var(--ink-soft);max-width:62ch;margin:0 0 1.2rem}
+.meta{display:flex;flex-wrap:wrap;gap:.5rem;font-family:var(--sans);font-size:.78rem}
+.chip{border:1px solid var(--line);border-radius:999px;padding:.22rem .75rem;color:var(--ink-soft);background:var(--surface)}
+.chip.accent{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink);font-weight:600}
+section{margin:0 0 3.4rem}
+section > .eyebrow{color:var(--muted)}
+h2{font-family:var(--sans);font-weight:600;font-size:1.5rem;line-height:1.25;margin:.1rem 0 1.1rem;text-wrap:balance}
+h3{font-family:var(--sans);font-weight:600;font-size:1.08rem;margin:2rem 0 .7rem}
+p{max-width:70ch;margin:0 0 1rem}
+ul,ol{max-width:70ch;padding-left:1.3rem;margin:0 0 1rem}
+li{margin-bottom:.35rem}
+code{font-family:var(--mono);font-size:.86em;background:var(--code-bg);padding:.1em .38em;border-radius:4px}
+pre.plain{font-family:var(--mono);font-size:.84rem;line-height:1.55;background:var(--code-bg);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;overflow-x:auto;margin:0 0 1.2rem}
+.table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin:0 0 1.3rem}
+table{border-collapse:collapse;width:100%;font-family:var(--sans);font-size:.86rem;line-height:1.5}
+th{font-weight:600;text-align:left;color:var(--ink-soft);text-transform:uppercase;font-size:.7rem;letter-spacing:.08em;padding:.7rem .9rem;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:.62rem .9rem;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.c,th.c{text-align:center}
+td .ok{color:var(--accent-ink);font-weight:600}
+td .no{color:var(--muted)}
+.note,.warn{border-radius:10px;padding:.9rem 1.15rem;margin:0 0 1.3rem;font-size:.95rem;max-width:75ch}
+.note{background:var(--accent-soft)}
+.note b,.warn b{font-family:var(--sans)}
+.warn{background:var(--amber-soft)}
+.warn .tag,.note .tag{display:block;font-family:var(--sans);font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.12em;margin-bottom:.3rem}
+.note .tag{color:var(--accent-ink)}
+.warn .tag{color:var(--amber)}
+pre.mermaid{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:1.1rem;overflow-x:auto;margin:0 0 1.3rem;font-family:var(--mono);font-size:.8rem;line-height:1.5;display:flex;justify-content:center}
+.adr{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:1.4rem 1.6rem;margin:0 0 1.4rem}
+.adr h3{margin:0 0 .3rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.adr .pill{font-family:var(--sans);font-size:.68rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;background:var(--accent-soft);color:var(--accent-ink);border-radius:999px;padding:.18rem .65rem}
+.adr .id{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin:0 0 1.3rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:1.1rem 1.3rem}
+.card h4{font-family:var(--sans);font-size:.95rem;font-weight:600;margin:0 0 .45rem}
+.card p{font-size:.92rem;color:var(--ink-soft);margin:0}
+.qlist{counter-reset:q;list-style:none;padding:0;max-width:75ch}
+.qlist li{counter-increment:q;display:flex;gap:.9rem;padding:.85rem 0;border-bottom:1px solid var(--line);margin:0}
+.qlist li::before{content:"P" counter(q);font-family:var(--mono);font-size:.75rem;color:var(--accent-ink);background:var(--accent-soft);border-radius:6px;padding:.25rem .5rem;height:fit-content;white-space:nowrap}
+.qlist .who{display:block;font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:.25rem}
+footer.doc{border-top:1px solid var(--line);margin-top:3rem;padding-top:1.4rem;font-family:var(--sans);font-size:.8rem;color:var(--muted)}
+@media (max-width:920px){
+  .shell{grid-template-columns:1fr}
+  nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:1.4rem 1.2rem}
+  nav.toc ol{display:flex;flex-wrap:wrap;gap:.15rem}
+  main{padding:1.8rem 1.2rem 3rem}
+}
+@media print{
+  nav.toc{display:none}
+  .shell{display:block}
+  body{background:#fff;color:#000}
+}
+</style>
+
+<div class="shell">
+<nav class="toc" aria-label="Índice del documento">
+  <p class="brand">ProyectoRest</p>
+  <p class="brand-sub">Arquitectura · v0.3</p>
+  <ol>
+    <li><a href="#resumen"><span class="n">—</span>Resumen ejecutivo</a></li>
+    <li><a href="#vision"><span class="n">01</span>Visión y alcance</a></li>
+    <li><a href="#arquitectura"><span class="n">02</span>Arquitectura</a></li>
+    <li><a href="#datos"><span class="n">03</span>Modelo de datos</a></li>
+    <li><a href="#roles"><span class="n">04</span>Roles y permisos</a></li>
+    <li><a href="#offline"><span class="n">05</span>POS offline</a></li>
+    <li><a href="#fiscal"><span class="n">06</span>Fiscalidad RD</a></li>
+    <li><a href="#ui"><span class="n">07</span>Diseño de UI</a></li>
+    <li><a href="#estructura"><span class="n">08</span>Stack y estructura</a></li>
+    <li><a href="#adrs"><span class="n">ADR</span>Decisiones</a></li>
+    <li><a href="#preguntas"><span class="n">?</span>Preguntas abiertas</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="doc">
+  <p class="eyebrow">Documento de revisión técnica</p>
+  <h1>Plataforma SaaS de gestión para bares, restaurantes y eventos</h1>
+  <p class="lede">Todo lo acordado hasta hoy — visión, arquitectura, modelo de datos, seguridad, modo offline, fiscalidad dominicana y diseño de interfaces — consolidado para que el equipo lo revise y lo discuta <em>antes</em> de escribir la primera línea de código.</p>
+  <div class="meta">
+    <span class="chip accent">Para revisión del equipo</span>
+    <span class="chip">Versión 0.3 — dos tipos de cuenta</span>
+    <span class="chip">25 de julio de 2026</span>
+    <span class="chip">Fuente: <code>docs/*.md</code> del repositorio</span>
+  </div>
+</header>
+
+<section id="resumen">
+  <p class="eyebrow">Resumen ejecutivo</p>
+  <h2>Qué vamos a construir y sobre qué columna vertebral</h2>
+  <p>Un SaaS multi-tenant donde cada cuenta opera completamente aislada, con sus propios usuarios, inventario, ventas y reportería, administrada desde un panel de super admin. Hay <b>dos tipos de cuenta</b>, y son <b>dos mundos cerrados</b>: la <b>cuenta de negocio</b> (bar, restaurante o discoteca, con sus sucursales) y la <b>cuenta de organizador</b> (productora que monta festivales, con sus eventos dentro).</p>
+  <pre class="plain">Plataforma (Super Admin)
+├── Cuenta de Negocio        → Sucursales                 (operación permanente)
+└── Cuenta de Organizador    → Evento → Puntos de venta   (operación temporal)
+                                        (barras y cocinas)</pre>
+  <div class="note"><span class="tag">La regla que separa los dos mundos</span>
+  <b>Un evento nunca comparte datos con un negocio.</b> Si un negocio que ya es cliente nuestro quiere poner una barra en un festival, esa barra <b>se crea dentro del evento</b>, con su propio catálogo, inventario y personal. Aunque lleve el mismo nombre, no comparte nada: ni productos, ni stock, ni ventas, ni reportería. Son cuentas distintas, así que el aislamiento es el mismo que entre dos clientes cualesquiera.</div>
+  <p>Lo que sí comparten los dos mundos es el <b>código</b>: la sucursal y el punto de venta de un evento son el mismo concepto — la <b>unidad operativa</b>. Ventas, inventario, cajas y personal siempre cuelgan de una unidad operativa, así que POS, inventario y reportería se construyen una sola vez.</p>
+  <div class="cols">
+    <div class="card"><h4>Stack</h4><p>Monolito <b>Laravel 13</b> (PHP 8.4) con <b>Filament 5</b> para los paneles. El POS es una PWA Vue 3 por el requisito offline — y la misma app se empaquetará como APK para terminales SUNMI en fase 3.</p></div>
+    <div class="card"><h4>Offline-first</h4><p>El POS vende sin internet: base local en el navegador, sincronización idempotente por lotes, foliado fiscal por bloques por terminal.</p></div>
+    <div class="card"><h4>República Dominicana</h4><p>NCF y e-CF (DGII, Ley 32-23), ITBIS 18%, propina legal 10%, exportes 606/607. Moneda DOP.</p></div>
+  </div>
+</section>
+
+<section id="vision">
+  <p class="eyebrow">Documento 01</p>
+  <h2>Visión y alcance</h2>
+  <h3>El problema</h3>
+  <p>Bares, restaurantes y discotecas manejan inventario, ventas y personal con herramientas fragmentadas o con papel. En eventos (festivales, conciertos, ferias) el problema se multiplica: barras y cocinas temporales sin control centralizado de inventario ni ventas, con conectividad poco confiable.</p>
+  <h3>Los dos tipos de cuenta</h3>
+  <p>No son dos modalidades de una misma cuenta: son dos mundos cerrados que no comparten datos. El tipo se decide al dar de alta la cuenta y no cambia.</p>
+  <div class="table-scroll"><table>
+    <tr><th>Tipo de cuenta</th><th>Quién</th><th>Cómo opera</th></tr>
+    <tr><td><b>Negocio</b></td><td>Restaurante, bar, discoteca, cafetería</td><td>Una o varias sucursales; catálogo e inventario propios (con maestro compartido opcional); turnos, cierres diarios, reportería histórica.</td></tr>
+    <tr><td><b>Organizador</b></td><td>Productora de festivales, conciertos, ferias, temporadas</td><td>Dentro de su cuenta crea cada evento: contenedor con fechas y presupuesto. Dentro de cada evento, sus puntos de venta (barras y cocinas) con inventario asignado, personal y terminales propios. Reportería consolidada en vivo; al cerrar: devolución de sobrantes, liquidación y archivo. El organizador conserva el histórico entre ediciones, pero cada evento es un mundo cerrado por dentro.</td></tr>
+  </table></div>
+  <h3>Actores</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Actor</th><th>Nivel</th><th>Descripción</th></tr>
+    <tr><td>Super admin</td><td>Plataforma</td><td>Dueño del SaaS: tenants, planes, facturación del servicio, soporte, métricas globales.</td></tr>
+    <tr><td>Soporte plataforma</td><td>Plataforma</td><td>Solo lectura/asistencia a tenants; sin datos sensibles.</td></tr>
+    <tr><td>Dueño del negocio</td><td>Tenant</td><td>Control total: sucursales, eventos, usuarios, configuración, reportería completa.</td></tr>
+    <tr><td>Administrador</td><td>Tenant</td><td>Gestión operativa delegada según permisos.</td></tr>
+    <tr><td>Gerente de unidad</td><td>Unidad</td><td>Administra una sucursal o punto de evento: inventario, personal, cierres.</td></tr>
+    <tr><td>Cajero / bartender / mesero</td><td>Unidad</td><td>Opera el POS: órdenes, cobros, su caja.</td></tr>
+    <tr><td>Almacenista</td><td>Tenant / unidad</td><td>Compras, recepción, transferencias, conteos.</td></tr>
+  </table></div>
+  <h3>Fases</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Fase</th><th>Contenido</th></tr>
+    <tr><td><b>MVP</b></td><td>Cuentas con alta manual · cuenta de negocio con una sucursal · catálogo con recetas e insumos · inventario (compras, ajustes, consumo por venta) · POS offline-first con efectivo/tarjeta y apertura/cierre de caja · NCF · reportería básica (ventas, top productos, cierre Z) · usuarios y roles.</td></tr>
+    <tr><td><b>Fase 2</b></td><td>Cuentas de organizador: eventos, puntos de venta, asignación de inventario y liquidación · multi-sucursal con transferencias · e-CF según calendario DGII · planes self-service con pasarela · app de comandas para meseros.</td></tr>
+    <tr><td><b>Fase 3</b></td><td>Pagos integrados en el POS con el <b>SDK de Portal sobre terminales SUNMI P2 / P3 MIX</b> (APK vía Capacitor, ADR-005) · evaluar Azul/CardNET · órdenes de compra a proveedores · pronóstico de demanda · API pública.</td></tr>
+    <tr><td><b>Fuera de alcance</b></td><td>Delivery y pedidos en línea de clientes finales · nómina · contabilidad formal (se exporta).</td></tr>
+  </table></div>
+</section>
+
+<section id="arquitectura">
+  <p class="eyebrow">Documento 02</p>
+  <h2>Arquitectura del sistema</h2>
+  <h3>Contexto (C4 nivel 1)</h3>
+  <pre class="mermaid">
+flowchart TB
+    superadmin["Super Admin&lt;br/&gt;(equipo de la plataforma)"]
+    duenio["Dueño / Admin del negocio"]
+    operador["Cajero / Bartender / Mesero"]
+    sistema["Plataforma SaaS&lt;br/&gt;Gestión de bares, restaurantes y eventos"]
+    dgii["DGII&lt;br/&gt;Facturación electrónica e-CF"]
+    email["Servicio de email"]
+    pagos["Pasarela de pagos&lt;br/&gt;(suscripciones — fase 2)"]
+    superadmin -->|"Administra tenants y planes"| sistema
+    duenio -->|"Configura negocio y ve reportería"| sistema
+    operador -->|"Opera el POS&lt;br/&gt;(online u offline)"| sistema
+    sistema -->|"Emite e-CF"| dgii
+    sistema -->|"Envía correos"| email
+    sistema -->|"Cobra suscripciones"| pagos
+  </pre>
+  <h3>Contenedores (C4 nivel 2)</h3>
+  <pre class="mermaid">
+flowchart TB
+    subgraph clientes["Clientes"]
+        navAdmin["Back-office&lt;br/&gt;Blade + Livewire (Filament)"]
+        navPOS["POS — PWA&lt;br/&gt;JS + IndexedDB + Service Worker"]
+    end
+    subgraph servidor["Servidor — monolito Laravel"]
+        app["Aplicación Laravel&lt;br/&gt;Módulos de dominio"]
+        api["API REST /api/v1&lt;br/&gt;sincronización POS"]
+        queue["Workers de cola&lt;br/&gt;reportes, e-CF, emails"]
+    end
+    subgraph datos["Datos"]
+        mysql[("MySQL 8&lt;br/&gt;BD compartida con tenant_id")]
+        redis[("Redis&lt;br/&gt;cache, colas, sesiones")]
+        s3[("S3&lt;br/&gt;logos, XML e-CF, exportes")]
+    end
+    dgii["DGII"]
+    navAdmin -->|HTTPS| app
+    navPOS -->|"HTTPS — sync por lotes"| api
+    api --> app
+    app --> mysql
+    app --> redis
+    queue --> mysql
+    queue -->|"e-CF"| dgii
+    app --> s3
+  </pre>
+  <h3>Módulos del monolito</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Módulo</th><th>Responsabilidad</th></tr>
+    <tr><td><code>Platform</code></td><td>Tenants, planes, suscripciones, panel super admin</td></tr>
+    <tr><td><code>Identity</code></td><td>Usuarios, roles, permisos, invitaciones (spatie/laravel-permission)</td></tr>
+    <tr><td><code>Tenancy</code></td><td>Resolución del tenant, scoping global, contexto de unidad operativa</td></tr>
+    <tr><td><code>Catalog</code></td><td>Productos, categorías, precios, recetas (escandallo), modificadores</td></tr>
+    <tr><td><code>Inventory</code></td><td>Insumos, stock por unidad, compras, transferencias, mermas, conteos</td></tr>
+    <tr><td><code>Sales</code></td><td>Órdenes, pagos, sesiones de caja, mesas/zonas, turnos</td></tr>
+    <tr><td><code>Events</code></td><td>Eventos, puntos de venta, asignación de inventario, liquidación</td></tr>
+    <tr><td><code>Fiscal</code></td><td>Secuencias NCF, emisión e-CF, exportes 606/607</td></tr>
+    <tr><td><code>Reporting</code></td><td>Dashboards, reportes, cierre Z, consolidados de evento</td></tr>
+    <tr><td><code>Sync</code></td><td>Endpoint de sincronización del POS, idempotencia</td></tr>
+  </table></div>
+  <h3>Reglas de dependencia</h3>
+  <pre class="mermaid">
+flowchart LR
+    Platform --> Identity
+    Sales --> Catalog
+    Sales --> Inventory
+    Sales --> Fiscal
+    Events --> Sales
+    Events --> Inventory
+    Reporting --> Sales
+    Reporting --> Inventory
+    Reporting --> Events
+    Sync --> Sales
+  </pre>
+  <ul>
+    <li><code>Catalog</code> e <code>Inventory</code> no conocen a <code>Sales</code> (dependencia en una sola dirección).</li>
+    <li><code>Fiscal</code> no conoce ningún dominio de negocio: recibe "documentos a foliar/emitir".</li>
+    <li><code>Reporting</code> solo lee — idealmente contra réplicas o tablas agregadas.</li>
+  </ul>
+</section>
+
+<section id="datos">
+  <p class="eyebrow">Documento 03</p>
+  <h2>Modelo de datos</h2>
+  <p>Convenciones: toda tabla de negocio lleva <code>tenant_id</code>; lo transaccional cuelga de <code>operating_units</code>; órdenes y pagos usan <b>UUID generado en el cliente</b> (idempotencia offline); dinero en centavos <code>BIGINT</code>, moneda DOP.</p>
+  <pre class="mermaid">
+erDiagram
+    PLANS ||--o{ TENANTS : "suscribe"
+    TENANTS ||--o{ USERS : "tiene"
+    TENANTS ||--o{ OPERATING_UNITS : "tiene"
+    TENANTS ||--o{ EVENTS : "organiza"
+    EVENTS ||--o{ OPERATING_UNITS : "contiene"
+    OPERATING_UNITS ||--o{ POS_DEVICES : "registra"
+    OPERATING_UNITS ||--o{ CASH_SESSIONS : "abre"
+    USERS }o--o{ OPERATING_UNITS : "asignado a"
+    TENANTS ||--o{ CATEGORIES : ""
+    CATEGORIES ||--o{ PRODUCTS : ""
+    PRODUCTS ||--o{ RECIPE_ITEMS : "receta"
+    INVENTORY_ITEMS ||--o{ RECIPE_ITEMS : "insumo"
+    TENANTS ||--o{ INVENTORY_ITEMS : ""
+    OPERATING_UNITS ||--o{ STOCK_LEVELS : ""
+    INVENTORY_ITEMS ||--o{ STOCK_LEVELS : ""
+    INVENTORY_ITEMS ||--o{ STOCK_MOVEMENTS : ""
+    OPERATING_UNITS ||--o{ STOCK_MOVEMENTS : ""
+    OPERATING_UNITS ||--o{ ORDERS : ""
+    CASH_SESSIONS ||--o{ ORDERS : ""
+    ORDERS ||--o{ ORDER_ITEMS : ""
+    PRODUCTS ||--o{ ORDER_ITEMS : ""
+    ORDERS ||--o{ PAYMENTS : ""
+    ORDERS ||--|| FISCAL_DOCUMENTS : "genera"
+    TENANTS ||--o{ NCF_SEQUENCES : ""
+    NCF_SEQUENCES ||--o{ NCF_BLOCKS : "asigna"
+    POS_DEVICES ||--o{ NCF_BLOCKS : "recibe"
+    NCF_BLOCKS ||--o{ FISCAL_DOCUMENTS : "folia"
+  </pre>
+  <h3>Campos clave por entidad</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Entidad</th><th>Campos que definen el diseño</th></tr>
+    <tr><td><code>tenants</code></td><td><code>rnc</code>, <code>status</code> (active | suspended | trial), <code>plan_id</code></td></tr>
+    <tr><td><code>operating_units</code></td><td><code>event_id</code> nullable (null = sucursal), <code>type</code> (branch | event_outlet), <code>status</code> (active | closed | settled)</td></tr>
+    <tr><td><code>events</code></td><td><code>starts_at</code>, <code>ends_at</code>, <code>status</code> (draft | active | closed | settled)</td></tr>
+    <tr><td><code>products</code></td><td><code>type</code> (simple | recipe), <code>price_cents</code>, <code>track_stock</code></td></tr>
+    <tr><td><code>recipe_items</code></td><td><code>product_id</code> + <code>inventory_item_id</code> + <code>quantity</code> en unidad base del insumo</td></tr>
+    <tr><td><code>inventory_items</code></td><td><code>base_unit</code> (ml | g | unidad), <code>cost_cents</code> (costo promedio)</td></tr>
+    <tr><td><code>stock_movements</code></td><td><code>type</code>: purchase, sale_consumption, transfer_in/out, waste, adjustment, event_allocation, event_return</td></tr>
+    <tr><td><code>orders</code></td><td><b>UUID</b>, <code>subtotal_cents</code>, <code>itbis_cents</code>, <code>tip_cents</code>, <code>total_cents</code>, <code>sold_at</code> (hora real del POS), <code>synced_at</code></td></tr>
+    <tr><td><code>order_items</code></td><td><code>unit_price_cents</code> — precio congelado al momento de la venta</td></tr>
+    <tr><td><code>payments</code></td><td><b>UUID</b>, <code>method</code> (cash | card | transfer | other)</td></tr>
+    <tr><td><code>cash_sessions</code></td><td><code>opening_cents</code>, <code>closing_cents</code>, dispositivo y usuario que abre/cierra</td></tr>
+    <tr><td><code>pos_devices</code></td><td><code>device_token</code>, <code>last_sync_at</code></td></tr>
+    <tr><td><code>ncf_sequences</code> / <code>ncf_blocks</code></td><td>tipo (B02, B01, E32…), rango autorizado, vencimiento; bloques por terminal con <code>from/to/used_up_to</code></td></tr>
+    <tr><td><code>fiscal_documents</code></td><td><code>ncf</code> asignado, <code>status</code> (issued | sent | accepted | rejected | voided), <code>xml_path</code></td></tr>
+  </table></div>
+  <h3>Decisiones de modelado</h3>
+  <ol>
+    <li><b>El tipo de cuenta separa los dos mundos</b> (<code>business</code> u <code>organizer</code>): el aislamiento entre un festival y cualquier negocio ya lo garantiza <code>tenant_id</code>, sin reglas extra.</li>
+    <li><b>La unidad operativa unifica sucursal y punto de evento.</b> El mundo al que pertenece es un atributo, no una estructura paralela: <code>event_id</code> nulo ⇒ sucursal.</li>
+    <li><b>Inventario de eventos = movimientos, no tablas nuevas.</b> Asignar stock a un punto es <code>transfer_out</code> + <code>event_allocation</code>; la liquidación se calcula: asignado − vendido (según recetas) − mermas − devuelto = faltante.</li>
+    <li><b>Consumo derivado de recetas.</b> Al pagar, cada línea explota su receta y genera <code>sale_consumption</code>. Un producto simple con stock consume 1:1.</li>
+    <li><b>Precio congelado en la venta.</b> Cambiar el catálogo nunca altera ventas históricas.</li>
+    <li><b>UUID solo donde nace offline</b> (órdenes/pagos); el resto usa autoincrementales por rendimiento.</li>
+    <li><b><code>sold_at</code> ≠ <code>created_at</code>.</b> La hora fiscal y de reportería es la del POS, no la de llegada al servidor.</li>
+  </ol>
+</section>
+
+<section id="roles">
+  <p class="eyebrow">Documento 04</p>
+  <h2>Roles y permisos</h2>
+  <p>Implementación prevista: <code>spatie/laravel-permission</code> con teams (el team es el tenant). Tres niveles de contexto: <b>plataforma → tenant → unidad operativa</b>. Un usuario pertenece a un tenant y puede asignarse a varias unidades; los permisos de unidad solo aplican dentro de las asignadas.</p>
+  <div class="table-scroll"><table>
+    <tr><th>Permiso</th><th class="c">owner</th><th class="c">admin</th><th class="c">event_mgr</th><th class="c">unit_mgr</th><th class="c">warehouse</th><th class="c">cashier</th></tr>
+    <tr><td>Gestionar usuarios del tenant</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Configurar catálogo y precios</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Crear eventos / puntos de venta</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Asignar inventario a evento</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Liquidar / cerrar evento</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Compras y recepción</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Transferencias entre unidades</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Ajustes y mermas</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Reportería del tenant completo</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Reportería de su unidad</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Abrir / cerrar caja propia</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td></tr>
+    <tr><td>Vender en POS</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td></tr>
+    <tr><td>Anular orden pagada</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Descuentos sobre límite</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Configurar secuencias NCF</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+    <tr><td>Registrar dispositivos POS</td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="ok">Sí</span></td><td class="c"><span class="no">—</span></td><td class="c"><span class="no">—</span></td></tr>
+  </table></div>
+  <p>Roles adicionales: <code>super_admin</code> y <code>platform_support</code> a nivel plataforma; <code>waiter</code> (comandas sin cobro) llega en fase 2. Roles personalizados por tenant: fase 2.</p>
+  <h3>Reglas transversales</h3>
+  <ul>
+    <li><b>Scoping absoluto por tenant</b>, garantizado con global scopes y tests de aislamiento en CI.</li>
+    <li><b>Acciones sensibles con PIN de supervisor</b> en el POS: anulaciones, descuentos altos, gaveta sin venta.</li>
+    <li><b>Auditoría</b> de toda escritura relevante (spatie/laravel-activitylog).</li>
+    <li><b>El token del dispositivo no es un usuario</b>: autentica al aparato; el operador entra con PIN. Ambos quedan registrados en cada venta.</li>
+  </ul>
+</section>
+
+<section id="offline">
+  <p class="eyebrow">Documento 05</p>
+  <h2>POS offline y sincronización</h2>
+  <div class="note"><span class="tag">¿App de Android o página web? — las dos, con un solo código</span>
+  El POS es <b>una sola aplicación</b> (PWA en Vue). En el MVP se usa desde el navegador de cualquier tablet, iPad o PC: se abre una vez con internet, se "instala" desde Chrome y desde entonces abre con su icono, a pantalla completa y sin red. En fase 3, <b>esa misma app</b> se empaqueta como APK para los terminales SUNMI P2 / P3 MIX con Capacitor, sumando cobro integrado con el SDK de Portal e impresión por la térmica del propio equipo (ver ADR-005). El modo offline funciona idéntico en ambos empaques.</div>
+  <p>Principios: el POS siempre opera contra su base local (IndexedDB) — la red es una mejora, nunca un requisito para vender. El servidor es la fuente de verdad del catálogo; el POS lo es de sus propias ventas hasta sincronizar. Cada terminal crea órdenes con UUID propio, así que <b>las ventas no pueden entrar en conflicto</b>, y la sincronización es idempotente (upsert por UUID: reenviar un lote no duplica nada).</p>
+  <pre class="mermaid">
+sequenceDiagram
+    participant POS as POS (PWA + IndexedDB)
+    participant API as API Laravel /api/v1/sync
+    participant BD as MySQL
+    Note over POS: Venta offline
+    POS->>POS: Crear orden UUID + pago&lt;br/&gt;guardar en outbox local
+    POS->>POS: Asignar NCF del bloque local
+    Note over POS,API: Al recuperar conexión
+    POS->>API: POST /sync/push {lote de operaciones}
+    API->>BD: Upsert por UUID&lt;br/&gt;+ explosión de recetas → stock
+    API-->>POS: ACK por operación
+    POS->>POS: Marcar sincronizadas, limpiar outbox
+    POS->>API: GET /sync/pull?catalog_version=N
+    API-->>POS: Delta de catálogo&lt;br/&gt;+ nuevo bloque NCF si se agota
+  </pre>
+  <h3>Reglas de resolución</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Situación</th><th>Regla</th></tr>
+    <tr><td>Catálogo cambió mientras el POS estaba offline</td><td>La venta con el precio del snapshot es válida (precio congelado); el nuevo precio aplica al refrescar.</td></tr>
+    <tr><td>Producto desactivado mientras offline</td><td>Ventas hechas se aceptan; el producto desaparece al refrescar.</td></tr>
+    <tr><td>Stock negativo al consolidar</td><td>Se acepta el movimiento y se alerta descuadre; el conteo físico manda. Nunca se bloquea una venta ya cobrada.</td></tr>
+    <tr><td>Lote reenviado por timeout</td><td>Upsert por UUID: cero duplicados.</td></tr>
+    <tr><td>Reloj del dispositivo desviado</td><td>Se guarda <code>sold_at</code> tal cual + <code>synced_at</code> del servidor; desvíos grandes alertan al gerente.</td></tr>
+    <tr><td>Dispositivo perdido o robado</td><td>Se revoca su token desde el back-office; su bloque NCF sin usar se anula.</td></tr>
+  </table></div>
+  <h3>Ciclo de vida del dispositivo</h3>
+  <pre class="mermaid">
+stateDiagram-v2
+    [*] --> Registrado: Admin genera código de enrolamiento
+    Registrado --> Activo: POS canjea código por device_token
+    Activo --> Activo: Vende / sincroniza
+    Activo --> Revocado: Admin revoca (pérdida/robo)
+    Activo --> Inactivo: Evento o unidad cerrada
+    Revocado --> [*]
+  </pre>
+  <div class="warn"><span class="tag">Límites explícitos del modo offline</span>
+  No hay transferencia de órdenes entre terminales sin red (una mesa abierta vive en un solo terminal hasta sincronizar). La reportería en vivo refleja solo lo sincronizado; el cierre de un evento exige que todos los terminales hayan sincronizado — el sistema lo verifica y lista pendientes. El enrolamiento inicial y la primera sesión requieren conexión.</div>
+</section>
+
+<section id="fiscal">
+  <p class="eyebrow">Documento 06</p>
+  <h2>Fiscalidad — República Dominicana</h2>
+  <div class="warn"><span class="tag">Validación pendiente</span>
+  Tasas, montos y calendarios deben validarse con un contador dominicano antes de implementar, y revisarse periódicamente: la normativa DGII cambia.</div>
+  <div class="table-scroll"><table>
+    <tr><th>Concepto</th><th>Qué es</th><th>Impacto en el sistema</th></tr>
+    <tr><td><b>RNC</b></td><td>Registro Nacional del Contribuyente</td><td>Campo del tenant; validación de formato; requerido para B01/E31</td></tr>
+    <tr><td><b>NCF</b></td><td>Número de Comprobante Fiscal autorizado por DGII</td><td>Secuencias con vencimiento; el sistema folia cada venta</td></tr>
+    <tr><td><b>e-CF</b></td><td>Comprobante electrónico (XML firmado, Ley 32-23)</td><td>Fase 2: firma digital, envío, acuses; obligatoriedad progresiva</td></tr>
+    <tr><td><b>ITBIS</b></td><td>Impuesto general del 18%</td><td>Cálculo por línea; exentos configurables; desglose en ticket</td></tr>
+    <tr><td><b>Propina legal</b></td><td>10% obligatorio en bares/restaurantes (art. 228 Código de Trabajo)</td><td>Línea automática; configurable por unidad; reportería de propinas</td></tr>
+  </table></div>
+  <h3>Tipos de comprobante</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Papel (NCF)</th><th>Electrónico (e-CF)</th><th>Uso</th></tr>
+    <tr><td>B02</td><td>E32</td><td><b>Consumo</b> — venta típica de POS a consumidor final</td></tr>
+    <tr><td>B01</td><td>E31</td><td><b>Crédito fiscal</b> — cliente con RNC que pide factura</td></tr>
+    <tr><td>B04</td><td>E34</td><td><b>Nota de crédito</b> — anulaciones/devoluciones tras emitir</td></tr>
+    <tr><td>B14 / B15</td><td>E44 / E45</td><td>Regímenes especiales / gubernamental</td></tr>
+  </table></div>
+  <h3>Orden de cálculo del ticket</h3>
+  <pre class="plain">Subtotal (suma de líneas)
++ Propina legal 10%   (sobre subtotal, si la unidad la aplica)
++ ITBIS 18%           (sobre subtotal; líneas exentas no suman base)
+= Total</pre>
+  <p>Si el precio de carta es "ITBIS incluido" (común en bares), el sistema desglosa hacia atrás — configurable por tenant.</p>
+  <h3>Requisitos del módulo Fiscal</h3>
+  <ol>
+    <li>Gestión de secuencias NCF: rangos autorizados por tipo, vencimiento, alertas de agotamiento.</li>
+    <li>Foliado offline por bloques por terminal (ver ADR-004).</li>
+    <li>Nota de crédito obligatoria para anular una venta foliada — nunca se borra.</li>
+    <li>Reemisión de consumo (B02) como crédito fiscal (B01) cuando el cliente presenta RNC.</li>
+    <li>Exportes 606/607 por período en formato DGII.</li>
+    <li>e-CF en fase 2: XML firmado con certificado del tenant, envío, acuses y contingencia.</li>
+    <li>La pre-cuenta se marca visiblemente: <b>"NO VÁLIDO COMO COMPROBANTE FISCAL"</b>.</li>
+  </ol>
+</section>
+
+<section id="ui">
+  <p class="eyebrow">Documento 07</p>
+  <h2>Diseño de UI y paneles</h2>
+  <p>Tres superficies, tres usuarios, tres contextos — un solo sistema visual (Tailwind + tokens compartidos).</p>
+  <div class="table-scroll"><table>
+    <tr><th>Superficie</th><th>Usuario</th><th>Contexto</th><th>Personalidad</th></tr>
+    <tr><td><b>POS (PWA)</b></td><td>Cajero / bartender</td><td>De pie, con prisa, poca luz, táctil</td><td>Oscuro, botones grandes, cero fricción</td></tr>
+    <tr><td><b>Back-office</b></td><td>Dueño / gerente</td><td>Sentado, analizando, desktop</td><td>Claro, denso en datos, navegable</td></tr>
+    <tr><td><b>Super admin</b></td><td>Equipo de la plataforma</td><td>Herramienta interna</td><td>Funcional, tablas, sin marca de tenant</td></tr>
+  </table></div>
+  <div class="note"><span class="tag">Decisión técnica</span>
+  <b>Filament</b> como base del back-office y el super admin: es Livewire puro (alineado con ADR-001), soporta multi-panel con guards separados y multi-tenancy compatible con nuestro <code>tenant_id</code>. Tablas, formularios, filtros y widgets vienen resueltos — acelera el MVP meses. El POS no usa Filament: es la PWA Vue (ADR-003). Filament administra; el POS vende.</div>
+  <h3>POS — decisiones de experiencia</h3>
+  <ul>
+    <li>Tema oscuro por defecto (entornos nocturnos); claro opcional para cafeterías.</li>
+    <li>Objetivos táctiles ≥ 56 px, sin hover, sin menús anidados en el flujo de venta.</li>
+    <li>Dos modos por unidad: <b>barra</b> (grid → cobrar en 2-3 toques) y <b>restaurante</b> (mesas/zonas, cuentas abiertas, pre-cuenta).</li>
+    <li>Cobro con denominaciones RD$ (100/200/500/1000/2000), cambio en tipografía gigante, pago dividido; efectivo / tarjeta / transferencia.</li>
+    <li>Desglose fiscal siempre visible: subtotal, propina 10%, ITBIS 18%.</li>
+    <li>Cambio de operador por PIN sobre el mismo dispositivo; acciones sensibles con PIN de supervisor.</li>
+    <li>Estado de sincronización persistente y discreto (verde / ámbar / rojo), nunca modal, nunca bloqueante.</li>
+    <li>Teclado numérico propio en pantalla para importes.</li>
+  </ul>
+  <h3>Back-office</h3>
+  <ul>
+    <li>Navegación lateral: Dashboard, Ventas, Inventario, Catálogo, Eventos, Reportes, Usuarios, Configuración.</li>
+    <li><b>Selector de contexto</b> en la barra superior — cambia entre todo el negocio, una sucursal o un punto de un evento. Es el reflejo directo del concepto de unidad operativa.</li>
+    <li>Dashboard por contexto: ventas de hoy, órdenes, ticket promedio, alertas de stock, ventas por hora, top productos.</li>
+    <li>Vista de <b>evento en vivo</b>: leaderboard de puntos de venta, semáforo de stock, terminales sin sincronizar, botón de liquidación.</li>
+  </ul>
+  <h3>Super admin</h3>
+  <ul>
+    <li>Tabla de tenants (estado, plan, unidades, último uso); alta manual en MVP.</li>
+    <li>Impersonation ("entrar como") con auditoría.</li>
+    <li>Salud de sincronización global: dispositivos con horas sin sync = soporte proactivo.</li>
+    <li>Métricas SaaS (MRR, churn, activos) en fase 2 con suscripciones.</li>
+  </ul>
+  <h3>Marca blanca ligera</h3>
+  <p>Cada tenant configura logo y color de acento, aplicados a la cabecera del POS, la pantalla de bloqueo, los tickets (con datos fiscales y RNC) y sus correos transaccionales. El back-office mantiene la identidad de la plataforma; white-label completo no es MVP.</p>
+</section>
+
+<section id="estructura">
+  <p class="eyebrow">Documento 08</p>
+  <h2>Stack definitivo y estructura del proyecto</h2>
+  <p>Versiones verificadas contra Packagist y laravel.com el 25 de julio de 2026. Laravel 13 se publicó el 17 de marzo de 2026 y Filament 5.7 lo soporta oficialmente.</p>
+  <div class="table-scroll"><table>
+    <tr><th>Capa</th><th>Elección</th><th>Notas</th></tr>
+    <tr><td>Lenguaje</td><td><b>PHP 8.4</b></td><td>Ya instalado en el entorno del equipo</td></tr>
+    <tr><td>Framework</td><td><b>Laravel ^13.0</b></td><td>Hoy en 13.22; upgrade guide oficial desde 12 estima ~10 min</td></tr>
+    <tr><td>Paneles admin</td><td><b>Filament ^5.7</b></td><td>Incluye Livewire; multi-panel (super admin + tenant)</td></tr>
+    <tr><td>POS (PWA)</td><td>Vue 3 + Pinia + Dexie + Workbox</td><td>TypeScript; IndexedDB y service worker</td></tr>
+    <tr><td>Base de datos</td><td>MySQL 8</td><td>Índices compuestos por <code>tenant_id</code></td></tr>
+    <tr><td>Cache / colas</td><td>Redis + Horizon</td><td>e-CF, reportes y emails en background</td></tr>
+    <tr><td>Auth API POS</td><td>Sanctum</td><td>Tokens de dispositivo</td></tr>
+    <tr><td>Roles / auditoría</td><td>spatie permission ^6 · activitylog</td><td>Teams = tenant</td></tr>
+    <tr><td>Calidad</td><td><b>Pest 4</b> · Pint · Larastan</td><td>Todo en CI desde el primer commit</td></tr>
+    <tr><td>SUNMI (fase 3)</td><td>Capacitor</td><td>Empaqueta la misma app Vue como APK (ADR-005)</td></tr>
+  </table></div>
+  <h3>Estructura de carpetas (monolito modular)</h3>
+  <pre class="plain">proyectorest/
+├── app/
+│   ├── Domains/                  ← un módulo por dominio del doc 02
+│   │   ├── Platform/  Identity/  Tenancy/  Catalog/  Inventory/
+│   │   ├── Sales/  EventManagement/  Fiscal/  Reporting/  Sync/
+│   │   └── (cada dominio: Models / Actions / Events / Services)
+│   ├── Filament/Admin/           ← panel super admin
+│   ├── Filament/App/             ← panel del tenant
+│   └── Http/Controllers/Api/V1/  ← sincronización del POS
+├── resources/js/pos/             ← la PWA del POS (Vue 3 + TS)
+│   └── platform/                 ← adaptadores web | sunmi (pagos, impresión)
+└── tests/TenantIsolation/        ← suite obligatoria de aislamiento (ADR-002)</pre>
+  <p>Nota de nombre: el módulo "Events" del doc 02 se llama <code>EventManagement</code> en código, para no chocar con la carpeta <code>Events/</code> (eventos de dominio) de cada módulo.</p>
+  <h3>Convenciones clave</h3>
+  <ul>
+    <li>La lógica vive en <b>Actions</b> (un caso de uso = una clase); controladores y recursos Filament solo orquestan.</li>
+    <li>Dependencias entre dominios solo vía servicios públicos o eventos — nunca modelos ajenos directamente.</li>
+    <li>Dinero siempre en <b>centavos enteros</b>; formateo solo en presentación.</li>
+    <li>API <b>versionada desde el día 1</b> (<code>/api/v1</code>): siempre habrá POS viejos offline sincronizando tarde.</li>
+    <li>Enums nativos de PHP para todos los estados (orden, movimiento, comprobante…).</li>
+  </ul>
+  <h3>Primeros hitos de código</h3>
+  <ol>
+    <li>Esqueleto Laravel 13 + CI (Pint, Larastan, Pest) en verde desde el primer commit.</li>
+    <li><code>Domains/Tenancy</code> con <code>BelongsToTenant</code> + suite <code>TenantIsolation</code>.</li>
+    <li><code>Domains/Platform</code>: tenants + panel Admin de Filament.</li>
+    <li><code>Domains/Identity</code>: roles del doc 04.</li>
+    <li>Dominio por dominio según el MVP del doc 01.</li>
+  </ol>
+</section>
+
+<section id="adrs">
+  <p class="eyebrow">Decisiones de arquitectura</p>
+  <h2>ADRs — qué decidimos y por qué</h2>
+
+  <div class="adr">
+    <h3><span class="id">ADR-001</span> Monolito Laravel full-stack; PWA solo para el POS <span class="pill">Aceptada</span></h3>
+    <p>El equipo domina Laravel. Todo el backend es un monolito modular; el back-office es Blade + Livewire. El POS es la única excepción: Livewire renderiza en servidor y sin red no hay interfaz, así que offline-first exige una PWA (Vue 3 + IndexedDB + Service Worker) — servida por el mismo Laravel, mismo repo, mismo deploy.</p>
+    <p><b>Descartado:</b> todo Livewire con POS online-only (viola el requisito offline) · SPA completa (duplica esfuerzo sin beneficio) · app nativa/Electron (mayor costo; la PWA cubre tablet y desktop) · microservicios (complejidad injustificada).</p>
+  </div>
+
+  <div class="adr">
+    <h3><span class="id">ADR-002</span> Multi-tenancy: base de datos compartida con <code>tenant_id</code> <span class="pill">Aceptada</span></h3>
+    <p>Esperamos muchos tenants pequeños/medianos. Una sola BD con <code>tenant_id</code> en toda tabla de negocio: global scope automático (trait <code>BelongsToTenant</code>), tenant resuelto en middleware, índices compuestos que empiezan por <code>tenant_id</code>, y tests de aislamiento obligatorios en CI.</p>
+    <p><b>Descartado:</b> BD por tenant (migraciones y backups ×N, reportería global compleja, costo alto para tenants pequeños) · esquemas de PostgreSQL (mismo problema y cambia el motor). <b>Ruta de escape:</b> como todo lleva <code>tenant_id</code>, un tenant gigante puede extraerse a BD dedicada si algún día hace falta.</p>
+  </div>
+
+  <div class="adr">
+    <h3><span class="id">ADR-003</span> POS offline-first con outbox idempotente <span class="pill">Aceptada</span></h3>
+    <p>Cada operación de venta nace con UUID de cliente y se encola en un outbox local; se envía por lotes cuando hay red y el servidor hace upsert por UUID — reenviar no duplica. Catálogo baja como snapshot versionado (pull por delta). Sin edición concurrente: una orden pertenece a su terminal hasta sincronizar, así que las ventas no generan conflictos. El stock local es indicativo; el real se consolida en el servidor.</p>
+    <p><b>Descartado:</b> siempre online (viola el requisito) · CRDTs / motores de sync genéricos (potencia innecesaria: nuestras escrituras son append-only por terminal; el outbox es más simple de auditar en datos fiscales).</p>
+  </div>
+
+  <div class="adr">
+    <h3><span class="id">ADR-004</span> Foliado NCF por bloques por terminal; e-CF en fase 2 <span class="pill">Aceptada</span></h3>
+    <p>Una secuencia fiscal es un contador único y dos terminales sin red no pueden compartirlo en vivo. Solución: el servidor reserva sub-rangos de la secuencia por terminal; el terminal folia localmente dentro de su bloque, y en cada sync se registra consumo y se reabastece. Folios de terminales revocados se anulan, nunca se reasignan. Costo asumido: los NCF no salen en orden cronológico global — trazabilidad garantizada por terminal + timestamp. El e-CF (fase 2) reutiliza la misma infraestructura, con emisión asíncrona vía cola: una venta jamás espera por DGII.</p>
+    <p><b>Descartado:</b> foliar solo en servidor (el POS offline no emitiría comprobante) · foliar al sincronizar (el cliente se va sin comprobante) · una secuencia DGII por terminal (carga administrativa absurda).</p>
+  </div>
+
+  <div class="adr">
+    <h3><span class="id">ADR-005</span> POS: PWA web + wrapper Capacitor para SUNMI <span class="pill">Aceptada</span></h3>
+    <p>El plan de producto incluye cobro con tarjeta integrado usando el SDK de Portal, que corre nativo en terminales SUNMI P2 y P3 MIX (Android con lector EMV/NFC e impresora térmica integrados), manteniendo además la versión web. Decisión: <b>un solo código de POS, dos empaques</b> — la PWA web (MVP) y, en fase 3, la misma app Vue empaquetada como APK con Capacitor. Los puentes nativos son mínimos y sin lógica de negocio: <code>PortalPayments</code> (cobro integrado) y <code>SunmiPrinter</code> (térmica del equipo, que resuelve la impresión en estos terminales). La app detecta sus capacidades al enrolar (<code>web</code> | <code>sunmi</code>) y usa el adaptador correspondiente; ventas, offline, sync y NCF son idénticos en ambos.</p>
+    <p><b>Descartado:</b> app nativa Kotlin separada (duplica todo el POS) · TWA (no accede a SDKs nativos) · reescritura en Flutter/React Native (tira la inversión de la PWA). El APK se distribuye por el canal de SUNMI, sin Google Play.</p>
+  </div>
+</section>
+
+<section id="preguntas">
+  <p class="eyebrow">Para discutir en la revisión</p>
+  <h2>Preguntas abiertas</h2>
+  <p>La revisión debería producir respuestas, no solo lectura. Estas son las decisiones que siguen abiertas y quién debería opinar:</p>
+  <ol class="qlist">
+    <li><div>Bloques NCF por terminal, folios anulados y numeración no consecutiva en los reportes 606/607: ¿es aceptable ante DGII tal como está diseñado?<span class="who">Contador dominicano</span></div></li>
+    <li><div>Hardware objetivo del POS: ¿tablets Android, iPads o PCs táctiles? Afecta pruebas de la PWA, teclado e impresión. <b>Actualización 25/07:</b> los pagos integrados correrán en terminales SUNMI P2 / P3 MIX (ADR-005); queda definir los dispositivos del POS web del MVP.<span class="who">Equipo + operación</span></div></li>
+    <li><div>Impresión de tickets: térmicas de red vs. Bluetooth vs. USB — las PWA tienen límites con USB/Bluetooth; la impresión por red es la vía segura. <b>Actualización 25/07:</b> en los SUNMI queda resuelta con la térmica integrada; falta definir las impresoras de red para el POS web.<span class="who">Equipo técnico</span></div></li>
+    <li><div>Filament: hacer una prueba de concepto de multi-panel + multi-tenancy con nuestro modelo antes de comprometernos. <b>Actualización 25/07:</b> versión fijada en 5.7 con soporte verificado de Laravel 13; la POC sigue pendiente como hito 3.<span class="who">Equipo técnico</span></div></li>
+    <li><div>¿Las cuentas de organizador quedan completas en fase 2, o el MVP necesita una versión reducida (un evento, pocos puntos) para validar el diferenciador?<span class="who">Negocio</span></div></li>
+    <li><div>e-CF: ¿integración directa con DGII o vía proveedor de facturación autorizado? (ADR pendiente; decidir cuando el calendario alcance a nuestros tenants.)<span class="who">Negocio + contador</span></div></li>
+    <li><div>¿Precios de carta con ITBIS incluido por defecto? Común en bares; el sistema soporta ambos, falta decidir el default.<span class="who">Negocio</span></div></li>
+    <li><div>Nombre del producto: "ProyectoRest" es provisional.<span class="who">Todos</span></div></li>
+  </ol>
+</section>
+
+<footer class="doc">
+  <p>ProyectoRest · Documento de revisión v0.3 · 26 de julio de 2026 · Generado a partir de <code>docs/01…08</code> y <code>docs/adr/ADR-001…005</code> del repositorio. Los archivos Markdown son la fuente de verdad; este HTML es la vista consolidada para revisión. <b>Novedades v0.3:</b> los eventos dejan de ser una modalidad dentro de un negocio y pasan a ser un tipo de cuenta propio — dos mundos cerrados que no comparten datos.</p>
+</footer>
+</main>
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+if (window.mermaid) {
+  var dark = document.documentElement.getAttribute("data-theme") === "dark" ||
+    (document.documentElement.getAttribute("data-theme") !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  window.mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral" });
+}
+</script>
