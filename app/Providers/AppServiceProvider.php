@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
-use App\Domains\EventApp\Actions\IssueEventPublicCode;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -92,33 +91,41 @@ class AppServiceProvider extends ServiceProvider
             ->by(self::codigoNormalizado($request->input('codigo')).'|'.$request->ip())
             ->response(self::demasiadosDelAlta(...)));
 
-        // La puerta pública de la app del asistente: 600 por minuto, evento
-        // y origen.
+        // LA PUERTA DE LA APP DEL ASISTENTE NO TIENE FRENO, Y ESO ES UNA
+        // DECISIÓN MEDIDA CONTRA LA REGLA DE LA CASA, NO UN OLVIDO.
         //
-        // EL NÚMERO ES GRANDE A PROPÓSITO Y ESO NO ES DEJADEZ. Aquí quien
-        // llama no es una caja ni una tablet: son los teléfonos del público,
-        // miles, y salen todos por el NAT de dos o tres operadores móviles.
-        // Con la IP colapsada así, un techo estrecho no frena a quien ataca
-        // —la IP la escribe quien llama, ver bootstrap/app.php— y sí deja
-        // fuera al asistente que abrió la app en el peor momento del sábado.
-        // Un freno que puede negar un acierto está mal, y esta puerta es
-        // justo donde más caro sale.
+        // Tuvo uno: 600 por minuto por (evento, IP). El número no era el
+        // problema; la llave sí, y no hay número que la arregle. Mientras
+        // `trustProxies(at: '*')` siga abierto, la IP la ESCRIBE quien llama,
+        // y de ahí salen las dos mitades del mismo fallo:
         //
-        // Lo que hace baratos estos endpoints no es el freno: es que son de
-        // SOLO LECTURA y llevan ETag, así que la app repite y recibe 304s. El
-        // limitador es un techo de volumen contra un cliente roto en bucle,
-        // no la defensa — y decirlo así evita que alguien lo baje creyendo
-        // que protege algo.
+        // - Contra quien ataca no cuenta: estrena IP —y con ella cubo— en
+        //   cada petición, así que jamás llega al techo.
+        // - Contra el público sí: los teléfonos de un festival salen por el
+        //   NAT de dos o tres operadores, así que miles de asistentes honestos
+        //   comparten UN cubo. Doc 11 §6 habla de +6.000 personas; a dos
+        //   peticiones por arranque, la cola del sábado a las nueve llena 600
+        //   en un minuto y el siguiente que abre la app recibe un 429.
         //
-        // El evento entra en la llave para que el bucle de la app de un
-        // festival no consuma el cubo de otro que comparte operador. Se
-        // normaliza con la MISMA pieza que usa la puerta al resolverlo: si
-        // la llave y la consulta normalizaran distinto, «bocao-26» y
-        // «BOCAO26» serían dos cubos del mismo evento y el freno no frenaría
-        // —es el fallo que ya se pagó en pos-login con las mayúsculas—.
-        RateLimiter::for('event-app', fn (Request $request) => Limit::perMinute(600)
-            ->by(IssueEventPublicCode::normalizar($request->route('codigo')).'|'.$request->ip())
-            ->response(self::demasiadasDeLaApp(...)));
+        // Y hay una tercera, que es la que lo cierra: quien ataca elige QUÉ
+        // cubo llena. Basta con mandar 600 peticiones poniendo en
+        // X-Forwarded-For la IP del operador para dejar sin app, evento a
+        // evento, a todo el que salga por ella. Eso es literalmente el botón
+        // de apagado con otro nombre del que habla CLAUDE.md: un contador que
+        // sube quien ataca, sobre algo que él elige. Un freno que no puede
+        // acertar y sí puede negar un acierto vale menos que ninguno.
+        //
+        // Lo que hace baratos estos endpoints no era el freno: son de SOLO
+        // LECTURA y llevan ETag, así que la app que repite recibe 304s sin
+        // cuerpo, y no hay nada que escribir detrás que un exceso pueda
+        // corromper.
+        //
+        // El techo de volumen que sí hace falta va en el BORDE (ngrok hoy,
+        // el balanceador mañana), que es el único sitio donde la IP todavía
+        // es cierta. Doc 11 lo llama requisito de esta puerta y no opcional.
+        // El día que `at:` se acote a los rangos del borde, `$request->ip()`
+        // vuelve a discriminar y este freno se puede reescribir aquí con un
+        // número defendible; hasta entonces, ninguno lo es.
     }
 
     /**
@@ -135,21 +142,6 @@ class AppServiceProvider extends ServiceProvider
     private static function demasiadosDelAlta(Request $request, array $cabeceras): JsonResponse
     {
         return self::demasiados('kds_demasiados_intentos', $cabeceras);
-    }
-
-    /**
-     * Aquí no son «intentos»: nadie está adivinando nada, solo leyendo un
-     * catálogo. El código lo dice para que la app no enseñe al asistente un
-     * mensaje de credenciales que no ha tecleado.
-     *
-     * @param  array<string, mixed>  $cabeceras
-     */
-    private static function demasiadasDeLaApp(Request $request, array $cabeceras): JsonResponse
-    {
-        return response()->json([
-            'code' => 'event_app_demasiadas_peticiones',
-            'message' => 'Demasiadas peticiones. Espera un minuto y vuelve a probar.',
-        ], 429, $cabeceras);
     }
 
     /**

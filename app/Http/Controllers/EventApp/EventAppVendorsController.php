@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\EventApp;
 
+use App\Domains\EventApp\Support\CacheDeRespuesta;
 use App\Domains\EventApp\Support\UrlAlcanzable;
 use App\Domains\EventApp\Support\VocabularioPublico;
 use App\Domains\EventManagement\Enums\VendorStatus;
@@ -32,35 +33,44 @@ class EventAppVendorsController extends EventAppController
     {
         $evento = $this->evento($request);
 
-        $participantes = EventVendor::query()
-            ->where('event_id', $evento->id)
-            ->pluck('vendor_id');
+        // Las tres consultas de esta pantalla —participación, comercios,
+        // puestos— son las que más se repiten de las tres puertas: es la
+        // segunda petición de CADA arranque de la app. Por eso el cierre:
+        // durante la ventana de caché no se ejecuta ninguna.
+        //
+        // Lo que eso cuesta, dicho aquí y no solo en CacheDeRespuesta: un
+        // comercio suspendido puede seguir NOMBRADO en esta lista hasta que
+        // caduque. Su carta no —la corta la puerta, que no se cachea—, así que
+        // quien lo toque recibe el 404 de siempre y la app lo trata como el
+        // caso normal que ya sabe tratar.
+        return $this->responder($request, CacheDeRespuesta::COMERCIOS, function () use ($evento): array {
+            $participantes = EventVendor::query()
+                ->where('event_id', $evento->id)
+                ->pluck('vendor_id');
 
-        $comercios = Vendor::query()
-            ->whereIn('id', $participantes)
-            // Un comercio suspendido a media tarde desaparece de la app en la
-            // siguiente petición. Es la misma revalidación por petición que
-            // hace la puerta del KDS: aquí no hay token que revocar.
-            ->where('status', VendorStatus::Active)
-            ->orderBy('name')
-            ->get();
+            $comercios = Vendor::query()
+                ->whereIn('id', $participantes)
+                ->where('status', VendorStatus::Active)
+                ->orderBy('name')
+                ->get();
 
-        $puestos = $this->puestosPorComercio($evento->id, $comercios->pluck('id')->all());
+            $puestos = $this->puestosPorComercio($evento->id, $comercios->pluck('id')->all());
 
-        return $this->responder($request, [
-            'comercios' => $comercios->map(fn (Vendor $comercio): array => [
-                'id' => $comercio->id,
-                'nombre' => $comercio->name,
-                'logo_url' => UrlAlcanzable::desde(
-                    $comercio->logo_path === null ? null : Storage::disk('public')->url($comercio->logo_path),
-                ),
-                // Un comercio sin puestos activos sale igual, con la lista
-                // vacía: sigue estando en el festival y su carta se puede
-                // mirar. Esconderlo por no tener barra montada todavía sería
-                // que la app cambie sola durante el montaje.
-                'puestos' => $puestos[$comercio->id] ?? [],
-            ])->all(),
-        ]);
+            return [
+                'comercios' => $comercios->map(fn (Vendor $comercio): array => [
+                    'id' => $comercio->id,
+                    'nombre' => $comercio->name,
+                    'logo_url' => UrlAlcanzable::desde(
+                        $comercio->logo_path === null ? null : Storage::disk('public')->url($comercio->logo_path),
+                    ),
+                    // Un comercio sin puestos activos sale igual, con la lista
+                    // vacía: sigue estando en el festival y su carta se puede
+                    // mirar. Esconderlo por no tener barra montada todavía
+                    // sería que la app cambie sola durante el montaje.
+                    'puestos' => $puestos[$comercio->id] ?? [],
+                ])->all(),
+            ];
+        });
     }
 
     /**

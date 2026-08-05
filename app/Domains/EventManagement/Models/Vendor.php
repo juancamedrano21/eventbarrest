@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\EventManagement\Models;
 
 use App\Domains\Catalog\Models\Product;
+use App\Domains\EventApp\Support\CacheDeRespuesta;
 use App\Domains\EventManagement\Enums\VendorStatus;
 use App\Domains\EventManagement\Exceptions\VendorException;
 use App\Domains\Operations\Models\OperatingUnit;
@@ -96,6 +97,29 @@ class Vendor extends Model
             if ($vendor->users()->exists()) {
                 throw VendorException::hasUsers($vendor->name);
             }
+        });
+
+        // Suspender un comercio tira la lista cacheada de TODOS sus eventos.
+        //
+        // Sin esto, la recuperación que la app construyó para el comercio
+        // suspendido no funciona: el asistente tiene la carta abierta, recibe
+        // el 404, la app lo manda de vuelta a la lista para que vea la verdad
+        // —y la lista vuelve del caché con el puesto todavía puesto, así que
+        // vuelve a entrar y vuelve a chocar—. Un bucle de hasta diez segundos
+        // justo en el momento en que la pantalla tenía que explicarse.
+        //
+        // Se engancha SOLO al cambio de estado y no a cualquier escritura del
+        // comercio: es una operación rara, del organizador, y no está en
+        // ningún camino caliente. El catálogo sigue sin engancharse a
+        // propósito —eso sí son escrituras de cada venta— y para eso está el
+        // TTL corto.
+        static::updated(function (Vendor $vendor): void {
+            if (! $vendor->wasChanged('status')) {
+                return;
+            }
+
+            $vendor->events()->pluck('events.id')
+                ->each(fn (int $evento) => CacheDeRespuesta::olvidar(CacheDeRespuesta::COMERCIOS, $evento));
         });
     }
 

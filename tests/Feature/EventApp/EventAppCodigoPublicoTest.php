@@ -71,6 +71,20 @@ it('refuses a code too short to be anyone', function (): void {
         ->toThrow(EventAppException::class);
 });
 
+it('refuses a vanity code that does not fit instead of trimming it in silence', function (): void {
+    $original = (string) $this->evento->public_code;
+
+    // Diecisiete caracteres. Se guardaba como «BOCAOFOODFEST201» —los
+    // dieciséis que caben en la columna— sin un solo error, y ese valor se
+    // COMPILA en el binario que va a la tienda: equivocarlo cuesta una
+    // publicación entera, así que lo que no cabe tiene que ser un error.
+    expect(fn () => app(IssueEventPublicCode::class)($this->evento, 'BOCAOFOODFEST2026'))
+        ->toThrow(EventAppException::class);
+
+    expect(Event::query()->withoutTenancy()->find($this->evento->id)?->public_code)
+        ->toBe($original);
+});
+
 it('hands a code to an event that somehow got created without one', function (): void {
     // Un seeder o un import escribiendo por el modelo se salta CreateEvent.
     app(TenantContext::class)->runAs($this->organizador, function (): void {

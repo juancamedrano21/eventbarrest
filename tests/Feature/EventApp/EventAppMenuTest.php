@@ -198,6 +198,12 @@ it('publishes the price the till would charge when the vendor adds ITBIS', funct
         $this->tacos->update(['itbis_mode' => ItbisMode::Added]);
     });
 
+    // La carta se sirve de una caché corta, así que un cambio del catálogo
+    // tarda en verse lo que dure su ventana y ni un segundo más. El salto
+    // está aquí y no escondido en un flush a propósito: es el precio de que
+    // la puerta sea barata, y tiene que ser visible en un test.
+    $this->travel(11)->seconds();
+
     // Y con el impuesto POR FUERA, el precio de carta es la base: publicar
     // 250 pesos cuando la caja va a cobrar 295 sería un menú que miente por
     // un 18 % delante de una cola.
@@ -262,7 +268,8 @@ it('serves a 304 for the menu while nothing changes', function (): void {
     $this->travel(2)->seconds();
 
     // El ETag no lleva server_time dentro: si lo llevara, el 304 no
-    // ocurriría jamás y cada teléfono se bajaría la carta entera.
+    // ocurriría jamás y cada teléfono se bajaría la carta entera. Y este 304
+    // sale de la caché: no vuelve a consultar el catálogo, solo lo compara.
     pedirLaCarta($this->codigo, $this->tacos->id, (string) $etag)->assertStatus(304);
 
     app(TenantContext::class)->runAs($this->organizador, function (): void {
@@ -270,6 +277,11 @@ it('serves a 304 for the menu while nothing changes', function (): void {
             $this->taco->update(['price_cents' => 27000]);
         });
     });
+
+    // Pasada la ventana de la caché, el precio nuevo. Que el 304 pare cuando
+    // algo cambia sigue siendo la garantía; lo que la caché añade es un techo
+    // de diez segundos a cuándo se entera.
+    $this->travel(11)->seconds();
 
     pedirLaCarta($this->codigo, $this->tacos->id, (string) $etag)->assertOk()
         ->assertJsonPath('categorias.0.productos.0.precio_cents', 27000);

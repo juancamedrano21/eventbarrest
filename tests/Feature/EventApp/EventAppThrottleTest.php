@@ -4,32 +4,30 @@ declare(strict_types=1);
 
 use App\Domains\EventManagement\Actions\CreateEvent;
 use App\Domains\EventManagement\Enums\EventStatus;
-use App\Domains\EventManagement\Models\Event;
 use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Tenancy\TenantContext;
-use Illuminate\Support\Facades\RateLimiter;
 
 /**
- * El freno de la puerta anónima.
+ * El freno de la puerta anónima, que es no tener freno por IP.
  *
- * Lo que importa de este limitador no es el número —600 por minuto es un
- * techo de volumen, no una defensa: lo que hace baratos estos endpoints es
- * que son de solo lectura y llevan ETag— sino las dos cosas que se prueban
- * aquí. Que cuando salta contesta con el código y el mensaje de esta casa, en
- * español, y no con el «Too Many Attempts.» de Laravel que ningún asistente
- * sabe qué hacer con él. Y que el cubo es POR EVENTO: dos festivales que
- * comparten el NAT de un operador móvil no pueden apagarse el uno al otro.
+ * Esta puerta tuvo uno —600 por minuto por (evento, IP)— y se quitó midiendo,
+ * no opinando. Mientras `trustProxies(at: '*')` siga abierto, la IP la escribe
+ * quien llama: contra quien ataca el cubo no cuenta —estrena IP en cada
+ * petición— y contra el público sí, porque un festival entero sale por el NAT
+ * de dos operadores. Los dos tests de aquí son las dos mitades de eso, y los
+ * dos se ponían rojos con el limitador puesto.
+ *
+ * Lo que hace barata esta puerta no es un contador: es que es de solo lectura,
+ * lleva ETag y no tiene nada que escribir detrás. El techo de volumen va en el
+ * borde, que es el único sitio donde la IP todavía es cierta.
  */
 beforeEach(function (): void {
     $this->organizador = app(CreateTenant::class)('Bocao Food Fest', null, TenantType::Organizer);
 
     app(TenantContext::class)->runAs($this->organizador, function (): void {
-        $this->uno = app(CreateEvent::class)(
+        $this->evento = app(CreateEvent::class)(
             'Bocao 2026', now()->subDay(), now()->addDay(), null, EventStatus::Active,
-        );
-        $this->otro = app(CreateEvent::class)(
-            'Bocao Navidad', now()->addMonth(), now()->addMonth()->addDay(), null, EventStatus::Active,
         );
     });
 });
@@ -38,48 +36,40 @@ afterEach(function (): void {
     app(TenantContext::class)->clear();
 });
 
-/**
- * Llena el cubo de un evento sin gastar seiscientas peticiones.
- *
- * La llave se compone igual que la compone ThrottleRequests para un
- * limitador con nombre: md5(nombre . lo que devuelve ->by()). Depender de esa
- * fórmula es el precio de no atar el test a un bucle de seiscientas
- * respuestas HTTP; si Laravel la cambia, este test se pone rojo y se
- * arregla, que es exactamente lo que tiene que pasar.
- */
-function llenarElCubo(Event $evento): void
-{
-    $llave = md5('event-app'.$evento->public_code.'|127.0.0.1');
+it('never denies a phone because the whole festival shares one carrier NAT', function (): void {
+    $codigo = (string) $this->evento->public_code;
 
-    for ($i = 0; $i < 600; $i++) {
-        RateLimiter::hit($llave, 60);
+    // Setecientas peticiones del MISMO origen: no es un ataque, es la cola
+    // del sábado a las nueve. Un arranque de app son dos peticiones y cada
+    // carta que alguien mira suma otra, así que doscientos asistentes detrás
+    // del NAT de su operador pasan de aquí sin proponérselo.
+    for ($i = 0; $i < 700; $i++) {
+        $respuesta = $this->getJson("/api/event-app/eventos/{$codigo}/manifiesto");
     }
-}
 
-it('answers its own 429, in spanish, when the ceiling is reached', function (): void {
-    llenarElCubo($this->uno);
+    // Un freno nunca puede negar un acierto, y este es el acierto que negaba.
+    $respuesta->assertOk()->assertJsonPath('evento.nombre', 'Bocao 2026');
 
-    $respuesta = $this->getJson("/api/event-app/eventos/{$this->uno->public_code}/manifiesto")
-        ->assertStatus(429)
-        ->assertJsonPath('code', 'event_app_demasiadas_peticiones');
-
-    expect($respuesta->json('message'))->toContain('Espera un minuto');
-
-    // Sin perder lo que trae el 429 de Laravel: es lo que un cliente honesto
-    // usa para dejar de insistir sin tener que leer el cuerpo.
-    expect($respuesta->headers->get('Retry-After'))->not->toBeNull();
+    // Y no queda ni el rastro del cubo: si algún día vuelve a haber uno, que
+    // sea una decisión y no un descuido que se cuela con una cabecera.
+    expect($respuesta->headers->has('X-RateLimit-Limit'))->toBeFalse();
 });
 
-it('never locks one festival out because of another one on the same carrier', function (): void {
-    llenarElCubo($this->uno);
+it('cannot be turned into a shutdown button by forging the caller IP', function (): void {
+    $codigo = (string) $this->evento->public_code;
 
-    $this->getJson("/api/event-app/eventos/{$this->uno->public_code}/manifiesto")
-        ->assertStatus(429);
+    // La IP del operador por el que sale medio recinto, escrita a mano en la
+    // cabecera: con trustProxies('*') esto es todo lo que hacía falta para
+    // llenar el cubo de OTRO. Un contador que sube quien ataca, sobre algo
+    // que él elige, es un botón de apagado con otro nombre.
+    $delOperador = ['X-Forwarded-For' => '200.88.128.1'];
 
-    // Mismo origen, otro evento: un freno que puede negar un acierto está
-    // mal, y con la IP colapsada por el NAT del operador este es el acierto
-    // que estaría negando.
-    $this->getJson("/api/event-app/eventos/{$this->otro->public_code}/manifiesto")
+    for ($i = 0; $i < 600; $i++) {
+        $this->getJson("/api/event-app/eventos/{$codigo}/manifiesto", $delOperador);
+    }
+
+    // Y el teléfono honesto que sale por esa misma IP sigue teniendo app.
+    $this->getJson("/api/event-app/eventos/{$codigo}/manifiesto", $delOperador)
         ->assertOk()
-        ->assertJsonPath('evento.nombre', 'Bocao Navidad');
+        ->assertJsonPath('evento.codigo', $codigo);
 });

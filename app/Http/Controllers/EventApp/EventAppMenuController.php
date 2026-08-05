@@ -6,6 +6,7 @@ namespace App\Http\Controllers\EventApp;
 
 use App\Domains\Catalog\Models\Category;
 use App\Domains\Catalog\Models\Product;
+use App\Domains\EventApp\Support\CacheDeRespuesta;
 use App\Domains\EventApp\Support\UrlAlcanzable;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\VendorContext;
@@ -54,41 +55,49 @@ class EventAppMenuController extends EventAppController
         // puede depender de una sola línea en otro archivo.
         abort_unless(app(VendorContext::class)->check(), 403, 'La carta se sirve siempre para un comercio.');
 
-        $modo = app(ResolveItbisMode::class)->forVendor(
-            $comercio->id,
-            (int) app(TenantContext::class)->id(),
-        );
+        // Los dos abort_unless de arriba se quedan FUERA del cierre a
+        // propósito: son la guarda, y una guarda que solo corre cuando la
+        // caché falla es una guarda que no corre. Dentro va solo lo que se
+        // consulta —la modalidad de ITBIS y el catálogo—, que es lo caro y lo
+        // que no cambia entre dos teléfonos.
+        return $this->responder($request, CacheDeRespuesta::MENU, function () use ($comercio): array {
+            $modo = app(ResolveItbisMode::class)->forVendor(
+                $comercio->id,
+                (int) app(TenantContext::class)->id(),
+            );
 
-        // Solo los activos. Un producto desactivado DESAPARECE de la carta;
-        // no se marca «agotado», que es inventario y es de otra fase. Es lo
-        // contrario de lo que hace el POS, que los manda todos y los pinta en
-        // gris: al cajero le sirve saber que el plato existe y hoy no se
-        // sirve, y al asistente solo le sirve para pedir lo que no hay.
-        $productos = Product::query()
-            ->where('active', true)
-            ->orderBy('name')
-            ->get()
-            ->groupBy('category_id');
+            // Solo los activos. Un producto desactivado DESAPARECE de la
+            // carta; no se marca «agotado», que es inventario y es de otra
+            // fase. Es lo contrario de lo que hace el POS, que los manda todos
+            // y los pinta en gris: al cajero le sirve saber que el plato
+            // existe y hoy no se sirve, y al asistente solo le sirve para
+            // pedir lo que no hay.
+            $productos = Product::query()
+                ->where('active', true)
+                ->orderBy('name')
+                ->get()
+                ->groupBy('category_id');
 
-        $categorias = Category::query()->orderBy('name')->get();
+            $categorias = Category::query()->orderBy('name')->get();
 
-        return $this->responder($request, [
-            'comercio' => [
-                'id' => $comercio->id,
-                'nombre' => $comercio->name,
-            ],
-            'categorias' => $categorias
-                // Una categoría sin productos publicables no viaja: sería un
-                // apartado vacío en la carta, que se lee como un fallo.
-                ->filter(fn (Category $categoria): bool => $productos->has($categoria->id))
-                ->map(fn (Category $categoria): array => [
-                    'id' => $categoria->id,
-                    'nombre' => $categoria->name,
-                    'productos' => $this->productos($productos->get($categoria->id), $modo),
-                ])
-                ->values()
-                ->all(),
-        ]);
+            return [
+                'comercio' => [
+                    'id' => $comercio->id,
+                    'nombre' => $comercio->name,
+                ],
+                'categorias' => $categorias
+                    // Una categoría sin productos publicables no viaja: sería
+                    // un apartado vacío en la carta, que se lee como un fallo.
+                    ->filter(fn (Category $categoria): bool => $productos->has($categoria->id))
+                    ->map(fn (Category $categoria): array => [
+                        'id' => $categoria->id,
+                        'nombre' => $categoria->name,
+                        'productos' => $this->productos($productos->get($categoria->id), $modo),
+                    ])
+                    ->values()
+                    ->all(),
+            ];
+        });
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\EventApp\Models;
 
+use App\Domains\EventApp\Support\CacheDeRespuesta;
 use App\Domains\EventApp\Support\UrlAlcanzable;
 use App\Domains\EventManagement\Models\Event;
 use App\Domains\Tenancy\Concerns\BelongsToTenant;
@@ -132,11 +133,26 @@ class EventAppManifest extends Model
      * este JSON lo escribirá un formulario del panel, y un teclazo ahí no
      * puede ser una app que no arranca.
      *
+     * ESO VALE TAMBIÉN CUANDO LO ROTO ES LA LISTA ENTERA. La columna es JSON
+     * libre, así que un import o un UPDATE a mano pueden dejar ahí un escalar
+     * —`"menus"` en vez de `["menus"]`—, y recorrerlo sería un 500 en el
+     * ÚNICO endpoint sin el cual la app no puede pintarse: un manifiesto que
+     * alguien corrompió apagaría la app de ese festival entero. Un contenedor
+     * que no es lista vale lo mismo que no haber tocado nada: se sirve lo de
+     * fábrica. Nulo y basura se tratan igual a propósito, porque la
+     * diferencia entre los dos no la puede aprovechar un teléfono.
+     *
      * @return array<int, array<string, mixed>>
      */
     public function modulos(): array
     {
-        $crudos = $this->modules ?? self::MODULOS_POR_DEFECTO;
+        // Por getAttribute y no por la propiedad: el cast dice `array`, pero
+        // lo que sale de json_decode es lo que haya en la columna.
+        $crudos = $this->getAttribute('modules');
+
+        if (! is_array($crudos)) {
+            $crudos = self::MODULOS_POR_DEFECTO;
+        }
 
         $limpios = [];
 
@@ -173,13 +189,23 @@ class EventAppManifest extends Model
     /**
      * Los textos de marca, siempre como diccionario.
      *
+     * Mismo trato que los módulos si la columna guarda algo que no es un
+     * mapa: diccionario vacío y la app arranca con los suyos, en vez de un
+     * 500 que la deja sin manifiesto.
+     *
      * @return array<string, string>
      */
     public function textos(): array
     {
+        $crudos = $this->getAttribute('texts');
+
+        if (! is_array($crudos)) {
+            return [];
+        }
+
         $textos = [];
 
-        foreach ($this->texts ?? [] as $clave => $valor) {
+        foreach ($crudos as $clave => $valor) {
             $texto = $this->texto($valor);
 
             if (is_string($clave) && $clave !== '' && $texto !== null) {
@@ -196,6 +222,33 @@ class EventAppManifest extends Model
     public function event(): BelongsTo
     {
         return $this->belongsTo(Event::class);
+    }
+
+    /**
+     * El manifiesto es lo ÚNICO que tira la caché de su endpoint al escribirse,
+     * y por qué merece esa excepción: es la única de las tres respuestas que
+     * alguien cambia MIRANDO el resultado. Se elige un color en el panel, se
+     * mira el teléfono, y si no ha cambiado la conclusión no es «hay una caché
+     * de diez segundos», es «el panel no guardó» — y detrás de esa conclusión
+     * viene guardar tres veces más. El catálogo no tiene ese problema: nadie
+     * desactiva un plato con la app del asistente abierta al lado.
+     *
+     * Colgado del modelo y no de una acción a propósito. El formulario del
+     * panel todavía no existe, así que hoy quien escribe aquí es un seeder o
+     * una consola; cuando exista, la invalidación ya estará puesta sin que
+     * nadie tenga que acordarse de llamarla. Lo que se salta esto es un UPDATE
+     * por query builder, que no dispara eventos de modelo — y eso está bien:
+     * quien escribe por debajo del modelo se salta también los casts y ya sabe
+     * lo que hace.
+     */
+    protected static function booted(): void
+    {
+        $olvidar = function (self $manifiesto): void {
+            CacheDeRespuesta::olvidar(CacheDeRespuesta::MANIFIESTO, $manifiesto->event_id);
+        };
+
+        static::saved($olvidar);
+        static::deleted($olvidar);
     }
 
     protected function casts(): array

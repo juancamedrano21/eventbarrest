@@ -221,8 +221,7 @@ comprador es un `customer_name` en la orden. La puerta sigue el patrón ADR-007
   (`guard => ['web']` y `prune-expired` que borra por `created_at`).
 - **Backstop de `VendorScope`**, que falla ABIERTO: todo endpoint que fije
   contexto por URL replica el `abort_unless` del KDS.
-- Rate limiting y CORS propios — y acotar `trustProxies` al borde, que es
-  requisito de esta puerta, no opcional.
+- **CORS propio.**
 - Revalidar todo en cada petición; ETag/304 en lo que se sondea.
 - **Push real para el estado del pedido**: miles de teléfonos preguntando «¿ya
   está?» por polling multiplicaría la carga que el KDS ya pone. El tablero de
@@ -230,6 +229,61 @@ comprador es un `customer_name` en la orden. La puerta sigue el patrón ADR-007
 
 Toda cifra que la app muestre sale de los desgloses (`SalesSummary`), nunca de
 `sum('total_cents')` — la propina legal viaja dentro del total.
+
+### Esta puerta no tiene limitador de peticiones, y es una decisión
+
+Aquí decía «rate limiting propio». Lo hubo —600 por minuto por (evento, IP)— y
+**se quitó midiendo**. El número no era el problema; la llave sí, y no hay
+número que la arregle. Mientras `trustProxies(at: '*')` siga abierto, la IP la
+**escribe quien llama**, y de ahí salen las tres mitades del mismo fallo:
+
+1. **Contra quien ataca no cuenta**: estrena IP —y con ella cubo— en cada
+   petición, así que jamás llega al techo.
+2. **Contra el público sí**: los teléfonos de un festival salen por el NAT de
+   dos o tres operadores, así que miles de asistentes honestos comparten UN
+   cubo. Con las +6.000 personas de §6 y dos peticiones por arranque, la cola
+   del sábado a las nueve llena 600 en un minuto y el siguiente que abre la app
+   recibe un 429.
+3. **Y quien ataca elige qué cubo llena**: basta con poner en `X-Forwarded-For`
+   la IP del operador para dejar sin app, evento a evento, a todo el que salga
+   por ella. Eso es el botón de apagado con otro nombre del que habla
+   `CLAUDE.md`: un contador que sube quien ataca, sobre algo que él elige.
+
+**La app no recibe un 429 de esta puerta.** Es parte del contrato con el lado
+Flutter, no un detalle de implementación.
+
+**Qué lo sustituye.** No el ETag: un 304 ahorra los bytes del cuerpo pero
+ejecuta **exactamente las mismas consultas** que un 200, así que ahorra red y no
+servidor. Lo que hace barata la puerta es que los tres endpoints son de solo
+lectura y su respuesta es **idéntica para todos los que preguntan por el mismo
+evento** —no hay usuario, no hay personalización—, así que se cachea en el
+servidor por (evento, endpoint, comercio) con una ventana de **10 segundos**: el
+primer teléfono paga las consultas y los siguientes no, y el ETag sale de la
+respuesta ya cacheada, así que un 304 tampoco toca el catálogo. Medido, para una
+segunda petición idéntica: manifiesto 3 → 2 consultas, comercios 5 → 2, menú
+8 → 4. Lo que queda es la **puerta** —evento, cuenta, comercio, participación—,
+que se revalida siempre porque aquí no hay token que revocar y esa revalidación
+es la única revocación que existe.
+
+Diez segundos porque el ahorro está entero en los primeros: a mil peticiones
+por minuto, 10 s ahorra el 99,4 % y 60 s el 99,9 %. Estirar la ventana no compra
+nada y se paga entero en frescura, y un comercio que se queda sin un plato
+quiere que se note pronto.
+
+**El techo de volumen de verdad sigue faltando, y va en el borde** (Railway o
+Cloudflare delante, ngrok hoy), que es el único sitio donde la IP todavía es
+cierta. **Hoy no existe: es deuda conocida, no un olvido.** El día que `at:` se
+acote a los rangos del borde, `$request->ip()` vuelve a discriminar y un
+limitador se puede reescribir en el backend con un número defendible; hasta
+entonces, ninguno lo es.
+
+**Y el almacén de caché importa.** `CACHE_STORE` es `database` en este proyecto,
+así que la caché es **otra consulta contra la misma base** que se quiere
+descargar: convierte N consultas en 1, lo que gana en comercios y en menú y
+**no gana nada en el manifiesto** (1 consulta → 1 consulta). Para que esta caché
+descargue la base de verdad hace falta un almacén **en memoria** —Redis, o APCu
+con un solo proceso— configurado en el despliegue; es un cambio de `.env`, no de
+código.
 
 ---
 

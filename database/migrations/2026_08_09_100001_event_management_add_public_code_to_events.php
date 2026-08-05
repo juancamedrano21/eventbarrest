@@ -35,6 +35,9 @@ return new class extends Migration
 
     private const LARGO = 8;
 
+    /** Trozo del relleno: ni una consulta por evento ni todos en memoria. */
+    private const LOTE = 500;
+
     public function up(): void
     {
         if (! Schema::hasColumn('events', 'public_code')) {
@@ -74,21 +77,40 @@ return new class extends Migration
     /**
      * Sin el modelo a propósito: TenantScope falla cerrado y una migración
      * corre sin cuenta activa, así que Event::query() no vería ni una fila.
+     *
+     * SE PAGINA POR ID Y NO CON each(), Y ESA ES LA DIFERENCIA ENTRE RELLENAR
+     * TODO Y RELLENAR LA MITAD. `each()` pagina por OFFSET sobre una consulta
+     * cuyo propio filtro —`whereNull('public_code')`— es justo lo que el bucle
+     * va borrando: con mil quinientos eventos, la primera página rellena mil,
+     * la segunda pide «desde la fila número mil» de las que TODAVÍA están sin
+     * código —que ya son solo quinientas— y vuelve vacía. El bucle termina
+     * convencido, la migración pasa (el único global admite tantos NULL como
+     * quiera) y quinientos eventos se quedan sin código sin que nada lo diga,
+     * hasta que la app de uno de ellos no arranca en el festival. Con el
+     * cursor en el id, lo que se lleva un trozo no puede mover a los
+     * siguientes.
      */
     private function rellenarLosEventosExistentes(): void
     {
-        /** @var array<int, string> $usados */
-        $usados = DB::table('events')->whereNotNull('public_code')->pluck('public_code')->all();
+        // Mapa y no lista: con miles de eventos, un in_array por cada intento
+        // convierte el relleno en cuadrático sin ganar nada.
+        $usados = [];
 
-        DB::table('events')->whereNull('public_code')->orderBy('id')
-            ->each(function (object $evento) use (&$usados): void {
-                do {
-                    $codigo = $this->codigo();
-                } while (in_array($codigo, $usados, true));
+        foreach (DB::table('events')->whereNotNull('public_code')->pluck('public_code') as $codigo) {
+            $usados[(string) $codigo] = true;
+        }
 
-                $usados[] = $codigo;
+        DB::table('events')->whereNull('public_code')
+            ->chunkById(self::LOTE, function ($eventos) use (&$usados): void {
+                foreach ($eventos as $evento) {
+                    do {
+                        $codigo = $this->codigo();
+                    } while (isset($usados[$codigo]));
 
-                DB::table('events')->where('id', $evento->id)->update(['public_code' => $codigo]);
+                    $usados[$codigo] = true;
+
+                    DB::table('events')->where('id', $evento->id)->update(['public_code' => $codigo]);
+                }
             });
     }
 

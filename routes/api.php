@@ -64,9 +64,17 @@ Route::middleware('kds.device')
 //
 // El contexto sale del EVENTO de la URL, y por eso este middleware es el
 // primero de la cadena: sin él, TenantScope falla cerrado y los tres
-// endpoints contestan 200 con todo vacío. El freno va DELANTE porque es lo
-// más barato que se puede hacer con una petición que va a rebotar.
-Route::middleware(['throttle:event-app', ResolveEventAppContext::class])
+// endpoints contestan 200 con todo vacío.
+//
+// Y SIN `throttle`, a conciencia. Tuvo uno por (evento, IP) y se quitó: con
+// `trustProxies(at: '*')` la IP la escribe quien llama, así que el cubo no
+// cuenta contra quien ataca —estrena IP en cada petición— y sí contra el
+// público, que en un festival sale entero por el NAT de dos operadores; peor
+// aún, cualquiera podía llenar el cubo de una IP ajena con una cabecera y
+// dejar sin app a todo el que saliera por ella. El razonamiento largo está en
+// AppServiceProvider, donde estaba el limitador, y el techo de volumen que sí
+// hace falta va en el borde.
+Route::middleware([ResolveEventAppContext::class])
     ->prefix('event-app')
     ->group(function (): void {
         Route::get('/eventos/{codigo}/manifiesto', EventAppManifestController::class);

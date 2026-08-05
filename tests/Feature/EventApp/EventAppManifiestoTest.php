@@ -11,6 +11,7 @@ use App\Domains\Platform\Actions\CreateTenant;
 use App\Domains\Platform\Enums\TenantStatus;
 use App\Domains\Platform\Enums\TenantType;
 use App\Domains\Tenancy\TenantContext;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 
 /**
@@ -136,6 +137,72 @@ it('drops a broken module instead of shipping it to the phone', function (): voi
         ->assertJsonPath('modulos.0.clave', 'menus');
 });
 
+it('still boots the app when the manifest json got corrupted', function (): void {
+    app(TenantContext::class)->runAs($this->organizador, function (): void {
+        EventAppManifest::create([
+            'event_id' => $this->evento->id,
+            'app_name' => 'Bocao',
+        ]);
+    });
+
+    // Un escalar donde se espera una lista. Cabe en la columna JSON y lo deja
+    // ahí un import, un seeder o un UPDATE a mano; recorrerlo era un 500 en
+    // el ÚNICO endpoint sin el cual la app no puede pintarse, así que un
+    // manifiesto corrupto apagaba la app de ese festival entero.
+    DB::table('event_app_manifests')->where('event_id', $this->evento->id)->update([
+        'modules' => json_encode('menus'),
+        'texts' => json_encode('hola'),
+    ]);
+
+    $respuesta = pedirElManifiesto((string) $this->evento->public_code)->assertOk();
+
+    // 200 degradado: lo que no está roto se sirve, y lo roto vuelve a lo de
+    // fábrica. La app arranca.
+    $respuesta->assertJsonPath('marca.nombre_app', 'Bocao')
+        ->assertJsonCount(1, 'modulos')
+        ->assertJsonPath('modulos.0.clave', 'menus');
+
+    expect($respuesta->json('textos'))->toBe([]);
+});
+
+it('publishes an empty module list when that is what was saved', function (): void {
+    app(TenantContext::class)->runAs($this->organizador, function (): void {
+        EventAppManifest::create([
+            'event_id' => $this->evento->id,
+            'modules' => [],
+        ]);
+    });
+
+    $respuesta = pedirElManifiesto((string) $this->evento->public_code)->assertOk();
+
+    // La lista manda, y una lista vacía es una decisión: una app que arranca
+    // y no enseña ninguna pantalla. Se escribe aquí para que el día que el
+    // formulario del panel la deje vacía sin querer, esto sea un test rojo y
+    // no una sorpresa en el teléfono. Nulo es otra cosa —«no lo ha tocado
+    // nadie»— y sí lleva a los módulos de fábrica.
+    expect($respuesta->json('modulos'))->toBe([]);
+});
+
+it('serves a 304 to the forms of If-None-Match a real client sends', function (): void {
+    $codigo = (string) $this->evento->public_code;
+
+    $etag = (string) pedirElManifiesto($codigo)->assertOk()->headers->get('ETag');
+
+    // El comodín, que es como revalida quien pregunta «¿sigue habiendo algo?»
+    // sin recordar qué tenía. Casa con cualquier representación existente.
+    pedirElManifiesto($codigo, '*')->assertStatus(304);
+
+    // El mismo ETag sin la marca de débil, que es lo que deja un
+    // intermediario o un cliente que normaliza: la comparación de un GET
+    // condicional es débil, así que es la MISMA representación.
+    pedirElManifiesto($codigo, str_replace('W/', '', $etag))->assertStatus(304);
+
+    // Y en lista, que es como lo manda un cliente que guarda varias. Cada una
+    // de estas tres se bajaba el manifiesto entero, que es justo lo que el
+    // ETag venía a ahorrar en la red saturada de un recinto.
+    pedirElManifiesto($codigo, '"de-otra-version", '.$etag)->assertStatus(304);
+});
+
 it('resolves the code however the app spells it', function (): void {
     $codigo = (string) $this->evento->public_code;
 
@@ -166,16 +233,23 @@ it('hides an event that is still a draft', function (): void {
         ->assertJsonPath('code', 'evento_desconocido');
 });
 
-it('keeps serving an event that already finished', function (): void {
-    app(TenantContext::class)->runAs($this->organizador, function (): void {
-        $this->evento->update(['status' => EventStatus::Closed]);
+it('keeps serving an event that already finished', function (EventStatus $estado, string $publicado): void {
+    app(TenantContext::class)->runAs($this->organizador, function () use ($estado): void {
+        $this->evento->update(['status' => $estado]);
     });
 
     // Seis mil teléfonos siguen teniendo la app instalada el lunes: apagar
-    // la puerta al cerrar convertiría todas esas pantallas en un error.
+    // la puerta al cerrar convertiría todas esas pantallas en un error. Los
+    // DOS estados terminados, no solo el primero: liquidar es una operación
+    // de dinero del organizador, y no puede ser además el interruptor que
+    // apaga la app de quien todavía la tiene abierta. `estado` dice la verdad
+    // y la app decide qué hacer con ella; el contrato lo dice ya así.
     pedirElManifiesto((string) $this->evento->public_code)->assertOk()
-        ->assertJsonPath('evento.estado', 'cerrado');
-});
+        ->assertJsonPath('evento.estado', $publicado);
+})->with([
+    [EventStatus::Closed, 'cerrado'],
+    [EventStatus::Settled, 'liquidado'],
+]);
 
 it('goes dark when the organiser account is suspended', function (): void {
     $this->organizador->update(['status' => TenantStatus::Suspended]);

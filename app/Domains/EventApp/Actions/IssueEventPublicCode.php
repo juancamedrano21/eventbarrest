@@ -75,11 +75,11 @@ class IssueEventPublicCode
      * El código tal como lo compara todo el mundo: sin separadores y en
      * mayúscula, para que «bocao-26» y «BOCAO26» sean el mismo evento.
      *
-     * Es público y estático porque lo llaman DOS sitios que no se pueden
-     * separar: la puerta que resuelve el evento y la llave del limitador de
-     * peticiones. Si esos dos normalizaran distinto, el freno contaría cubos
-     * que la consulta no usa y dejaría de frenar — es exactamente el fallo
-     * que ya se pagó en `pos-login` con las mayúsculas del usuario.
+     * Es público y estático porque la puerta que resuelve el evento
+     * (`ResolveEventAppContext`) lo normaliza así antes de consultar, y esa
+     * forma es la que la app guarda: quien llame con «bocao-26» recibe
+     * «BOCAO26» en `evento.codigo`. Que la regla viva en un solo sitio es lo
+     * que impide que dos piezas decidan distinto qué evento es cuál.
      *
      * Acepta mixed porque quien llama es a veces un parámetro de ruta y a
      * veces la entrada cruda de una petición: lo que no sea escalar es una
@@ -87,14 +87,12 @@ class IssueEventPublicCode
      */
     public static function normalizar(mixed $valor): string
     {
-        $texto = is_scalar($valor) ? (string) $valor : '';
-
-        $limpio = mb_strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $texto));
-
         // Cortado al largo máximo de la columna: sin esto, una petición con
-        // cien mil caracteres en la URL viajaría entera hasta la consulta y
-        // hasta la llave del limitador, y ninguna de las dos ganaría nada.
-        return mb_substr($limpio, 0, self::LARGO_MAXIMO);
+        // cien mil caracteres en la URL viajaría entera hasta la consulta,
+        // que no ganaría nada con ellos. RECORTAR ES LO CORRECTO AQUÍ Y NO EN
+        // LA EMISIÓN: lo que entra por esta puerta es una URL que se compara,
+        // y lo que entra por la otra es un código que se GUARDA.
+        return mb_substr(self::limpiar($valor), 0, self::LARGO_MAXIMO);
     }
 
     /**
@@ -118,9 +116,16 @@ class IssueEventPublicCode
 
     private function codigoElegido(string $deseado, Event $event): string
     {
-        $codigo = self::normalizar($deseado);
+        // Sin recortar, y esa es la diferencia con la puerta pública. Un
+        // código de diecisiete caracteres normalizado con `normalizar()`
+        // saldría de aquí como los dieciséis primeros: `BOCAOFOODFEST2026`
+        // quedaría guardado como `BOCAOFOODFEST201`, sin un solo error, y ese
+        // valor se COMPILA en un binario que va a la tienda. Equivocarlo
+        // cuesta una publicación entera, así que lo que no cabe se rechaza.
+        $codigo = self::limpiar($deseado);
+        $largo = mb_strlen($codigo);
 
-        if (mb_strlen($codigo) < self::LARGO_MINIMO) {
+        if ($largo < self::LARGO_MINIMO || $largo > self::LARGO_MAXIMO) {
             throw EventAppException::codigoInvalido($deseado);
         }
 
@@ -131,6 +136,14 @@ class IssueEventPublicCode
         }
 
         return $codigo;
+    }
+
+    /** Sin separadores y en mayúscula, todavía sin recortar. */
+    private static function limpiar(mixed $valor): string
+    {
+        $texto = is_scalar($valor) ? (string) $valor : '';
+
+        return mb_strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $texto));
     }
 
     private function ocupado(string $codigo): bool

@@ -143,7 +143,9 @@ KDS; aquí se paga en datos móviles saturados con seis mil personas encima.
 
 `Cache-Control: no-cache, private`, del contrato. `no-cache` no significa «no
 lo guardes» sino «pregunta siempre antes de servirlo», que es lo que hace
-falta: lo que ahorra el payload es el 304, no la caché.
+falta: lo que ahorra el payload es el 304, no la caché del cliente. Es una
+cabecera sobre la caché de **quien pregunta** y no dice nada de la del
+servidor, que es otra cosa y está abajo.
 
 ### El precio que se publica es el que va a cobrar la caja
 
@@ -182,24 +184,111 @@ entera antes de tocarla. Tampoco se usan los `getLabel()` de los enums, que
 son texto de pantalla del panel del organizador y cambian cuando a alguien no
 le gusta cómo suena.
 
-### Un freno propio, generoso y honesto sobre lo que hace
+### Ningún freno por IP en esta puerta, y el porqué del número que no hay
 
-`throttle:event-app`, 600 por minuto, con la llave compuesta de evento y
-origen, y un 429 con `code` y mensaje en español —el «Too Many Attempts.» de
-Laravel no le dice nada a un asistente—.
+Esta puerta nació con uno: `throttle:event-app`, 600 por minuto por (evento,
+IP), con su 429 en español. **Se ha quitado**, y merece contarse entero porque
+el razonamiento vale para cualquier freno que se escriba mientras
+`trustProxies(at: '*')` siga abierto.
 
-**El número es grande a propósito, y eso no es dejadez.** Aquí quien llama no
-es una caja ni una tablet: son los teléfonos del público, miles, saliendo
-todos por el NAT de dos o tres operadores. Con la IP colapsada así, un techo
-estrecho no frena a quien ataca —la IP la escribe quien llama— y sí deja fuera
-al asistente que abrió la app en el peor momento del sábado. Un freno nunca
-puede negar un acierto.
+El número no era el problema. La llave sí, y no hay número que la arregle:
 
-Lo que hace baratos estos endpoints no es el freno: es que son de solo lectura
-y llevan ETag, así que la app repite y recibe 304s. El limitador es un techo
-de volumen contra un cliente roto en bucle, y decirlo así evita que alguien lo
-baje creyendo que protege algo. El evento entra en la llave para que el bucle
-de un festival no consuma el cubo de otro que comparte operador.
+- **Contra quien ataca no cuenta.** La IP la escribe quien llama, así que
+  estrena IP —y con ella cubo— en cada petición. Jamás llega al techo, sea 600
+  o sean 60.
+- **Contra el público sí cuenta.** Los teléfonos de un festival salen por el
+  NAT de dos o tres operadores, así que miles de asistentes honestos comparten
+  UN cubo. Doc 11 §6 habla de +6.000 personas sobre datos móviles; a dos
+  peticiones por arranque y una más por cada carta que se mira, la cola del
+  sábado a las nueve llena 600 en un minuto sin que nadie haga nada raro. Y el
+  304 tampoco ayudaba: el freno va delante del middleware, así que también
+  paga.
+- **Y quien ataca elige QUÉ cubo llena.** Bastan 600 peticiones con la IP del
+  operador escrita en `X-Forwarded-For` para dejar sin app, evento a evento, a
+  todo el que salga por ella. Eso ya no es un freno inútil: es el botón de
+  apagado con otro nombre del que habla CLAUDE.md —un contador que sube quien
+  ataca, sobre algo que él elige—, y encima apuntando al público.
+
+Un freno que no puede acertar y sí puede negar un acierto vale menos que
+ninguno, así que **el número elegido es cero, y esa es la parte documentada**:
+no hay techo por IP en `/api/event-app` porque hoy la IP no discrimina nada.
+Los dos tests de `EventAppThrottleTest` fijan las dos mitades —setecientas
+peticiones del mismo origen se sirven, y una IP ajena no se puede apagar con
+una cabecera— y los dos se ponían rojos con el limitador puesto.
+
+Lo que hace baratos estos endpoints nunca fue el freno: son de **solo lectura**
+y detrás no hay nada que escribir que un exceso pueda corromper.
+
+El techo de volumen que sí hace falta va en el **borde** —ngrok hoy, el
+balanceador mañana—, que es el único sitio donde la IP todavía es cierta. El
+día que `at:` se acote a los rangos del borde, `$request->ip()` vuelve a
+discriminar y este freno se puede reescribir aquí con un número defendible;
+hasta entonces, ninguno lo es.
+
+### El ETag ahorra red, no servidor: por eso hay caché de respuesta
+
+Quitado el freno, lo único que quedaba sosteniendo la puerta era el ETag, y el
+ETag **no ahorra ni una consulta**. Un 304 ejecuta exactamente las mismas tres
+—o cinco, o ocho— consultas que un 200; lo único que se ahorra son los bytes
+del cuerpo. Es un ahorro real en la red saturada de un recinto y ninguno en el
+servidor, que es lo que se cae.
+
+Los tres endpoints son de solo lectura y **su respuesta es idéntica para todos
+los que preguntan por el mismo evento**: no hay usuario, no hay token, no hay
+nada personalizado. Calcularla seis mil veces es calcular seis mil veces lo
+mismo. Así que se cachea el **cuerpo** por `(evento, endpoint, comercio)` con
+una ventana de **10 segundos**, y el ETag se calcula sobre el cuerpo ya
+cacheado: el primer teléfono paga las consultas, los siguientes no, y un 304
+tampoco toca el catálogo.
+
+Medido, para una segunda petición idéntica (store `array`):
+
+| Endpoint | Antes | Después |
+|---|---|---|
+| `manifiesto` | 3 consultas | 2 |
+| `comercios` | 5 | 2 |
+| `menu` | 8 | 4 |
+
+**Diez segundos, y el número sale de la forma de la curva.** Con un TTL de `t`
+segundos se ahorra todo menos `60/t` cálculos por minuto, sea cual sea el
+volumen: a mil peticiones por minuto, 5 s ahorra el 98,8 %, 10 s el 99,4 %,
+30 s el 99,8 % y 60 s el 99,9 %. Todo el ahorro está en los primeros segundos y
+de ahí en adelante la curva es plana, mientras que lo que cuesta estirarla se
+paga entero en frescura. Un comercio que se queda sin un plato lo desactiva y
+quiere que se note; diez segundos es menos de lo que tarda alguien en llegar
+del teléfono al puesto.
+
+**Lo que NO se cachea es la mitad importante.** La puerta —resolver el evento
+del código, la cuenta, el comercio y su participación— se vuelve a ejecutar en
+cada petición. Aquí no hay token que revocar, así que esa revalidación es la
+única revocación que existe: **una revocación cacheada es una revocación que no
+ocurre.** Un comercio suspendido a media tarde recibe 404 en su carta en la
+petición siguiente, no cuando caduque un TTL. Lo que sí puede ir hasta diez
+segundos por detrás es su **nombre en la lista**, y eso es un nombre, no un
+acceso.
+
+**Qué invalida.** Cambiar el manifiesto sí: lo tira el propio modelo al
+guardarse, porque es la única de las tres respuestas que alguien cambia
+*mirando* el resultado —se elige un color en el panel y se mira el teléfono, y
+si no cambia lo que se concluye no es «hay una caché» sino «el panel no
+guardó»—. Rotar un PIN no, porque no aparece en ninguno de los tres cuerpos; ni
+una venta, ni una comanda. El catálogo tampoco se engancha: son escrituras del
+camino caliente del POS y del panel del comercio, y colgarles un borrado por
+cada evento en el que participa ese comercio metería una consulta de la app del
+asistente dentro de una venta. Para eso el TTL es corto.
+
+**Y en la caché solo viajan datos planos.** `config/cache.php` fija
+`serializable_classes => false`, así que cualquier objeto guardado vuelve
+convertido en `__PHP_Incomplete_Class`. Se descubrió midiendo con el store
+`database`: el `(object)` de `textos` volvía como
+`{"__PHP_Incomplete_Class_Name":"stdClass"}` —basura servida a la app en el
+campo que el contrato promete como diccionario, y un ETag distinto en cada
+petición, o sea el 304 muerto— y no se veía en los tests, que corren con el
+store `array`, donde nada se serializa. Por eso el reparto:
+`EventAppController::responder()` guarda **qué** se responde y
+`publicar()` decide **cómo** se escribe el JSON, ya fuera de la caché.
+`EventAppCacheTest` fija las dos cosas, y una de sus pruebas corre a propósito
+contra el store `database`.
 
 ## Lo que se descartó
 
@@ -247,6 +336,38 @@ de un festival no consuma el cubo de otro que comparte operador.
   `SchemaConventionTest` tiene ahora dos entradas; que siga costando
   explicarlas ahí antes que en producción.
 - **`trustProxies(at: '*')` sigue abierto**, y esta puerta lo hereda. El doc 11
-  lo llama requisito de la app y no opcional. Mientras siga así, el freno de
-  esta puerta es un techo de volumen y nada más; lo que la sostiene es que no
-  hay nada que escribir detrás.
+  lo llama requisito de la app y no opcional. Mientras siga así, esta puerta no
+  lleva freno por IP —ver arriba—; lo que la sostiene es que es de solo lectura,
+  que no hay nada que escribir detrás y que la respuesta se calcula una vez por
+  evento y no una por teléfono.
+- **El techo de volumen del borde no existe todavía, y eso es deuda conocida.**
+  La caché hace barata cada petición; no pone ningún límite a cuántas caben. Lo
+  segundo solo se puede hacer delante del backend, y hoy delante hay un túnel
+  ngrok sin nada configurado.
+- **`CACHE_STORE` es `database`, y eso limita lo que la caché puede ahorrar.**
+  Con ese store la caché es *otra consulta contra la misma base* que se quiere
+  descargar: convierte N consultas en 1, lo que gana en `comercios` y en `menu`
+  y **no gana nada en `manifiesto`** —una consulta indexada sustituida por otra
+  consulta indexada—. Para que descargue la base de verdad hace falta un almacén
+  **en memoria** (Redis, o APCu con un solo proceso), y eso es un cambio de
+  `.env` en el despliegue, no de código.
+- **La lista de comercios puede ir hasta 10 s por detrás de una suspensión.**
+  El contrato dice «un comercio suspendido desaparece en la siguiente
+  petición»; con la caché es «en la siguiente petición, a lo sumo diez segundos
+  después». Su **carta** sí se apaga en el acto, porque la puerta no se cachea.
+  Es un matiz del contrato que el otro lado tiene que conocer.
+- **La app no recibe 429 de esta puerta**, y el contrato lo dice. Si algún día
+  vuelve a haber un techo, vuelve también esa línea del contrato antes que el
+  código.
+- **«Publicado» significa «no es un borrador»**, y ahora el contrato lo dice
+  con esas palabras. Era la única lectura que dejaba viva la app instalada el
+  lunes, pero estaba solo aquí: el otro lado podía haberla leído al revés y
+  esperar un 404 al terminar el festival.
+- **Lo que puede viajar nulo está anotado en el contrato**, campo a campo:
+  `evento.lugar`, `marca.logo_url` y las dos fuentes. Es el estado de fábrica
+  de todo evento recién creado —o sea, hoy el de todos—, y el ejemplo del
+  contrato los enseñaba con valor.
+- **Un manifiesto corrupto degrada, no revienta.** `modulos` o `textos` con una
+  forma que no es la suya —un escalar metido por un import o por SQL a mano—
+  se sirven como los de fábrica. Era un 500 en el único endpoint sin el cual la
+  app no arranca.
