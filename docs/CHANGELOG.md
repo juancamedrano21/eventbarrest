@@ -13,7 +13,7 @@
 > KDS) y el repo raíz (documentación y ADR). Al final hay un **glosario** de los
 > términos propios del proyecto y un **índice de garantías** transversales.
 
-> **Cobertura.** 73 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
+> **Cobertura.** 75 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
 
 ---
 
@@ -718,6 +718,24 @@
 
 **Garantías.** La app suma pero nunca es requisito para comprar (dos poblaciones: con y sin teléfono). Toda cifra de la app sale de los desgloses, nunca de sum(total_cents). La puerta nueva debe esquivar las dos trampas de Sanctum ya documentadas en el KDS y replicar el abort_unless contra el fail-open de VendorScope. El push del estado del pedido es push real, no polling: el tablero del KDS no se reutiliza para miles de teléfonos.
 
+#### [Documentación] Changelog maestro, especificación de la app y CLAUDE.md
+<sub>`ae1d6f2` · `57d19c6` · `3181e96` · `a9ce59d`</sub>
+
+**Qué.** Este archivo. La memoria de los tres repos en un sitio: 73 hitos con qué se construyó, por qué y qué garantías dejó, más un glosario de 85 términos propios y el índice de garantías transversales de más abajo. Con él, `docs/11-app-movil-especificacion.md` (los 14 módulos de la app, lo transversal, la cuenta del asistente como el modelo que ata boleta↔pulsera↔monedero, lo que exigen las tiendas y nadie vendió) y sendos `CLAUDE.md` en los dos repos de código. La documentación se mudó después a `eventbarrest` **fusionando el historial**, no copiando: los 17 commits de docs conservan su porqué.
+
+**Por qué.** Todo estaba escrito, pero repartido entre 98 mensajes de commit, nueve ADR y once documentos: entender el sistema exigía reconstruir el árbol archivo por archivo, y eso lo pagaba cada persona nueva y cada sesión de IA, otra vez, desde cero. El porqué es lo único que no se puede reconstruir del código, así que es lo que más espacio ocupa. Vivía además en un repo sin remoto — un sistema documentado cuya memoria se pierde con la máquina no está documentado. El `CLAUDE.md` cierra el ciclo por los dos extremos: manda leer el índice de garantías antes de tocar, y **actualizar el changelog al terminar**, con formato; sin esa segunda mitad la memoria envejece en una semana.
+
+**Garantías.** El CHANGELOG es la memoria común de los dos repos de código y vive solo en `eventbarrest`: duplicarlo daría dos versiones que se contradicen. Todo cambio con sustancia entra antes de darse por terminado. Los repos NO son independientes y sus acoplamientos están enumerados: renombrar `<div id="kds">` deja la tablet en la pantalla de error para siempre con el servidor encendido, y cambiar la clave de firma del APK duplica la flota entera en `kds_devices`.
+
+#### [Eventos] La app móvil arranca: la puerta `event-app` y el cascarón que se pinta solo
+<sub>`817fec7` · `36242f3` · repo `eventbarrest-app`: `b0b08b3` · `94b9ead`</sub>
+
+**Qué.** Primer slice de la app del asistente, en dos repos contra un contrato acordado antes de escribir código. **Backend:** dominio `EventApp` con tres endpoints públicos —manifiesto, comercios y la carta de un comercio— con ETag/304, código público del evento (`events.public_code`, patrón del código del KDS), tabla `event_app_manifests` (columnas tipadas para la marca, JSON para la lista de módulos), `ContextResolver::forEvent()`, caché de respuesta de 10 s y ADR-010. **App:** proyecto Flutter con módulos independientes bajo `lib/modulos/` y un registro que mapea la clave del manifiesto a su widget; módulo Menús; los estados que no son el camino feliz; pantalla oculta de desarrollo.
+
+**Por qué.** El manifiesto es lo que hace REAL el white-label: el binario no sabe nada de ningún festival —lleva a qué servidor preguntar y qué evento es— y la marca, los módulos, su orden y los textos viajan del servidor, así que un evento cambia de color o estrena sección sin recompilar ni pasar por una tienda. El agujero de aislamiento no era el que parecía: `VendorScope` falla abierto, sí, pero lo que de verdad cierra la puerta es filtrar por **participación** (`event_vendor`) — un organizador con dos festivales tiene todos sus comercios en el mismo tenant, así que sin ese filtro la app de un evento leería la carta de un comercio del otro con un 200 legítimo. El limitador por IP se retiró midiendo: con `trustProxies(at:'*')` quien ataca **elige qué cubo llenar**, así que no le frenaba y sí dejaba fuera al festival entero tras el NAT de su operador. Como el ETag ahorra red pero no servidor —un 304 hacía las mismas consultas que un 200—, la puerta se sostiene haciéndola barata: caché de respuesta (manifiesto 3→2 consultas, comercios 5→2, menú 8→4). Diez segundos porque todo el ahorro está en los primeros (a 1000 pet/min, 5 s ahorra 98,8 % y 60 s solo 99,9 %) y lo demás se paga en frescura.
+
+**Garantías.** El binario de la app nunca contiene identidad de evento más allá del código: todo lo demás viene del manifiesto. Un módulo que la app no conoce se ignora en silencio, y uno sin `activo` cuenta apagado — los dos lados fallan cerrado. Un evento sin manifiesto configurado devuelve 200 de fábrica, nunca 404: el 404 significa «este código no es de nadie». Un evento cerrado o liquidado sigue sirviendo 200 con su `estado` — apagar la puerta al cerrar convertiría en error miles de apps instaladas el lunes. **La puerta no se cachea, solo el cuerpo**: sin token que revocar, revalidar en cada petición es la única revocación que existe, y suspender un comercio tira además la lista de todos sus eventos. En esta caché solo viajan datos planos: `config/cache.php` fija `serializable_classes => false` y los tests corren con store `array`, así que un objeto guardado se corrompería en producción sin que la suite se enterara. Queda ABIERTO y declarado: el techo de volumen del borde no existe y solo se puede poner delante del backend al desplegar.
+
 ---
 
 ## Índice de garantías transversales
@@ -790,6 +808,23 @@
 - **Deuda abierta:** con `trustProxies(at: '*')` la IP la escribe quien llama, así que
   todo límite por IP es esquivable. Cerrarlo exige acotar `at:` a los rangos del borde
   (ngrok / Railway) — decisión de despliegue pendiente.
+
+### La app del asistente (puerta `event-app`)
+
+- **El binario no sabe de ningún festival.** Lleva a qué servidor preguntar y qué
+  evento es; marca, módulos, orden y textos vienen del manifiesto. Cambiar la app de
+  un evento no puede exigir recompilar ni pasar por una tienda.
+- **Un módulo desconocido se ignora en silencio**, y uno sin `activo` cuenta apagado.
+  Los dos lados fallan cerrado, y el servidor puede encender algo nuevo antes de que
+  todos los teléfonos lo entiendan.
+- **El 404 significa «este código no es de nadie»**, nunca «nadie configuró todavía».
+  Un evento sin manifiesto sirve 200 de fábrica; uno cerrado o liquidado también, con
+  su `estado` — apagar la puerta al cerrar convertiría en error miles de apps
+  instaladas el lunes.
+- **Se cachea el cuerpo, jamás la puerta.** Sin token que revocar, revalidar en cada
+  petición es la única revocación que existe. Y en esa caché solo viajan **datos
+  planos**: `serializable_classes => false` corrompe cualquier objeto, y los tests
+  corren con store `array`, así que la suite no se enteraría.
 
 ### El cliente en el campo
 
