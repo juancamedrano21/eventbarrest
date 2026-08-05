@@ -61,10 +61,18 @@ $platformTables = [
  * fila de otra— aquí no puede darse: TenantScopedBuilder::upsert() lanza
  * SIEMPRE, para cualquier modelo con BelongsToTenant, sin excepción.
  *
+ * `events_public_code_unique_global` — el código que la app del asistente
+ * lleva compilado dentro para decir de qué evento es. Mismo argumento: un
+ * teléfono recién descargado pregunta por ese código SIN saber a qué cuenta
+ * pertenece el festival, así que resolverlo es forzosamente cross-tenant y
+ * componer el índice con tenant_id permitiría que dos organizadores
+ * repartieran el mismo código sin que ninguna app supiera cuál es la suya.
+ *
  * @var array<int, string>
  */
 $globalUniqueIndexes = [
     'vendors_kds_code_unique_global',
+    'events_public_code_unique_global',
 ];
 
 $businessTables = fn (): array => collect(Schema::getTableListing(schemaQualified: false))

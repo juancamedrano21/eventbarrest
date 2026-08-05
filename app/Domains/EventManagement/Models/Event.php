@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CarbonInterface $starts_at
  * @property CarbonInterface $ends_at
  * @property EventStatus $status
+ * @property string|null $public_code El código que la app del asistente lleva compilado
  */
 class Event extends Model
 {

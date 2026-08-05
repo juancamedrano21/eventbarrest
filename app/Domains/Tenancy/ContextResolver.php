@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domains\Tenancy;
 
 use App\Domains\EventManagement\Enums\VendorStatus;
+use App\Domains\EventManagement\Models\Event;
 use App\Domains\EventManagement\Models\Vendor;
 use App\Domains\EventManagement\VendorContext;
 use App\Domains\Kitchen\Models\KdsDevice;
@@ -111,5 +112,48 @@ class ContextResolver
         }
 
         app(VendorContext::class)->set($vendor);
+    }
+
+    /**
+     * El contexto de un EVENTO, resuelto del código que viene en la URL: la
+     * puerta pública de la app del asistente, donde quien llama no es ni una
+     * persona ni un aparato enrolado, sino un teléfono anónimo que solo sabe
+     * a qué festival pertenece.
+     *
+     * Vive aquí, con las otras dos, por lo mismo que forDevice(): la regla de
+     * «qué cuenta opera» no puede tener tres sitios donde vivir.
+     *
+     * Sin esto la puerta sería un 200 mentiroso. No hay sesión ni token, así
+     * que el contenedor llega limpio, TenantScope falla CERRADO y emite
+     * `where 1 = 0`: el manifiesto saldría con la marca de fábrica y la lista
+     * de comercios VACÍA, con 200 y sin una sola excepción. Un festival lleno
+     * de teléfonos enseñando «este evento no tiene comercios» mientras el
+     * servidor jura que todo va bien.
+     *
+     * NO fija comercio, y es deliberado. El manifiesto y la lista de puestos
+     * son del evento entero, así que la vista consolidada de la cuenta —que
+     * es lo que da VendorScope sin comercio en contexto— es exactamente la
+     * correcta, y TenantScope ya impide que se cuele otra cuenta. El comercio
+     * lo fija la carta, que es el único endpoint que habla de uno solo, y ahí
+     * el fail-open de VendorScope se tapa con su backstop explícito.
+     */
+    public function forEvent(Event $event): void
+    {
+        app(TenantContext::class)->clear();
+        app(VendorContext::class)->clear();
+
+        // Nulo igual que en forDevice y por el mismo motivo: un teléfono
+        // anónimo no tiene roles, así que cualquier ->can() que se cuele en
+        // un controlador de esta puerta devuelve false en vez de heredar los
+        // permisos del último humano que pasó por este contenedor.
+        app(PermissionRegistrar::class)->setPermissionsTeamId(null);
+
+        $tenant = $event->tenant()->first();
+
+        if ($tenant === null || $tenant->status === TenantStatus::Suspended) {
+            return;
+        }
+
+        app(TenantContext::class)->set($tenant);
     }
 }

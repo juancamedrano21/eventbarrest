@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\EventManagement\Actions;
 
+use App\Domains\EventApp\Actions\IssueEventPublicCode;
 use App\Domains\EventManagement\Enums\EventStatus;
 use App\Domains\EventManagement\Models\Event;
 use DateTimeInterface;
@@ -21,12 +22,21 @@ class CreateEvent
         ?string $venue = null,
         EventStatus $status = EventStatus::Draft,
     ): Event {
-        return Event::create([
+        $event = Event::create([
             'name' => $name,
             'venue' => $venue,
             'starts_at' => $startsAt,
             'ends_at' => $endsAt,
             'status' => $status,
         ]);
+
+        // Nace con su código público, igual que un comercio nace con el de su
+        // tablet. Se emite aquí y no la primera vez que alguien abre la app
+        // para que ningún evento pueda existir sin él: el código es lo que se
+        // compila dentro del binario que se sube a la tienda, y eso se
+        // prepara semanas antes de que el festival abra.
+        app(IssueEventPublicCode::class)($event);
+
+        return $event;
     }
 }

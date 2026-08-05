@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domains\EventApp\Actions\IssueEventPublicCode;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -91,7 +92,33 @@ class AppServiceProvider extends ServiceProvider
             ->by(self::codigoNormalizado($request->input('codigo')).'|'.$request->ip())
             ->response(self::demasiadosDelAlta(...)));
 
+        // La puerta pública de la app del asistente: 600 por minuto, evento
+        // y origen.
         //
+        // EL NÚMERO ES GRANDE A PROPÓSITO Y ESO NO ES DEJADEZ. Aquí quien
+        // llama no es una caja ni una tablet: son los teléfonos del público,
+        // miles, y salen todos por el NAT de dos o tres operadores móviles.
+        // Con la IP colapsada así, un techo estrecho no frena a quien ataca
+        // —la IP la escribe quien llama, ver bootstrap/app.php— y sí deja
+        // fuera al asistente que abrió la app en el peor momento del sábado.
+        // Un freno que puede negar un acierto está mal, y esta puerta es
+        // justo donde más caro sale.
+        //
+        // Lo que hace baratos estos endpoints no es el freno: es que son de
+        // SOLO LECTURA y llevan ETag, así que la app repite y recibe 304s. El
+        // limitador es un techo de volumen contra un cliente roto en bucle,
+        // no la defensa — y decirlo así evita que alguien lo baje creyendo
+        // que protege algo.
+        //
+        // El evento entra en la llave para que el bucle de la app de un
+        // festival no consuma el cubo de otro que comparte operador. Se
+        // normaliza con la MISMA pieza que usa la puerta al resolverlo: si
+        // la llave y la consulta normalizaran distinto, «bocao-26» y
+        // «BOCAO26» serían dos cubos del mismo evento y el freno no frenaría
+        // —es el fallo que ya se pagó en pos-login con las mayúsculas—.
+        RateLimiter::for('event-app', fn (Request $request) => Limit::perMinute(600)
+            ->by(IssueEventPublicCode::normalizar($request->route('codigo')).'|'.$request->ip())
+            ->response(self::demasiadasDeLaApp(...)));
     }
 
     /**
@@ -108,6 +135,21 @@ class AppServiceProvider extends ServiceProvider
     private static function demasiadosDelAlta(Request $request, array $cabeceras): JsonResponse
     {
         return self::demasiados('kds_demasiados_intentos', $cabeceras);
+    }
+
+    /**
+     * Aquí no son «intentos»: nadie está adivinando nada, solo leyendo un
+     * catálogo. El código lo dice para que la app no enseñe al asistente un
+     * mensaje de credenciales que no ha tecleado.
+     *
+     * @param  array<string, mixed>  $cabeceras
+     */
+    private static function demasiadasDeLaApp(Request $request, array $cabeceras): JsonResponse
+    {
+        return response()->json([
+            'code' => 'event_app_demasiadas_peticiones',
+            'message' => 'Demasiadas peticiones. Espera un minuto y vuelve a probar.',
+        ], 429, $cabeceras);
     }
 
     /**

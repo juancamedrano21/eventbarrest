@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use App\Domains\Tenancy\Middleware\SetTenantContext;
+use App\Http\Controllers\EventApp\EventAppManifestController;
+use App\Http\Controllers\EventApp\EventAppMenuController;
+use App\Http\Controllers\EventApp\EventAppVendorsController;
 use App\Http\Controllers\Kds\KdsBoardController;
 use App\Http\Controllers\Kds\KdsEnrollController;
 use App\Http\Controllers\Kds\KdsSearchController;
@@ -14,6 +17,7 @@ use App\Http\Controllers\Pos\PosCatalogController;
 use App\Http\Controllers\Pos\PosOrderController;
 use App\Http\Controllers\Pos\PosSalesController;
 use App\Http\Middleware\EnsurePosCapability;
+use App\Http\Middleware\ResolveEventAppContext;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/pos/login', [PosAuthController::class, 'login'])->middleware('throttle:pos-login');
@@ -50,4 +54,22 @@ Route::middleware('kds.device')
         Route::post('/comandas/{order}/{area}/estado', [KdsTicketController::class, 'estado']);
         Route::get('/buscar', KdsSearchController::class);
         Route::post('/salir', [KdsEnrollController::class, 'salir']);
+    });
+
+// La puerta de la app del asistente: pública de verdad, sin token de nada.
+// El asistente no tiene cuenta todavía y el catálogo de un festival es lo
+// mismo que está impreso en el cartel del puesto, así que no hay nada que
+// autenticar — y como no hay nada que escribir, tampoco hay nada que
+// proteger con una sesión.
+//
+// El contexto sale del EVENTO de la URL, y por eso este middleware es el
+// primero de la cadena: sin él, TenantScope falla cerrado y los tres
+// endpoints contestan 200 con todo vacío. El freno va DELANTE porque es lo
+// más barato que se puede hacer con una petición que va a rebotar.
+Route::middleware(['throttle:event-app', ResolveEventAppContext::class])
+    ->prefix('event-app')
+    ->group(function (): void {
+        Route::get('/eventos/{codigo}/manifiesto', EventAppManifestController::class);
+        Route::get('/eventos/{codigo}/comercios', EventAppVendorsController::class);
+        Route::get('/eventos/{codigo}/comercios/{comercio}/menu', EventAppMenuController::class);
     });
