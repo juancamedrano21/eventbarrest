@@ -13,7 +13,7 @@
 > KDS) y el repo raíz (documentación y ADR). Al final hay un **glosario** de los
 > términos propios del proyecto y un **índice de garantías** transversales.
 
-> **Cobertura.** 77 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
+> **Cobertura.** 78 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
 
 ---
 
@@ -753,6 +753,15 @@
 **Por qué.** La cuenta es la identidad que mañana ata boleta ↔ pulsera ↔ monedero ↔ pasaporte A TRAVÉS de eventos: por evento nacería muerta. Sin contraseña porque no hay nada que olvidar ni que robar en un volcado. Sin oráculo de enumeración por ningún lado: 202 idéntico exista o no la cuenta (el camino de emisión ni consulta cuentas), 422 único para código incorrecto/caducado/quemado, y nombre opcional SIEMPRE — exigirlo solo a cuentas nuevas convertiría la validación en el oráculo recién tapiado. El refutador de seguridad encontró el grave que ningún test secuencial ve: el tope de cinco intentos se contaba leyendo, sumando en PHP y guardando el absoluto — bajo concurrencia se perdían incrementos y el OTP se podía forzar; ahora el contador sube atómico en la base y el gasto del código bueno lo decide un DELETE mirando filas afectadas (dos /entrar simultáneos: UNA sesión). La llave del freno por buzón se llavea con hash porque el RateLimiter pasa la llave por htmlentities y josé@/jose@ compartían cubo.
 
 **Garantías.** Los frenos de la cuenta matan al CÓDIGO, jamás a la cuenta: no existe «cuenta bloqueada». El cortacircuitos global de emisión (600/min, 6× el pico legítimo) usa llave CONSTANTE — quien ataca no elige qué cubo llena. El token del asistente no abre POS/KDS/staff ni al revés. El Bearer viaja solo por el camino con sesión; las puertas anónimas nunca lo mandan. Un 401 `sesion_invalida` devuelve a anónimo sin tirar la pantalla, y solo ESE 401 desconecta (uno pelado de un proxy es avería). Borrar la cuenta borra de verdad, mata el código vigente del buzón, y ese método es el dueño de la decisión de anonimizar cuando existan pedidos o saldo.
+
+#### [Documentación] Doc 12: tarjeta guardada con Cybersource, investigado contra la doc oficial
+<sub>`(doc 12)`</sub>
+
+**Qué.** Diseño completo de la integración de pago con tarjeta guardada para la app del asistente, investigado en la documentación oficial de Cybersource con tres lentes (TMS, captura móvil, cobro con token). Decidido: captura por **webview con Microform v2** servido por Laravel (los campos sensibles viven en iframes de Cybersource → elegibilidad SAQ A, el alcance PCI mínimo; descartados los SDKs nativos puenteados —sin releases desde 2022— y la captura REST en Dart —criptografía de pago en casa—); estructura TMS de un Customer token por cuenta de asistente con N Payment Instruments; alta de tarjeta y primer cobro en UNA llamada (`TOKEN_CREATE` dentro del authorization, banderas CIT de credencial guardada); compra de dos toques con `customer.id` sin recaptura; `client_ref` mapeado a `clientReferenceInformation.code` con verificación en `/tss/v2/searches` antes de reintentar. El pedido pagado entra al KDS por el canal `mobile` que ya existía — del lado cocina no hay nada nuevo.
+
+**Por qué.** Boletu ya procesa con Cybersource en producción, así que el gate de pasarela es integración, no contratación. El hallazgo urgente salió de rebote: **Flex/Microform v0.11 y v1 mueren el 31 de agosto de 2026** — hay que auditar la boletería web de Boletu ESTE MES, con o sin app. Y quedó separada la lista de lo que la doc no responde y solo el account manager o el adquirente dominicano pueden contestar: TMS habilitado en el MID, DOP como moneda de proceso, CIT sin CVV, 3DS en RD, network tokens y la evidencia de consentimiento.
+
+**Garantías.** El PAN y el CVV no tocan jamás nuestro backend ni se almacenan (la CVN está prohibida por la doc); nosotros solo guardamos ids de token + marca/últimos 4/vencimiento para pintar. El capture context lo genera siempre Laravel, nunca credenciales dentro del binario. `DELETE /cuenta` se extiende a la bóveda borrando cada payment instrument y el customer, sin depender de una cascada no documentada. Ningún cobro se reintenta sin consultar antes por `client_ref`.
 
 ---
 
