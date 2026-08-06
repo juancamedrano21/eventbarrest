@@ -13,7 +13,7 @@
 > KDS) y el repo raíz (documentación y ADR). Al final hay un **glosario** de los
 > términos propios del proyecto y un **índice de garantías** transversales.
 
-> **Cobertura.** 75 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
+> **Cobertura.** 76 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
 
 ---
 
@@ -735,6 +735,15 @@
 **Por qué.** El manifiesto es lo que hace REAL el white-label: el binario no sabe nada de ningún festival —lleva a qué servidor preguntar y qué evento es— y la marca, los módulos, su orden y los textos viajan del servidor, así que un evento cambia de color o estrena sección sin recompilar ni pasar por una tienda. El agujero de aislamiento no era el que parecía: `VendorScope` falla abierto, sí, pero lo que de verdad cierra la puerta es filtrar por **participación** (`event_vendor`) — un organizador con dos festivales tiene todos sus comercios en el mismo tenant, así que sin ese filtro la app de un evento leería la carta de un comercio del otro con un 200 legítimo. El limitador por IP se retiró midiendo: con `trustProxies(at:'*')` quien ataca **elige qué cubo llenar**, así que no le frenaba y sí dejaba fuera al festival entero tras el NAT de su operador. Como el ETag ahorra red pero no servidor —un 304 hacía las mismas consultas que un 200—, la puerta se sostiene haciéndola barata: caché de respuesta (manifiesto 3→2 consultas, comercios 5→2, menú 8→4). Diez segundos porque todo el ahorro está en los primeros (a 1000 pet/min, 5 s ahorra 98,8 % y 60 s solo 99,9 %) y lo demás se paga en frescura.
 
 **Garantías.** El binario de la app nunca contiene identidad de evento más allá del código: todo lo demás viene del manifiesto. Un módulo que la app no conoce se ignora en silencio, y uno sin `activo` cuenta apagado — los dos lados fallan cerrado. Un evento sin manifiesto configurado devuelve 200 de fábrica, nunca 404: el 404 significa «este código no es de nadie». Un evento cerrado o liquidado sigue sirviendo 200 con su `estado` — apagar la puerta al cerrar convertiría en error miles de apps instaladas el lunes. **La puerta no se cachea, solo el cuerpo**: sin token que revocar, revalidar en cada petición es la única revocación que existe, y suspender un comercio tira además la lista de todos sus eventos. En esta caché solo viajan datos planos: `config/cache.php` fija `serializable_classes => false` y los tests corren con store `array`, así que un objeto guardado se corrompería en producción sin que la suite se enterara. Queda ABIERTO y declarado: el techo de volumen del borde no existe y solo se puede poner delante del backend al desplegar.
+
+#### [Eventos] Cómo llega la app a las tiendas: una por evento, y la primera bajo Boletu
+<sub>`(decisión)`</sub>
+
+**Qué.** Modelo de publicación decidido: **una app por evento**, con la primera —Bocao Food Fest— publicada bajo la cuenta de developer de Boletu, y de la segunda en adelante cada organizador bajo la suya (Boletu compila y sube añadiéndose como developer a su equipo). Descartado el binario agregador.
+
+**Por qué.** El plan traía un supuesto sin marcar como decisión: que cada evento necesitaba su cuenta de Apple desde el día uno, con el DUNS —semanas— en el camino crítico. Al revisarlo aparecieron dos hechos que lo cambian. Uno: de quién es el código NO cuenta para la 4.2.6 — la regla mira cuántas apps casi idénticas hay en la tienda, así que «solo le cambiamos el skin» es justo el perfil que persigue, no una defensa. Dos: la propia guía nombra el modelo agregador («una app de eventos con entradas separadas para cada evento») como alternativa válida, y se descartó a conciencia porque mata el argumento central del pitch: que el festival vive dentro de SU marca, no dentro de la del proveedor. El orden elegido es de bajo riesgo porque la 4.2.6 castiga el PATRÓN y no la app: una sola app de festival bajo Boletu no tiene con qué compararse, y de la segunda en adelante publicar bajo la cuenta del cliente es literalmente lo que la regla prescribe. La red de seguridad es que Apple permite transferir apps entre cuentas conservando reseñas y usuarios instalados, así que publicar bajo Boletu es un préstamo de cuenta y no un camino sin vuelta.
+
+**Garantías.** El DUNS sale del camino crítico de Bocao 2026 y pasa a plan B en el cajón. Cada app sigue necesitando su flavor —bundle id, icono, nombre— porque son fichas distintas en la tienda, así que la arquitectura de manifiesto no cambia y serviría igual para el modelo agregador si algún día se quisiera para clientes pequeños. Las condiciones de transferencia entre cuentas hay que verificarlas ANTES de necesitarlas.
 
 ---
 

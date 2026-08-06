@@ -58,13 +58,44 @@ feature con un equipo pequeño. Capacitor ya se descartó una vez en este
 ecosistema (ADR-005 y el README del KDS) y las razones aplican aquí con más
 fuerza: esta app ES nativa en sus exigencias (cámara, push, NFC, offline).
 
-**La regla de tiendas que condiciona la operativa (planificarla desde el día
-uno, no al final):** Apple 4.2.6 exige que las apps hechas de plantilla las
-publique **la cuenta de developer del cliente** (el organizador), no la nuestra.
-O sea: cada evento necesita su Apple Developer account (DUNS + D-U-N-S tarda
-semanas) y su cuenta de Google Play. El pipeline de CI debe firmar y subir por
-evento. Para Bocao 2026: abrir esas cuentas es tarea del **primer mes**, no del
-último.
+### La regla de tiendas, y cómo se resuelve — DECIDIDO
+
+**Modelo elegido: una app por evento, y la primera (Bocao) sale bajo la cuenta
+de Boletu.** De la segunda en adelante, cada organizador publica bajo la suya.
+
+El contexto, porque la regla se malinterpreta fácil. Apple 4.2.6 rechaza las
+apps «hechas de una plantilla comercializada» salvo que **las suba el dueño del
+contenido**. De quién sea el código NO cuenta: la regla mira cuántas apps casi
+idénticas aparecen en la tienda. «Solo le cambiamos el skin» es exactamente el
+perfil que persigue.
+
+La misma guía nombra la alternativa —un binario agregador «como una app de
+eventos con entradas separadas para cada evento»— y se **descartó a conciencia**:
+es lo que más rápido saldría, pero mata el argumento central del pitch, que es
+que el festival vive dentro de SU marca y no dentro de la del proveedor.
+
+Por qué el orden elegido es de bajo riesgo:
+
+- La 4.2.6 castiga el **patrón**, no la app. Un reviewer que ve una sola app de
+  festival publicada por Boletu no tiene con qué compararla; el riesgo aparece
+  con la tercera y la cuarta desde la misma cuenta.
+- De la segunda en adelante, publicar bajo la cuenta del cliente es
+  **literalmente lo que la regla prescribe**. Boletu compila y sube por ellos
+  añadiéndose como developer a su equipo, que está permitido.
+- Y existe red de seguridad: **Apple permite transferir apps entre cuentas**
+  conservando reseñas, valoraciones y usuarios instalados. Publicar bajo Boletu
+  no es irreversible, es un préstamo de cuenta. (Verificar las condiciones de
+  transferencia ANTES de necesitarla, no el día que haga falta.)
+
+**Consecuencia para el calendario:** el DUNS sale del camino crítico de Bocao
+2026. Deja de ser tarea del primer mes y pasa a ser plan B en el cajón — el
+cliente lo arranca sin prisa, para cuando quiera su propia ficha o por si la
+publicación bajo Boletu se rechaza.
+
+Lo que NO cambia: cada app sigue necesitando su *flavor* (bundle id, icono,
+nombre) porque son fichas distintas en la tienda, y el CI debe firmar y subir
+por evento. La arquitectura de manifiesto ya lo contempla y serviría igual para
+el modelo agregador si algún día se quisiera para clientes pequeños.
 
 ## 3. La puerta nueva en el backend: `event-app` (ADR-010)
 
