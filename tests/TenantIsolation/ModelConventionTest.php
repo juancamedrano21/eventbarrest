@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use App\Domains\Business\Models\BusinessAccount;
+use App\Domains\EventApp\Models\EventAppAccount;
+use App\Domains\EventApp\Models\EventAppLoginCode;
+use App\Domains\EventApp\Models\EventAppSession;
 use App\Domains\EventManagement\Models\OrganizerAccount;
 use App\Domains\Identity\Models\RoleTemplate;
 use App\Domains\Platform\Models\FoodType;
@@ -24,6 +27,15 @@ $platformModels = [
     RoleTemplate::class,
     VendorType::class,
     FoodType::class,
+    // La cuenta del asistente y sus satélites son de PLATAFORMA a
+    // conciencia: el primer actor que no es el superadmin y vive fuera de
+    // toda cuenta de negocio — la identidad que ata boleta, pulsera y
+    // monedero a través de eventos de organizadores distintos. Un tenant_id
+    // la partiría en una identidad por organizador. Las tablas están
+    // exceptuadas con el mismo argumento en SchemaConventionTest. ADR-011.
+    EventAppAccount::class,
+    EventAppSession::class,
+    EventAppLoginCode::class,
 ];
 
 it('makes every domain model tenant-scoped', function () use ($platformModels): void {

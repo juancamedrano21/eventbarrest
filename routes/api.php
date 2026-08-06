@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use App\Domains\Tenancy\Middleware\SetTenantContext;
+use App\Http\Controllers\EventApp\EventAppAccountController;
 use App\Http\Controllers\EventApp\EventAppManifestController;
 use App\Http\Controllers\EventApp\EventAppMenuController;
 use App\Http\Controllers\EventApp\EventAppVendorsController;
@@ -16,6 +17,7 @@ use App\Http\Controllers\Pos\PosCashSessionController;
 use App\Http\Controllers\Pos\PosCatalogController;
 use App\Http\Controllers\Pos\PosOrderController;
 use App\Http\Controllers\Pos\PosSalesController;
+use App\Http\Middleware\AuthenticateEventAppAccount;
 use App\Http\Middleware\EnsurePosCapability;
 use App\Http\Middleware\ResolveEventAppContext;
 use Illuminate\Support\Facades\Route;
@@ -80,4 +82,29 @@ Route::middleware([ResolveEventAppContext::class])
         Route::get('/eventos/{codigo}/manifiesto', EventAppManifestController::class);
         Route::get('/eventos/{codigo}/comercios', EventAppVendorsController::class);
         Route::get('/eventos/{codigo}/comercios/{comercio}/menu', EventAppMenuController::class);
+    });
+
+// La cuenta del asistente: el primer actor de plataforma que no es el
+// superadmin. FUERA de ResolveEventAppContext a propósito — la cuenta no es
+// de ningún evento (es la identidad que mañana ata boleta, pulsera y
+// monedero a través de festivales), así que aquí no hay código de evento en
+// la URL ni tenant que resolver. Y fuera de auth:sanctum por las dos trampas
+// documentadas en AuthenticateKdsDevice; el token del asistente vive en su
+// tabla propia y lo revalida AuthenticateEventAppAccount en cada petición.
+//
+// Pedir código y entrar van sueltas: quien llama todavía no tiene sesión.
+// Los frenos de emisión de códigos —por buzón de destino y un cortacircuitos
+// global de volumen, nunca por IP— están dentro del controlador, con su
+// porqué y sus números.
+Route::prefix('event-app/cuenta')
+    ->group(function (): void {
+        Route::post('/codigo', [EventAppAccountController::class, 'codigo']);
+        Route::post('/entrar', [EventAppAccountController::class, 'entrar']);
+
+        Route::middleware(AuthenticateEventAppAccount::class)->group(function (): void {
+            Route::get('', [EventAppAccountController::class, 'perfil']);
+            Route::patch('', [EventAppAccountController::class, 'actualizar']);
+            Route::post('/salir', [EventAppAccountController::class, 'salir']);
+            Route::delete('', [EventAppAccountController::class, 'borrar']);
+        });
     });

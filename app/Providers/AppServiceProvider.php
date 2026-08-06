@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domains\EventApp\Correo\TransporteDeCodigos;
+use App\Domains\EventApp\Correo\TransporteDeCodigosAlLog;
+use App\Domains\EventApp\Correo\TransporteDeCodigosSinProveedor;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -18,7 +22,24 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Cómo viaja el código de entrada de la app del asistente. Hoy no
+        // hay proveedor de correo: en local y testing el código va al log;
+        // en PRODUCCIÓN el binding falla ruidoso al enviar, con un mensaje
+        // que dice qué configurar. La puerta de entorno vive AQUÍ y no en
+        // un comentario: sin ella, desplegar tal cual escribía cada OTP de
+        // cada asistente EN CLARO en storage/logs — que ven el despliegue,
+        // los respaldos y cualquier agregador. El día que llegue el
+        // proveedor real, su implementación sustituye a la rama de
+        // producción y nada más — el código que decide (emitir, canjear,
+        // frenar) no conoce el transporte. El entorno se mira AL RESOLVER,
+        // no al registrar, para que la decisión no se congele antes de que
+        // el entorno esté fijado (y para poder probarla).
+        $this->app->bind(
+            TransporteDeCodigos::class,
+            fn (Application $app): TransporteDeCodigos => $app->environment('production')
+                ? $app->make(TransporteDeCodigosSinProveedor::class)
+                : $app->make(TransporteDeCodigosAlLog::class),
+        );
     }
 
     /**

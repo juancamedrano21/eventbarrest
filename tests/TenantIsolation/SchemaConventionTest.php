@@ -40,6 +40,17 @@ $platformTables = [
     // Catálogos de plataforma para clasificar comercios (admin los gestiona).
     'vendor_types',
     'food_types',
+    // La cuenta del asistente y sus satélites (sesiones y códigos de
+    // entrada) son de PLATAFORMA a conciencia: el primer actor que no es el
+    // superadmin y vive fuera de toda cuenta de negocio. Es la identidad que
+    // mañana ata boleta, pulsera y monedero A TRAVÉS de eventos de
+    // organizadores distintos — el asistente de Bocao es el mismo asistente
+    // en el próximo festival, y un tenant_id lo partiría en una identidad
+    // por organizador. Sus índices únicos (email, token) son globales por lo
+    // mismo: no hay tenant con el que componerlos. ADR-011.
+    'event_app_accounts',
+    'event_app_sessions',
+    'event_app_login_codes',
 ];
 
 /**
