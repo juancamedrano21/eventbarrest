@@ -13,7 +13,7 @@
 > KDS) y el repo raíz (documentación y ADR). Al final hay un **glosario** de los
 > términos propios del proyecto y un **índice de garantías** transversales.
 
-> **Cobertura.** 76 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
+> **Cobertura.** 77 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
 
 ---
 
@@ -745,6 +745,15 @@
 
 **Garantías.** El DUNS sale del camino crítico de Bocao 2026 y pasa a plan B en el cajón. Cada app sigue necesitando su flavor —bundle id, icono, nombre— porque son fichas distintas en la tienda, así que la arquitectura de manifiesto no cambia y serviría igual para el modelo agregador si algún día se quisiera para clientes pequeños. Las condiciones de transferencia entre cuentas hay que verificarlas ANTES de necesitarlas.
 
+#### [Plataforma] La cuenta del asistente: entrar sin contraseña, y el primer actor sin tenant
+<sub>`616b092` · repo `eventbarrest-app`: `0b3aa94` · ADR-011</sub>
+
+**Qué.** Segundo slice de la app del asistente, en los dos repos contra el contrato ampliado. **Backend:** tres tablas de PLATAFORMA sin `tenant_id` (`event_app_accounts`, `event_app_sessions`, `event_app_login_codes`, registradas como excepción en las dos convenciones de aislamiento), entrada por código de 6 dígitos al email (sin contraseña), tokens con el patrón de la casa (tabla propia, sha256, revalidación completa por petición — no Sanctum, cuyas dos trampas ya mordieron al KDS), transporte de correo como interfaz (log en local; en producción sin proveedor FALLA RUIDOSO en vez de escribir códigos en claro), y seis endpoints bajo `/api/event-app/cuenta` incluido el borrado real que exige Apple. **App:** avatar en el cascarón (no módulo), flujo email → código → sesión, perfil editable, salir y borrar con confirmación; token en Keychain/Keystore.
+
+**Por qué.** La cuenta es la identidad que mañana ata boleta ↔ pulsera ↔ monedero ↔ pasaporte A TRAVÉS de eventos: por evento nacería muerta. Sin contraseña porque no hay nada que olvidar ni que robar en un volcado. Sin oráculo de enumeración por ningún lado: 202 idéntico exista o no la cuenta (el camino de emisión ni consulta cuentas), 422 único para código incorrecto/caducado/quemado, y nombre opcional SIEMPRE — exigirlo solo a cuentas nuevas convertiría la validación en el oráculo recién tapiado. El refutador de seguridad encontró el grave que ningún test secuencial ve: el tope de cinco intentos se contaba leyendo, sumando en PHP y guardando el absoluto — bajo concurrencia se perdían incrementos y el OTP se podía forzar; ahora el contador sube atómico en la base y el gasto del código bueno lo decide un DELETE mirando filas afectadas (dos /entrar simultáneos: UNA sesión). La llave del freno por buzón se llavea con hash porque el RateLimiter pasa la llave por htmlentities y josé@/jose@ compartían cubo.
+
+**Garantías.** Los frenos de la cuenta matan al CÓDIGO, jamás a la cuenta: no existe «cuenta bloqueada». El cortacircuitos global de emisión (600/min, 6× el pico legítimo) usa llave CONSTANTE — quien ataca no elige qué cubo llena. El token del asistente no abre POS/KDS/staff ni al revés. El Bearer viaja solo por el camino con sesión; las puertas anónimas nunca lo mandan. Un 401 `sesion_invalida` devuelve a anónimo sin tirar la pantalla, y solo ESE 401 desconecta (uno pelado de un proxy es avería). Borrar la cuenta borra de verdad, mata el código vigente del buzón, y ese método es el dueño de la decisión de anonimizar cuando existan pedidos o saldo.
+
 ---
 
 ## Índice de garantías transversales
@@ -830,6 +839,13 @@
   Un evento sin manifiesto sirve 200 de fábrica; uno cerrado o liquidado también, con
   su `estado` — apagar la puerta al cerrar convertiría en error miles de apps
   instaladas el lunes.
+- **Los frenos de la cuenta matan al código, jamás a la cuenta.** No existe
+  «cuenta bloqueada»: cinco fallos queman el código y se pide otro. Y ningún
+  endpoint de identidad tiene oráculo de enumeración — ni por cuerpo, ni por
+  código de estado, ni por tiempo.
+- **La sesión es un accesorio, no el suelo.** La app funciona entera anónima;
+  un 401 `sesion_invalida` devuelve a anónimo sin tirar la pantalla, y solo ese
+  401 desconecta.
 - **Se cachea el cuerpo, jamás la puerta.** Sin token que revocar, revalidar en cada
   petición es la única revocación que existe. Y en esa caché solo viajan **datos
   planos**: `serializable_classes => false` corrompe cualquier objeto, y los tests
