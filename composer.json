@@ -13,6 +13,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
+        "cybersource/rest-client-php": "^0.0.75",
         "filament/filament": "^5.7",
         "laravel/framework": "^13.8",
         "laravel/horizon": "^5.48",

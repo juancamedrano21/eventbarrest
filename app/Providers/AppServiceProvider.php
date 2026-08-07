@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Domains\EventApp\Correo\TransporteDeCodigos;
 use App\Domains\EventApp\Correo\TransporteDeCodigosAlLog;
 use App\Domains\EventApp\Correo\TransporteDeCodigosSinProveedor;
+use App\Domains\Payments\Services\CybersourceClient;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Http\JsonResponse;
@@ -40,6 +41,14 @@ class AppServiceProvider extends ServiceProvider
                 ? $app->make(TransporteDeCodigosSinProveedor::class)
                 : $app->make(TransporteDeCodigosAlLog::class),
         );
+
+        // El cliente de Cybersource, una vez por proceso. Construirlo lee las
+        // tres credenciales y las valida, y el ApiClient compartido cachea la
+        // configuración firmada: repetirlo en cada cobro es trabajo tirado.
+        // Los clientes CON cabecera de idempotencia siguen siendo efímeros —
+        // los fabrica el propio cliente y nunca se cachean, ver allá el
+        // porqué.
+        $this->app->singleton(CybersourceClient::class);
     }
 
     /**

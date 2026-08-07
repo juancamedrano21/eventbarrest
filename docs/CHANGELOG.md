@@ -13,7 +13,7 @@
 > KDS) y el repo raíz (documentación y ADR). Al final hay un **glosario** de los
 > términos propios del proyecto y un **índice de garantías** transversales.
 
-> **Cobertura.** 79 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
+> **Cobertura.** 80 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
 
 ---
 
@@ -21,7 +21,7 @@
 
 | Área | Hitos | Qué cubre |
 |---|---|---|
-| **Plataforma** | 15 | Multi-tenancy, cuentas, roles, los dos mundos (negocio/organizador) |
+| **Plataforma** | 16 | Multi-tenancy, cuentas, roles, los dos mundos (negocio/organizador), cobro con tarjeta |
 | **Negocio** | 6 | Catálogo, inventario, escandallo, sucursales (mundo negocio) |
 | **Eventos** | 15 | Eventos, comercios terceros, comisiones, liquidación, mercancía |
 | **POS** | 13 | Punto de venta offline-first, ventas, ITBIS, propina, reembolsos |
@@ -772,6 +772,41 @@
 
 **Garantías.** Ocho lecciones ya pagadas en producción quedan escritas para no redescubrirlas: el SDK tiene DOS objetos de config y el host por defecto es sandbox (401 solo en producción); la firma usa `request-target` SIN paréntesis; el transient token cambia de nombre entre `/pts/v2/payments` y `/risk/v1/*`; el indicador comercial cambia de nombre entre respuestas; **`body.status` es el único árbitro** (puede venir `responseCode: 00` con `AUTHORIZED_RISK_DECLINED`); el ancla del encadenado es `networkTransactionId` y la regla es por marca; los strings vacíos se rechazan; y un cobro aprobado sin token se aborta con log crítico. Y lo que NO se copia: `PortalDomDirect` mete PAN y CVV en el servidor (alcance SAQ D) — la app no va por ahí bajo ningún concepto.
 
+### 2026-08-07
+
+#### [Plataforma] El dominio de pagos habla con Cybersource, probado contra el sandbox real
+<sub>`(ver git log: dominio Payments)`</sub>
+
+**Qué.** Nace `App\Domains\Payments`: `CybersourceClient` (construye el SDK v0.0.75 desde `config('services.portaldom')`), la acción `CobrarConTarjeta` (authorization + capture en `/pts/v2/payments`, tres modos: transient token con `TOKEN_CREATE`, token guardado, y PAN solo-sandbox), `EstadoDeCobro`/`DesenlaceDeCobro` para leer la respuesta, y `CobroSolicitado`/`ResultadoDeCobro` como objetos de valor. Bloque `portaldom` en `config/services.php` con las mismas claves que Boletu. **Probado contra `apitest.cybersource.com` de verdad**: autenticación viva, cobro con Visa 4111 en DOP → AUTHORIZED con `networkTransactionId`, `TOKEN_CREATE` devolviendo customer + payment instrument, y segundo cobro solo con el token. No se persiste nada todavía: las tablas de tarjeta guardada son el slice siguiente.
+
+**Por qué.** Se replicó a propósito el fallo más caro de Boletu: el SDK tiene DOS objetos de configuración y `ApiClient` arma la URL con `Configuration::getHost()` —cuyo defecto es `apitest`—, no con `MerchantConfiguration::getRunEnvironment()`. Fijar solo el segundo da **401 únicamente en producción**, invisible en pruebas porque allí el defecto coincide. Aquí los dos salen de un único método privado (`configuracionDelSdk()`) para que no se pueda reintroducir olvidándolo en una de las dos rutas; de paso se descubrió que el proxy también se lee de ese objeto y no del de comercio. Se descartó cachear el `ApiClient` con la cabecera de idempotencia: pegaría la llave a las llamadas siguientes del proceso —bajo Octane, entre usuarios distintos—. El `commerceIndicator` de la compra de dos toques se manda como CIT (`type: customer`, `storedCredentialUsed`) y no como MIT, porque el asistente está delante del teléfono y porque la variante «unscheduled COF» sigue sin confirmar con PortalDOM. Y el PAN en claro se acotó a un modo propio que la acción **rechaza** fuera del sandbox: un PAN en este servidor es alcance SAQ D, justo lo que el diseño de captura evita.
+
+**Garantías.** `body.status` es el ÚNICO árbitro y la clasificación vive en el enum, no en el `if` de quien llama: `AUTHORIZED` es lo único que despacha, y un estado que Cybersource añada mañana cae en «no aprobado». Un cobro aprobado sin token habiendo pedido `TOKEN_CREATE`, o sin `networkTransactionId`, es log crítico y excepción — «cobrado pero sin credencial» nunca devuelve 200. `PORTALDOM_ENV=live` fuera de `APP_ENV=production` deja la aplicación sin arrancar, comprobado en dos sitios porque `config:cache` salta el primero. El importe se compone con enteros (`sprintf('%d.%02d')`), sin pasar por float. Ni el token, ni el PAN, ni el CVV, ni el JWT entero llegan al log. Y las pruebas contra el sandbox **se saltan solas sin credenciales**: la suite sigue verde para quien no las tiene.
+
+**Pendiente.** El MID de sandbox **no honra `v-c-idempotency-id`**: medido el 2026-08-07, dos cobros con la misma llave y el mismo cuerpo dieron dos transacciones distintas, con la cabecera demostradamente en el request. Hay que pedir la habilitación a PortalDOM antes de producción; el test queda incompleto con el motivo escrito, no borrado.
+
+#### [Plataforma] «Rechazado» y «no sé si se cobró» dejan de ser lo mismo
+<sub>`(ver git log: dominio Payments)`</sub>
+
+**Qué.** Un desenlace nuevo, `DesenlaceDeCobro::Incierto`, con su estado `EstadoDeCobro::SinRespuesta`, para el corte de transporte; `CobrarConTarjeta` separa «el servidor contestó» de «no hubo respuesta» mirando el código HTTP y el cuerpo, no el tipo de la excepción, y el silencio va con `Log::error`. Nace la acción `BuscarCobroPorReferencia` (`POST /tss/v2/searches`) con `ConciliacionDeCobro` y `CobroEncontrado`: el camino de reconciliación que el doc 12 §4 pedía, **probado contra apitest** (el MID de sandbox SÍ tiene la búsqueda habilitada; una referencia inexistente devuelve `totalCount: 0` limpio). Además: el motivo del rechazo se lee de `errorInformation` —donde vive de verdad— y no solo de la raíz; `redactado()` pasa de un `if` por campo a una lista de rutas y tapa también `paymentInstrument.id`; los seguros de entorno miran `PORTALDOM_API_HOST` y no solo la etiqueta; `CobroSolicitado` rechaza credenciales en blanco; las banderas de `authorizationOptions.initiator` se acumulan en vez de pisarse; y `tieneToken()` exige LAS DOS piezas.
+
+**Por qué.** El SDK envuelve TODO en `ApiException` —incluido el curl que ni conecta, que lanza `new ApiException($mensaje, 0, [], null)`—, así que el `catch (ApiException)` se quedaba también los timeouts y los devolvía como un resultado ordinario con desenlace `error`: sin log, sin excepción, e indistinguible de un INVALID_REQUEST. En pagos esa es LA distinción: un rechazo significa «no se cobró, reintenta tranquilo» y un corte significa «puede que la tarjeta esté cobrada». Con el MID sin idempotencia, ese reintento a ciegas es un doble cobro real. La rama `catch (Throwable)` que el comentario vendía como la red de seguridad no se alcanzaba nunca para ese caso. Se descartó distinguirlos por el tipo de la excepción (no se puede) y se descartó lanzar en vez de devolver: el llamador necesita el desenlace para decidir, y lanzar lo empujaría a tratar el corte como un fallo de programación. En la búsqueda se descartó devolver una lista pelada: con `[] === $cobros` la lectura natural es «no se cobró, reintenta», y es FALSA durante los primeros segundos —medido: a 0,3 s la búsqueda devolvía 0 y a 4,6 s ya devolvía la transacción—, así que la decisión vive en `sePuedeReintentar($segundos)`, que exige que haya pasado el indexado. Y `paymentInstrument.id` se escribía entero en el log mientras su hermano `customer.id` sí se truncaba, en el mismo objeto: no fue una decisión, fue un olvido, y la forma de que no se repita es que las rutas estén en una lista y no en un `if` que hay que acordarse de escribir.
+
+**Garantías.** Un fallo de transporte NUNCA sale como rechazo: `esRechazado()`, `esAprobado()` y `esPendiente()` contestan que no, `esIncierto()` que sí, y queda una línea `Log::error`. Ante lo incierto no se reintenta sin conciliar: solo `ConciliacionDeCobro::sePuedeReintentar()` lo autoriza, y exige a la vez que no haya rastro y que haya pasado el indexado; si la búsqueda no se puede hacer, revienta con `busqueda_no_disponible` en vez de mentir con un cero. **Ninguna credencial sale entera al log** —ni `customer.id`, ni `paymentInstrument.id`, ni `instrumentIdentifier.id`, ni PAN, ni CVV, ni JWT—, y el log propio del SDK se apaga explícitamente porque escribe el cuerpo entero fuera del alcance de `redactado()`. `PORTALDOM_ENV` y `PORTALDOM_API_HOST` no pueden contradecirse: un host de producción fuera de `APP_ENV=production` no arranca, y `esSandbox()` responde con el host, que es lo que decide a dónde va el dinero. Una credencial en blanco no viaja. Y un cobro aprobado con media credencial es incidente, no éxito.
+
+**Pendiente.** El valor de la clave 27 de la MDD para el caso tokenizado (`TOKENIZATION SI`) sigue siendo **deducción nuestra, no dato confirmado**: Boletu manda siempre `NO` porque nunca tokeniza. Queda escrito como tal en el código. Hay que confirmarlo con PortalDOM, junto con que el MID de producción tenga habilitada la búsqueda de transacciones.
+
+#### [Plataforma] El cimiento de pagos: Cybersource probado contra el sandbox de verdad
+<sub>`(dominio Payments)` · ADR pendiente</sub>
+
+**Qué.** Dominio `App\Domains\Payments` con el cliente de Cybersource (vía PortalDOM, el integrador local dominicano) y la acción de cobro, **verificado contra apitest.cybersource.com**: autentica, cobra en DOP, tokeniza con `TOKEN_CREATE` y vuelve a cobrar usando SOLO el token. Más `BuscarCobroPorReferencia` sobre `/tss/v2/searches` para reconciliar antes de reintentar. SDK oficial desde packagist (v0.0.75). 104 tests entre los que no tocan red y los que sí (`--group=cybersource`, se saltan solos sin credenciales).
+
+**Por qué.** Boletu ya procesa con Cybersource en producción, así que este cimiento copia sus lecciones en vez de redescubrirlas — el doble objeto de configuración del SDK (cuyo host por defecto es sandbox, y omitirlo da un 401 que SOLO aparece en producción), `body.status` como único árbitro (un `responseCode: "00"` puede venir con `AUTHORIZED_RISK_DECLINED`), y el aborto ruidoso si un cobro aprueba sin devolver la credencial. Lo que la lente adversarial añadió es la distinción que ninguna doc subraya: **«me dijeron que no» y «no sé si se cobró» no pueden ser el mismo desenlace**. Un rechazo invita a reintentar; un corte significa que la tarjeta puede estar cobrada, y en un festival con mala señal eso pasa. Se separan por código HTTP y presencia de cuerpo —no por el tipo de excepción, que el SDK unifica—, incluido el caso más traicionero: un 2xx cuyo cuerpo llegó a medias, que Cybersource ya contó como transacción.
+
+**Garantías.** Ninguna credencial entera llega a un log: `redactado()` es una lista de rutas (no un `if` por campo, que fue justo el olvido que dejó un token de cobro en claro) y el log propio del SDK —que escribe el cuerpo entero a otro fichero— se apaga explícitamente. Los seguros de entorno miran el HOST y no la etiqueta, porque el host es lo que decide a dónde va el dinero: `PORTALDOM_ENV=test` con host de producción no arranca. La llamada del dinero lleva plazo (el SDK trae «espera para siempre»), porque un proceso colgado dentro del cobro muere sin dejar resultado ni rastro. El modo PAN existe solo para el sandbox y la acción lo rechaza fuera de él.
+
+**Abierto y medido:** el MID de sandbox **ignora `v-c-idempotency-id`** — dos llamadas con la misma llave dieron dos transacciones aprobadas, con la cabecera demostradamente en el request. Hay que pedirle la habilitación a PortalDOM antes de producción; sin ella, un reintento por mala señal es un doble cobro real. Y la búsqueda de reconciliación tarda ~5 s en indexar: preguntar justo tras el corte devuelve cero y eso invita al error, así que la autorización para reintentar exige que además haya pasado ese plazo.
+
 ---
 
 ## Índice de garantías transversales
@@ -801,6 +836,46 @@
 - **Costo desconocido es `null`, jamás `0`**: un insumo que no resuelve mostraría margen
   100% en verde para un producto vendido bajo costo.
 - Los cortes de día usan `config('app.business_timezone')` (RD), no UTC.
+
+### El cobro con tarjeta (Cybersource / PortalDOM)
+
+- **`body.status` es el ÚNICO árbitro.** `AUTHORIZED` es lo único que despacha. NO se mira
+  `responseCode` ni `approvalCode`: puede venir `"00"` con código de aprobación válido y
+  `status: AUTHORIZED_RISK_DECLINED`, que es un RECHAZO. La clasificación vive en
+  `EstadoDeCobro`, no en el `if` de quien llama, y un estado desconocido nunca aprueba.
+- **Cobrado sin credencial es un incidente, no un éxito.** Un cobro aprobado sin token
+  habiendo pedido `TOKEN_CREATE`, o sin `processorInformation.networkTransactionId` (el
+  ancla del encadenado, NO el `id` de la transacción), es log crítico y excepción.
+- **El SDK tiene DOS objetos de configuración** y hay que fijar el host en los dos:
+  `ApiClient` arma la URL con `Configuration::getHost()`, cuyo defecto es `apitest`.
+  Fijar solo `MerchantConfiguration::setRunEnvironment()` da **401 solo en producción**.
+  En este proyecto los dos salen de `CybersourceClient::configuracionDelSdk()`.
+- **El cliente con `v-c-idempotency-id` es EFÍMERO y nunca se cachea**: la cabecera vive
+  en el `Configuration`, así que pegarla al compartido la deja en todas las llamadas
+  siguientes del proceso — bajo Octane, entre usuarios distintos.
+- **El PAN nunca toca este servidor en producción** (alcance SAQ D): la captura vive en
+  la webview de Cybersource y aquí solo entra el `transientTokenJwt`. El modo con PAN
+  existe solo para el sandbox y la acción lo rechaza contra cualquier otro host.
+- **`PORTALDOM_ENV=live` fuera de `APP_ENV=production` no arranca**, y tampoco arranca un
+  `PORTALDOM_API_HOST` de producción fuera de producción: el host es la variable que
+  decide a dónde va el dinero, la etiqueta es solo una etiqueta. Las dos no pueden
+  contradecirse. Comprobado en `config/services.php` y otra vez al construir el cliente,
+  porque `config:cache` salta el primero.
+- **«Rechazado» y «no sé si se cobró» NO son lo mismo.** Un corte de transporte sale con
+  desenlace `Incierto` (`EstadoDeCobro::SinRespuesta`) y `Log::error`, nunca como un
+  rechazo: un rechazo invita a reintentar y un corte puede ser una tarjeta ya cobrada.
+  La distinción se hace por código HTTP y cuerpo, NO por el tipo de la excepción — el SDK
+  envuelve en `ApiException` tanto un 400 con cuerpo como un curl que ni conectó.
+- **Ante lo incierto se concilia antes de reintentar**, con `BuscarCobroPorReferencia`
+  (`/tss/v2/searches` por `clientReferenceInformation.code`). Un `totalCount: 0` NO
+  autoriza el reintento por sí solo: la búsqueda tarda ~5 s en indexar, así que la
+  autorización la da `ConciliacionDeCobro::sePuedeReintentar($segundos)`. Si la búsqueda
+  no se puede hacer, revienta: «no existe» y «no pude mirar» son decisiones opuestas.
+- **Ninguna credencial entera en el log.** Ni `customer.id`, ni `paymentInstrument.id`,
+  ni `instrumentIdentifier.id`, ni PAN, ni CVV, ni el JWT. Las rutas a tapar viven en una
+  lista dentro de `redactado()`, no en un `if` por campo: añadir una credencial al cuerpo
+  obliga a añadirla ahí. El log propio del SDK va apagado explícitamente — escribe el
+  cuerpo entero a su fichero, fuera del alcance de `redactado()` y de `paraLog()`.
 
 ### La historia no se reescribe
 

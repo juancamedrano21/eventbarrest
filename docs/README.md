@@ -34,6 +34,7 @@ No todo está igual de fresco. Antes de fiarte de un documento, mira esta column
 | [09 — Convergencia con la spec de festivales](09-analisis-spec-festival.md) | Qué de la spec del equipo ya existe y qué no | Análisis, 27-jul |
 | [10 — Plan de la app móvil](10-plan-app-movil-asistente.md) | Fases, gates, riesgos y decisión de stack de la app del asistente | Vigente, 04-ago |
 | [11 — Especificación de la app móvil](11-app-movil-especificacion.md) | Los 14 módulos de la app, lo transversal y la puerta `event-app` | Vigente, 04-ago |
+| [12 — Tarjeta guardada con Cybersource](12-pagos-cybersource-tarjeta-guardada.md) | Integración de pago con tarjeta guardada. **Las §0.x salen del código de producción de Boletu y CORRIGEN al resto** | Vigente, 06-ago |
 
 Cuando un documento y el código se contradigan, **manda el código**; el documento está
 pendiente de actualizar y agradecemos el aviso.
@@ -185,6 +186,12 @@ del evento (asignado − vendido − mermas − devuelto).
 
 **`/business`.** La casa del negocio independiente, completa; `/app` (Filament) se apagó.
 
+**Cobro con tarjeta — el cimiento.** `App\Domains\Payments`: el cliente del SDK de
+Cybersource y la acción `CobrarConTarjeta` (authorization + capture), probados contra el
+sandbox real de PortalDOM. Tokeniza con `TOKEN_CREATE` y cobra con el token guardado.
+**Todavía no persiste nada**: no hay tabla de tarjetas ni endpoints — eso es el slice
+siguiente. Las pruebas contra el sandbox se saltan solas sin credenciales.
+
 ## Qué NO está construido
 
 Para que nadie lo busque en el código:
@@ -194,8 +201,10 @@ Para que nadie lo busque en el código:
   `fiscal.manage`.
 - **Mesas** e impresión de tickets desde el servidor.
 - **Wrapper Capacitor / SUNMI** y pagos integrados (ADR-005, fase 3).
-- **Wallet cashless**, **cuenta del asistente** y **pasarela de pago online**: los tres
-  gaps grandes que bloquean la app móvil (ver el [doc 11](11-app-movil-especificacion.md)).
+- **Wallet cashless** y **tarjeta guardada de punta a punta**: del pago online existe ya
+  el cimiento (`App\Domains\Payments`, arriba), pero **no** la tabla de tarjetas, ni los
+  endpoints de la puerta `event-app`, ni la captura en webview, ni el 3DS que PortalDOM
+  exige (ver el [doc 12](12-pagos-cybersource-tarjeta-guardada.md) §0.4).
 - **Boletería**: es iniciativa aparte; la app la integrará desde Boletu.
 - **Sync de catálogo por delta versionado**: hoy baja completo.
 - **Despliegue productivo del backend**: hoy corre tras un túnel ngrok con

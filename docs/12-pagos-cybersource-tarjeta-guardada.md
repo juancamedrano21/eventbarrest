@@ -238,6 +238,40 @@ timeout con mala señal:
 3. El «bloqueo de duplicados de 15 minutos» de Cybersource aparece en foros de
    soporte, **no como contrato del API**: no es la defensa, es un colchón.
 
+### 4.1 Construido y medido (2026-08-07)
+
+Esto ya no es diseño: es `App\Domains\Payments\Actions\BuscarCobroPorReferencia`,
+probado contra `apitest.cybersource.com`. Lo que se aprendió al construirlo:
+
+- **El MID de sandbox SÍ tiene la búsqueda habilitada.** HTTP 201, la
+  transacción aparece buscando por `clientReferenceInformation.code`, y una
+  referencia inexistente devuelve `totalCount: 0` limpio, no un error. Para el
+  **MID de producción hay que confirmarlo con PortalDOM**: sin la búsqueda, y
+  sin idempotencia, no queda ninguna defensa contra el doble cobro.
+- **La búsqueda tarda ~5 s en indexar.** Medido: a 0,3 s del cobro devolvía 0
+  resultados y a 4,6 s ya devolvía la transacción. Consecuencia dura: un
+  `totalCount: 0` preguntado justo después del corte —que es cuando uno
+  pregunta— **no prueba que no se cobró**. Por eso la autorización para
+  reintentar no es «la lista vino vacía», es
+  `ConciliacionDeCobro::sePuedeReintentar($segundosDesdeElCobro)`, que exige
+  además que haya pasado el indexado.
+- **La respuesta de la búsqueda NO trae `status`.** La regla dura «`body.status`
+  es el único árbitro» vale para `/pts/v2/payments`; el resumen de
+  `_embedded.transactionSummaries[]` tiene otra forma y el árbitro ahí es
+  `applicationInformation`: aprobado es `reasonCode: "100"` + `rFlag: "SOK"`;
+  un rechazo por tarjeta inválida sale `reasonCode: "231"` + `rFlag:
+  "DINVALIDCARD"`. Se exige la combinación exacta del éxito: cualquier otra
+  cosa, incluido un `rFlag` que no conozcamos, cuenta como no aprobada.
+- **Si la búsqueda falla, se falla ruidoso.** «No encontré nada» y «no pude
+  mirar» llevan a decisiones opuestas, y devolver lo segundo como lo primero es
+  el doble cobro que la conciliación venía a evitar.
+
+Y el desenlace que enciende todo esto es nuevo: un corte de transporte ya no
+sale como un rechazo, sale como `DesenlaceDeCobro::Incierto`. La distinción se
+hace por **código HTTP y presencia de cuerpo**, no por el tipo de la excepción:
+el SDK envuelve en `ApiException` tanto un 400 con cuerpo JSON como un curl que
+ni llegó a conectar (`new ApiException($mensaje, 0, [], null)`).
+
 ## 5. Network tokens: pedir la habilitación, vale la pena
 
 Con la tokenización de red (Visa/Mastercard): la tarjeta guardada **sobrevive
@@ -274,6 +308,21 @@ CVV, 3DS, credenciales y sandbox. Queda:
 5. **Evidencia del consentimiento**: Boletu ya versiona el suyo
    (`consent_at` / `version` / `ip`, versión `2026-05-29.v1`). Reutilizar el
    mismo esquema y confirmar que sirve para nuestro caso.
+6. **La idempotencia (`v-c-idempotency-id`) hay que pedirla habilitada.**
+   Medido el 2026-08-07: el MID de sandbox NO la honra —dos llamadas con la
+   misma llave dieron dos cobros, y con cuerpos distintos tampoco dio el 400
+   de conflicto que exige la especificación—, con la cabecera demostradamente
+   en el request. Sin ella, la consulta de §4.1 es la ÚNICA defensa contra el
+   doble cobro.
+7. **¿El MID de producción tiene habilitada la búsqueda de transacciones
+   (`/tss/v2/searches`)?** El de sandbox sí (§4.1). Si el de producción no la
+   tuviera, y sin idempotencia, no quedaría ninguna defensa.
+8. **El valor de la clave 27 de la MDD cuando el cobro tokeniza.** Lo único
+   verificado es el caso NO tokenizado: Boletu manda siempre
+   `TOKENIZATION NO` porque en boletería nunca tokeniza. Que el simétrico sea
+   `TOKENIZATION SI` es **deducción nuestra, no dato confirmado**, y así está
+   escrito en el código. La MDD es informativa y no decide la autorización
+   —comprobado contra apitest: el cobro aprueba igual—, así que no bloquea.
 
 ## 8. Orden de construcción propuesto
 
