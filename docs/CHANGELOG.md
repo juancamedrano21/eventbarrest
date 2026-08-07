@@ -13,7 +13,7 @@
 > KDS) y el repo raíz (documentación y ADR). Al final hay un **glosario** de los
 > términos propios del proyecto y un **índice de garantías** transversales.
 
-> **Cobertura.** 78 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
+> **Cobertura.** 79 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
 
 ---
 
@@ -762,6 +762,15 @@
 **Por qué.** Boletu ya procesa con Cybersource en producción, así que el gate de pasarela es integración, no contratación. El hallazgo urgente salió de rebote: **Flex/Microform v0.11 y v1 mueren el 31 de agosto de 2026** — hay que auditar la boletería web de Boletu ESTE MES, con o sin app. Y quedó separada la lista de lo que la doc no responde y solo el account manager o el adquirente dominicano pueden contestar: TMS habilitado en el MID, DOP como moneda de proceso, CIT sin CVV, 3DS en RD, network tokens y la evidencia de consentimiento.
 
 **Garantías.** El PAN y el CVV no tocan jamás nuestro backend ni se almacenan (la CVN está prohibida por la doc); nosotros solo guardamos ids de token + marca/últimos 4/vencimiento para pintar. El capture context lo genera siempre Laravel, nunca credenciales dentro del binario. `DELETE /cuenta` se extiende a la bóveda borrando cada payment instrument y el customer, sin depender de una cascada no documentada. Ningún cobro se reintenta sin consultar antes por `client_ref`.
+
+#### [Documentación] El código de Boletu desmiente a la doc: cómo opera Cybersource de verdad
+<sub>`(doc 12 §0)`</sub>
+
+**Qué.** Análisis de solo lectura del Laravel de producción de Boletu (`BuletuV2`) con tres lentes —pasarelas y SDK, bóveda y cuotas, captura y 3DS— volcado al doc 12 como secciones §0.x que CORRIGEN al diseño hecho solo con documentación. Hallazgos: Boletu usa **Unified Checkout v1**, no Microform; **ya guarda tarjetas en producción** para cobrar cuotas (`payment_plans.tokenized_card_ref`, tokens TMS creados con `TOKEN_CREATE` dentro del authorization); **3DS es obligatorio** porque PortalDOM —el integrador local dominicano— lo exigió, con la cadena Cardinal completa orquestada a mano; y la idempotencia va en dos capas (UUID persistido + header `v-c-idempotency-id` + thin transaction con lock fuera del HTTP).
+
+**Por qué.** La alarma que yo mismo di —«Flex/Microform v0.11 muere el 31 de agosto, auditen ya»— **era falsa**: salía de la documentación, no del código, y Boletu no usa Microform en ninguna parte. Queda anulada por escrito para que nadie actúe sobre ella. Al revés de lo que temía, el análisis respondió con hechos casi todas las preguntas que el doc iba a hacerle al account manager (TMS ✓, DOP ✓, CIT sin CVV ✓, 3DS ✓, sandbox ✓) y dejó una sola de verdad abierta: las banderas de «unscheduled COF», porque Boletu solo tiene certificado `reason: 9` (cuotas con cronograma fijo) y la app cobra montos distintos sin calendario.
+
+**Garantías.** Ocho lecciones ya pagadas en producción quedan escritas para no redescubrirlas: el SDK tiene DOS objetos de config y el host por defecto es sandbox (401 solo en producción); la firma usa `request-target` SIN paréntesis; el transient token cambia de nombre entre `/pts/v2/payments` y `/risk/v1/*`; el indicador comercial cambia de nombre entre respuestas; **`body.status` es el único árbitro** (puede venir `responseCode: 00` con `AUTHORIZED_RISK_DECLINED`); el ancla del encadenado es `networkTransactionId` y la regla es por marca; los strings vacíos se rechazan; y un cobro aprobado sin token se aborta con log crítico. Y lo que NO se copia: `PortalDomDirect` mete PAN y CVV en el servidor (alcance SAQ D) — la app no va por ahí bajo ningún concepto.
 
 ---
 

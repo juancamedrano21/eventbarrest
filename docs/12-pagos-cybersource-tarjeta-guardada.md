@@ -1,9 +1,11 @@
 # 12 · Tarjeta guardada con Cybersource — diseño de integración
 
-> **Fecha:** 2026-08-06 · **Fuente:** documentación oficial de Cybersource /
-> Visa Acceptance (developer.cybersource.com), investigada con tres lentes:
-> almacenamiento (TMS), captura móvil y cobro con token. Las URLs concretas
-> están al final de cada sección del análisis original; aquí va lo decidido.
+> **Fecha:** 2026-08-06 · **Fuentes:** (1) documentación oficial de Cybersource
+> / Visa Acceptance, investigada con tres lentes — almacenamiento (TMS),
+> captura móvil y cobro con token; (2) **el código de producción de
+> `BuletuV2`**, leído sin tocar nada, que es lo que manda cuando contradice a
+> la doc. Las secciones §0.x son las que salen del código real y **corrigen** a
+> las de abajo donde chocan.
 >
 > **Objetivo de producto:** el asistente guarda su tarjeta UNA vez en la app,
 > y después compra comida con dos toques; el pedido pagado entra solo al KDS.
@@ -12,17 +14,129 @@
 
 ---
 
-## ⚠️ Lo urgente primero, y no es de la app
+## 0. Corrección: la alarma del EOL de Microform NO aplica
 
-**Flex/Microform v0.11 y v1 mueren el 31 de agosto de 2026** (EOL definitivo
-31 de enero de 2027). Si la boletería web de Boletu que hoy procesa en
-producción usa Microform v0.11 (transient tokens con prefijo `mf-0.11.0`),
-**el plazo de migración vence este mes**. Hay que auditarla YA, con o sin app.
-Todo lo nuevo nace en v2 (`/microform/v2/sessions`, `/flex/v2/tokens`).
+En la primera versión de este documento avisé de que **Flex/Microform v0.11
+muere el 31 de agosto de 2026** y que había que auditar la boletería web de
+Boletu con urgencia. Al leer el código real: **Boletu no usa Microform.** Usa
+**Unified Checkout v1** (`POST /uc/v1/sessions` + el widget
+`UnifiedCheckout.js`), donde no hay nada de Flex. Cero referencias a
+`flex-microform.min.js`, `mf-0.11` o `Flex.createToken` en todo el proyecto.
+
+La alarma era mía, salida de la documentación y no del código. Queda anulada.
+Lo que sí conviene vigilar: el asset del widget está **pinneado a la versión
+1.0.0** en la URL, así que su ciclo de vida hay que seguirlo (se cambia por
+`PORTALDOM_ASSETS_URL`).
 
 ---
 
-## 1. La decisión de captura: webview con Microform v2, página nuestra
+## 0.1 Lo que Boletu ya tiene resuelto en producción (y responde media lista)
+
+El análisis del código de `BuletuV2` responde con hechos casi todas las
+preguntas que este documento le iba a hacer al account manager:
+
+| Pregunta del §7 | Respuesta desde el código |
+|---|---|
+| ¿TMS habilitado en el MID? | **Sí.** `payment_plans.tokenized_card_ref` guarda tokens TMS en producción |
+| ¿DOP habilitado? | **Sí.** `services.portaldom.currency` = DOP, país DO, locale es_ES |
+| ¿CIT/MIT sin CVV? | **Sí.** Las cuotas 2..N se cobran sin tarjeta, sin CVV y sin 3DS |
+| ¿3DS exigido en RD? | **Sí, y no es opcional: PortalDOM lo exigió.** Cadena Cardinal completa en los dos flujos |
+| ¿Cómo se autentica? | HTTP Signature con tres credenciales de **PortalDOM** (el integrador local de Cybersource en RD) |
+| ¿Sandbox? | Sí, por `PORTALDOM_ENV` + `PORTALDOM_API_HOST` (apitest) |
+
+**Y lo más importante: el patrón de tarjeta guardada que este documento
+diseñaba ya corre en producción**, en Boletu Cuotas. Es exactamente el mismo
+building block:
+
+- **CIT (primer cobro)**: 3DS completo → `/pts/v2/payments` con
+  `actionList: ["TOKEN_CREATE"]`, `actionTokenTypes: ["customer","paymentInstrument"]`
+  y `initiator: { type: "customer", credentialStoredOnFile: true }`.
+- **Cobros siguientes**: `paymentInformation.customer.id` = el token, sin
+  tarjeta, sin CVV, sin 3DS.
+
+O sea: **no estamos abriendo camino, estamos siguiendo uno ya certificado con
+el adquirente dominicano.**
+
+## 0.2 Las lecciones ya pagadas en producción — copiarlas, no redescubrirlas
+
+Esto es lo más valioso del análisis. Cada una costó un fallo real:
+
+1. **El SDK tiene DOS objetos de configuración.** `ApiClient` arma la URL con
+   `Configuration::getHost()`, cuyo default es **apitest**, no con
+   `MerchantConfiguration::getRunEnvironment()`. Si solo se setea el segundo,
+   se firma con el host correcto y se conecta a sandbox → **401 solo en
+   producción**, invisible en pruebas porque ahí el default coincide.
+2. **La firma HTTP usa `request-target` SIN paréntesis**, al revés del
+   estándar draft-cavage. Con paréntesis la firma es matemáticamente válida y
+   Cybersource la rechaza igual.
+3. **El mismo transient token cambia de nombre según el endpoint**:
+   `tokenInformation.transientTokenJwt` (el JWT completo) en
+   `/pts/v2/payments`, pero `tokenInformation.transientToken` (solo el claim
+   `jti`, 64 caracteres) en `/risk/v1/*`. Mandar el JWT entero a risk da
+   INVALID_DATA — y la doc de PortalDOM que dice «jti» como nombre de campo
+   está equivocada.
+4. **El indicador de comercio cambia de nombre entre respuestas**:
+   `ecommerceIndicator` en check-enrollment, `indicator` en validate-auth, y el
+   body de pago lo espera como `ecommerceIndicator`. Sin coalescer se pierde el
+   dato justo en el flujo con challenge.
+5. **`body.status` es el único árbitro.** Puede venir `responseCode: "00"` con
+   código de aprobación válido y `status: AUTHORIZED_RISK_DECLINED` (lo rechazó
+   Decision Manager). Leer el código y no el status es cobrar lo que no se
+   cobró.
+6. **El ancla del encadenado es `processorInformation.networkTransactionId`**,
+   NO el id de la transacción. Y la regla es por marca: Visa encadena con el de
+   la última exitosa; Mastercard, Amex y Discover siempre con el del CIT
+   original.
+7. **Cybersource rechaza campos con string vacío** (`fingerprintSessionId`, el
+   bloque de autenticación): se incluyen solo si tienen valor.
+8. **Si un cobro aprueba sin token o sin networkTransactionId, abortar con
+   log crítico.** «Cobrado pero sin credencial guardada» es el peor estado
+   posible y Boletu ya lo trata así.
+
+## 0.3 Lo que NO hay que copiar de Boletu
+
+- **`PortalDomDirect` mete PAN y CVV en claro en el servidor Laravel** y los
+  retiene cifrados en sesión durante el 3DS. El propio código admite que «no es
+  un servicio de tokenización PCI-DSS compliant». Eso es alcance **SAQ D**. La
+  app no puede ir por ahí bajo ningún concepto.
+- **`directPay()`** (cobro sin 3DS, sin traslado de responsabilidad de fraude)
+  sigue vivo sin llamadores, y un comentario desactualizado lo llama «el punto
+  de entrada activo». Cuidado con recablearlo por confiar en ese comentario.
+- **El lifecycle repartido entre dos repos** (el cron de cuotas vive en Omnia y
+  hay lógica de avance de estado duplicada, reconocido en el propio código).
+  Para la app: un solo dueño del ciclo de vida.
+- **`gateway_response` persiste el body completo de Cybersource**, incluido el
+  token TMS. Está oculto en `$hidden` del modelo, pero cualquiera que lea la
+  tabla ve la credencial de cobro. Nosotros guardamos el token en su columna y
+  no volcamos la respuesta entera.
+- **`mapCardType` cae silenciosamente a Visa** para marcas desconocidas. En
+  checkout es tolerable; en tarjeta guardada la marca decide la regla de
+  encadenado, así que ahí sería un fallo silencioso.
+
+## 0.4 Lo que cambia en nuestro diseño
+
+**La captura pasa a Unified Checkout en webview**, no Microform. Razón: es lo
+que ya está certificado con PortalDOM, con el 3DS orquestado por la cadena
+Cardinal que ellos exigen, y reutilizamos el gateway entero de Boletu en vez de
+integrar una vía distinta. Sigue siendo webview, sigue sin que el PAN toque
+nuestro backend, y sigue en SAQ A.
+
+**El 3DS deja de ser una duda: es obligatorio.** PortalDOM lo exige, y eso
+significa que la app **necesita la cadena completa de Payer Authentication**
+en el alta de tarjeta (device data collection en iframe, check enrollment, y el
+step-up del banco si toca). Es trabajo real y hay que presupuestarlo — la
+buena noticia es que los cinco desenlaces posibles ya están tipados en el
+código de Boletu.
+
+**Lo que sí queda por confirmar con PortalDOM** (y es poco, pero importa): todo
+el diseño de Boletu asume `reason: "9"` (installment) con cronograma fijo. La
+app necesita la variante **«unscheduled credential on file»** — cobros con
+tarjeta guardada, montos distintos, sin calendario. Las banderas exactas de esa
+variante hay que reconfirmarlas: es la única pregunta de verdad abierta.
+
+---
+
+## 1. La decisión de captura (revisada en §0.4: Unified Checkout, no Microform)
 
 **Cómo entra la tarjeta a Cybersource sin tocar nuestro backend:** Laravel
 sirve una página de captura (Blade) con Microform v2; la app Flutter la abre
@@ -141,25 +255,25 @@ dominicano. Si se exige: el Cardinal Mobile SDK es nativo iOS/Android
 (puentearlo a Flutter es costo real), o Unified Checkout en webview lo trae
 integrado — otro punto para el plan B. **Preguntar antes de construir.**
 
-## 7. La lista para el account manager / adquirente
+## 7. Lo que queda por preguntar (ya casi nada)
 
-Todo esto NO está en la doc y solo lo responde Cybersource o el adquirente:
+El análisis del código de Boletu (§0.1) respondió con hechos TMS, DOP, CIT sin
+CVV, 3DS, credenciales y sandbox. Queda:
 
-1. ¿El MID productivo de Boletu tiene **TMS habilitado** (customer +
-   paymentInstrument) y `TOKEN_CREATE`? ¿La app usa ese MID o uno propio?
-2. ¿**DOP** está habilitado como moneda de proceso en ese MID (y en sandbox)?
-3. ¿El adquirente acepta **CIT con credencial guardada sin CVV**, o exige
-   recaptura del CVV por compra? (Cambia el flujo de dos toques.)
-4. ¿**3DS es exigido** en RD para compras in-app con tarjeta guardada?
-   (Existe un portal local — cybersource.portaldom.do — que conviene revisar.)
-5. Habilitación de **network tokens** sobre el MID + cobertura de emisores
-   dominicanos.
-6. Confirmar por soporte que el patrón **webview + Microform v2** mantiene la
-   elegibilidad SAQ A (la frase explícita de webviews está en la doc de v0.11;
-   la de v2 no la repite).
-7. Formato de **evidencia del consentimiento** de guardado que espera el
-   adquirente.
-8. Credenciales de **sandbox** (apitest) — las de producción no sirven ahí.
+1. **Las banderas de «unscheduled COF»** para cobros con tarjeta guardada sin
+   cronograma: Boletu solo tiene certificado el caso `reason: "9"` (cuotas).
+   Es la única pregunta técnica de verdad abierta.
+2. **¿La app cobra bajo el mismo MID de PortalDOM que la boletería, o uno
+   propio?** Con el mismo, las credenciales existen ya. Con otro, hay que
+   pedir TMS provisionado en él.
+3. **Network tokens** (que la tarjeta guardada sobreviva al reemplazo del
+   plástico): Boletu no los usa hoy. Requiere habilitación + webhooks.
+4. **`card_not_enrolled` (ECI 07) se cobra igual, sin traslado de
+   responsabilidad**: Boletu lo asume a conciencia. La app tiene que tomar esa
+   decisión de negocio explícitamente, no heredarla por copiar código.
+5. **Evidencia del consentimiento**: Boletu ya versiona el suyo
+   (`consent_at` / `version` / `ip`, versión `2026-05-29.v1`). Reutilizar el
+   mismo esquema y confirmar que sirve para nuestro caso.
 
 ## 8. Orden de construcción propuesto
 
