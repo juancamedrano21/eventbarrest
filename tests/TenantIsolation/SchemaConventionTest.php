@@ -51,6 +51,14 @@ $platformTables = [
     'event_app_accounts',
     'event_app_sessions',
     'event_app_login_codes',
+    // Las tarjetas guardadas cuelgan de esa cuenta y heredan su naturaleza:
+    // quien guardó su tarjeta en Bocao la tiene en el próximo festival, con
+    // otro organizador. Un tenant_id la partiría en una tarjeta por
+    // organizador y obligaría a tokenizar de nuevo en cada evento. Su índice
+    // único (payment_instrument_id) es global por el mismo motivo, y encima
+    // aprieta: un payment instrument es una credencial de cobro concreta de
+    // la bóveda de Cybersource y no puede estar en dos sitios a la vez.
+    'event_app_cards',
 ];
 
 /**

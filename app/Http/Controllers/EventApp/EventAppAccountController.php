@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\EventApp;
 
 use App\Domains\EventApp\Actions\IssueLoginCode;
+use App\Domains\EventApp\Actions\OlvidarTarjetasDeLaCuenta;
 use App\Domains\EventApp\Actions\RedeemLoginCode;
 use App\Domains\EventApp\Models\EventAppAccount;
 use App\Domains\EventApp\Models\EventAppLoginCode;
@@ -211,14 +212,29 @@ class EventAppAccountController extends Controller
      * lo exige (5.1.1(v)) y porque es lo correcto.
      *
      * ESTE ENDPOINT ES EL DUEÑO DE LA DECISIÓN DE ANONIMIZAR. Hoy borra
-     * fila y ya, porque nada cuelga de la cuenta. El día que existan pedidos
-     * o saldo, lo que cambia es ESTE método: decidirá qué se anonimiza (el
-     * rastro fiscal de una venta no se borra) y qué se destruye. Esa
-     * decisión no se toma hoy y no debe tomarse en ningún otro sitio.
+     * fila y ya, porque nada cuelga de la cuenta que haya que conservar. El
+     * día que existan pedidos o saldo, lo que cambia es ESTE método:
+     * decidirá qué se anonimiza (el rastro fiscal de una venta no se borra) y
+     * qué se destruye. Esa decisión no se toma hoy y no debe tomarse en
+     * ningún otro sitio.
+     *
+     * ─────────────────────────────────────────────────────────────────────
+     * EL BORRADO EMPIEZA FUERA DE ESTA BASE DE DATOS, Y ESE ORDEN NO ES
+     * OPCIONAL.
+     * ─────────────────────────────────────────────────────────────────────
+     * Las tarjetas viven en la bóveda de Cybersource y aquí solo hay ids de
+     * token. Si se borrara la cuenta primero, la foreign key se llevaría las
+     * filas con los ids dentro y quedarían tokens VIVOS que nadie sabe que
+     * existen: tarjetas cobrables de alguien que ya no tiene cuenta. Por eso
+     * la bóveda va delante y por eso, si no contesta, esto revienta y la
+     * cuenta NO se borra — el asistente vuelve a intentarlo, que es mucho
+     * mejor que quedarse sin cuenta y con la tarjeta viva.
      */
-    public function borrar(Request $request): Response
+    public function borrar(Request $request, OlvidarTarjetasDeLaCuenta $olvidarTarjetas): Response
     {
         $cuenta = $this->cuenta($request);
+
+        $olvidarTarjetas($cuenta);
 
         // El código de entrada vigente de ese buzón muere CON la cuenta: si
         // sobreviviera, canjearlo un minuto después la resucitaría — y el

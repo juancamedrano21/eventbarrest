@@ -46,6 +46,26 @@ class EventAppException extends RuntimeException
     }
 
     /**
+     * La pareja (customer, payment instrument) de una tarjeta guardada se
+     * escribe al crear la fila y no se reescribe nunca.
+     *
+     * No es una regla de estilo: la ruta del TMS lleva las DOS piezas, así
+     * que un 404 sobre una pareja desemparejada significa «ese customer no
+     * existe» y el borrado lo leería como «esta tarjeta ya no está» — fila
+     * borrada, token vivo, y nada que lo nombre. Ver `EventAppCard`.
+     */
+    public static function credencialDeTarjetaInmutable(string $columnas): self
+    {
+        return new self(
+            "Una tarjeta guardada no puede cambiar de credencial ({$columnas}): la pareja "
+            .'customer/payment instrument se escribe al crear la fila y decide cómo se lee un 404 '
+            .'de la bóveda. Si la tarjeta es otra, es otra fila.',
+            'event_app_card_credential_immutable',
+            500,
+        );
+    }
+
+    /**
      * El largo mínimo no es estético: un código de dos caracteres se acierta
      * a mano, y aunque detrás no haya nada que escribir, sí hay un festival
      * que no quiere que su app aparezca por accidente en el teléfono de

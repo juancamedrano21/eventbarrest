@@ -9,6 +9,7 @@ use App\Domains\Payments\Enums\ModoDeCobro;
 use App\Domains\Payments\Exceptions\PaymentsException;
 use App\Domains\Payments\ResultadoDeCobro;
 use App\Domains\Payments\Services\CybersourceClient;
+use App\Domains\Payments\Services\MensajeDeCybersource;
 use CyberSource\Api\PaymentsApi;
 use CyberSource\ApiException;
 use CyberSource\Model\CreatePaymentRequest;
@@ -114,7 +115,11 @@ class CobrarConTarjeta
 
             // Silencio. NO se sabe si se cobró, así que ni se devuelve un
             // rechazo (que invitaría a reintentar) ni se muere callado.
-            return $this->silencio($cobro, $e->getMessage(), (int) $e->getCode());
+            // Por la aduana aunque esta URL sea la de /pts/v2/payments y no
+            // la del TMS: la regla es que ningún mensaje del SDK llega a un
+            // log sin pasar, y una excepción a la regla es el hueco por donde
+            // se cuela el siguiente olvido.
+            return $this->silencio($cobro, MensajeDeCybersource::de($e), (int) $e->getCode());
         } catch (Throwable $e) {
             // Lo que revienta ANTES o DESPUÉS de la ida a la red: armar el
             // modelo del SDK, construir el cliente, deserializar. Tampoco se
@@ -122,7 +127,7 @@ class CobrarConTarjeta
             // de devolver nada parecido a una decisión de pago.
             Log::error('[Pagos] la llamada a Cybersource no se completó', [
                 'referencia' => $cobro->referencia,
-                'error' => $e->getMessage(),
+                'error' => MensajeDeCybersource::de($e),
             ]);
 
             throw PaymentsException::falloDeTransporte($e);
@@ -573,15 +578,18 @@ class CobrarConTarjeta
         if (is_object($crudo)) {
             $decodificado = json_decode((string) json_encode($crudo), true);
 
-            return is_array($decodificado) ? $decodificado : ['message' => $e->getMessage()];
+            return is_array($decodificado) ? $decodificado : ['message' => MensajeDeCybersource::de($e)];
         }
 
         if (is_string($crudo) && $crudo !== '') {
             $decodificado = json_decode($crudo, true);
 
-            return is_array($decodificado) ? $decodificado : ['message' => $crudo];
+            // El cuerpo que no es JSON acaba tal cual en `mensaje`, y de ahí
+            // al log y a la pantalla del asistente: pasa por la aduana como
+            // todo lo que viene de fuera.
+            return is_array($decodificado) ? $decodificado : ['message' => MensajeDeCybersource::redactado($crudo)];
         }
 
-        return ['message' => $e->getMessage()];
+        return ['message' => MensajeDeCybersource::de($e)];
     }
 }

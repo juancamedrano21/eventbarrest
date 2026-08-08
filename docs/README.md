@@ -189,8 +189,16 @@ del evento (asignado − vendido − mermas − devuelto).
 **Cobro con tarjeta — el cimiento.** `App\Domains\Payments`: el cliente del SDK de
 Cybersource y la acción `CobrarConTarjeta` (authorization + capture), probados contra el
 sandbox real de PortalDOM. Tokeniza con `TOKEN_CREATE` y cobra con el token guardado.
-**Todavía no persiste nada**: no hay tabla de tarjetas ni endpoints — eso es el slice
-siguiente. Las pruebas contra el sandbox se saltan solas sin credenciales.
+Además, las acciones de la bóveda (TMS): leer, borrar una tarjeta, borrar el cliente, y
+anular un cobro. Las pruebas contra el sandbox se saltan solas sin credenciales.
+
+**Tarjetas guardadas del asistente.** Tabla `event_app_cards` (de plataforma, sin
+`tenant_id`, como la cuenta) y los cuatro endpoints con token de cuenta:
+`GET`/`POST /api/event-app/cuenta/tarjetas`, `PATCH` y `DELETE /tarjetas/{id}`. El
+borrado llega a Cybersource antes que a esta base, y `DELETE /cuenta` vacía la bóveda.
+**Lo que falta para que un asistente pueda guardar su tarjeta de verdad es la captura**:
+el endpoint de alta recibe el `transient_token` que producirá el webview de Unified
+Checkout, que todavía no existe — ver «Qué NO está construido».
 
 ## Qué NO está construido
 
@@ -201,10 +209,14 @@ Para que nadie lo busque en el código:
   `fiscal.manage`.
 - **Mesas** e impresión de tickets desde el servidor.
 - **Wrapper Capacitor / SUNMI** y pagos integrados (ADR-005, fase 3).
-- **Wallet cashless** y **tarjeta guardada de punta a punta**: del pago online existe ya
-  el cimiento (`App\Domains\Payments`, arriba), pero **no** la tabla de tarjetas, ni los
-  endpoints de la puerta `event-app`, ni la captura en webview, ni el 3DS que PortalDOM
-  exige (ver el [doc 12](12-pagos-cybersource-tarjeta-guardada.md) §0.4).
+- **Wallet cashless** y **tarjeta guardada de punta a punta**: del pago online existen ya
+  el cimiento y las tarjetas guardadas (`App\Domains\Payments` y `event_app_cards`,
+  arriba), pero **no** la captura en webview (Unified Checkout) ni el 3DS que PortalDOM
+  exige (ver el [doc 12](12-pagos-cybersource-tarjeta-guardada.md) §0.4). Sin la captura,
+  el alta de tarjeta no tiene de dónde sacar el `transient_token`. Y falta la
+  **reasignación del `defaultPaymentInstrument` en el TMS** al borrar: hoy no hace falta
+  porque cada alta estrena su propio customer, pero es **precondición** del día que
+  varias tarjetas cuelguen del mismo (`OlvidarTarjetaDelAsistente` lo explica).
 - **Boletería**: es iniciativa aparte; la app la integrará desde Boletu.
 - **Sync de catálogo por delta versionado**: hoy baja completo.
 - **Despliegue productivo del backend**: hoy corre tras un túnel ngrok con

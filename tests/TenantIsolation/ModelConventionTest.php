@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Business\Models\BusinessAccount;
 use App\Domains\EventApp\Models\EventAppAccount;
+use App\Domains\EventApp\Models\EventAppCard;
 use App\Domains\EventApp\Models\EventAppLoginCode;
 use App\Domains\EventApp\Models\EventAppSession;
 use App\Domains\EventManagement\Models\OrganizerAccount;
@@ -36,6 +37,10 @@ $platformModels = [
     EventAppAccount::class,
     EventAppSession::class,
     EventAppLoginCode::class,
+    // La tarjeta guardada cuelga de esa cuenta y hereda su naturaleza: es de
+    // plataforma porque el asistente lo es. Su tabla está exceptuada con el
+    // mismo argumento en SchemaConventionTest.
+    EventAppCard::class,
 ];
 
 it('makes every domain model tenant-scoped', function () use ($platformModels): void {

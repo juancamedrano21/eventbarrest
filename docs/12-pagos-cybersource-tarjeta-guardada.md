@@ -183,6 +183,24 @@ Customer token  (1 por cuenta de asistente)  ← users… no: event_app_accounts
 la CVN «puede usarse en la autorización inicial pero no almacenarse»), ni
 usamos nunca el endpoint de tarjeta desenmascarada.
 
+**Lo construido no es todavía este dibujo, y eso tiene una consecuencia dura.**
+En el tercer slice cada alta estrena **su propio Customer** con un solo Payment
+Instrument dentro: adjuntar una tarjeta a un customer existente mandando
+`paymentInformation.customer.id` junto con los datos de tarjeta devuelve **400
+INVALID_DATA** (medido contra apitest el 2026-08-07), y la forma que sí
+funciona solo se puede descubrir con la captura real de Unified Checkout. Por
+eso el `customer_token_id` vive en CADA fila de `event_app_cards` y no en la
+cuenta.
+
+> **Precondición del cuarto slice.** El día que N tarjetas cuelguen del mismo
+> Customer, **borrar deja de funcionar sin trabajo nuevo**: el TMS rechaza
+> borrar el Payment Instrument marcado como defecto de un Customer que todavía
+> tiene otros. Hoy el relevo de la tarjeta por defecto es SOLO local. Hay que
+> construir antes el `PATCH /tms/v2/customers/{c}/payment-instruments/{pi}` con
+> `default: true` sobre la heredera, ejecutado ANTES del `DELETE`. Sin él, esa
+> tarjeta queda imposible de borrar para el asistente: fila viva, token vivo y
+> un botón que nunca funciona.
+
 ## 3. Los tres flujos
 
 ### Alta de tarjeta CON compra (el caso natural: primer pedido)

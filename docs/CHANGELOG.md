@@ -13,7 +13,7 @@
 > KDS) y el repo raíz (documentación y ADR). Al final hay un **glosario** de los
 > términos propios del proyecto y un **índice de garantías** transversales.
 
-> **Cobertura.** 80 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
+> **Cobertura.** 81 hitos, del 2026-07-25 al 2026-08-04. Generado del historial de git (mensajes de commit completos), los ADR y los docs.
 
 ---
 
@@ -807,6 +807,30 @@
 
 **Abierto y medido:** el MID de sandbox **ignora `v-c-idempotency-id`** — dos llamadas con la misma llave dieron dos transacciones aprobadas, con la cabecera demostradamente en el request. Hay que pedirle la habilitación a PortalDOM antes de producción; sin ella, un reintento por mala señal es un doble cobro real. Y la búsqueda de reconciliación tarda ~5 s en indexar: preguntar justo tras el corte devuelve cero y eso invita al error, así que la autorización para reintentar exige que además haya pasado ese plazo.
 
+#### [Plataforma] Las tarjetas guardadas del asistente, y un borrado que llega a la bóveda
+<sub>`(dominio EventApp + Payments: tarjetas)`</sub>
+
+**Qué.** Tabla `event_app_cards` (de PLATAFORMA, sin `tenant_id`, exceptuada en `SchemaConventionTest` y `ModelConventionTest` con su motivo, como las tres de la cuenta) con los ids de token de Cybersource, marca, últimos 4, vencimiento, cuál es la de por defecto y el consentimiento (fecha, versión del texto e IP declarada). Cuatro endpoints con token de cuenta: `GET/POST /api/event-app/cuenta/tarjetas`, `PATCH` y `DELETE /tarjetas/{id}`. En `Payments` nacen las acciones de la bóveda (TMS) —`BuscarTarjetaEnLaBoveda`, `BorrarTarjetaDeLaBoveda`, `BorrarClienteDeLaBoveda`— y `AnularCobro` (`/pts/v2/voids`), más el enum `MarcaDeTarjeta` y el objeto de valor `TarjetaEnLaBoveda`. `DELETE /cuenta` se amplía: borra cada payment instrument y después cada customer token. **Probado contra apitest.cybersource.com**: tokenizar, leerla de la bóveda (visa · 1111 · 12/2031), borrarla de verdad y comprobar que ya no existe, y anular el cobro de verificación.
+
+**Por qué.** Guardar una tarjeta obliga a cobrar: Cybersource tokeniza DENTRO de una autorización, no hay «solo guardar». Ese cobro es de un peso y se anula en el acto. Los datos con los que la app pinta la tarjeta se le preguntan a la BÓVEDA y no se leen de la respuesta del cobro, porque medido contra apitest esa respuesta trae la marca y nada más —ni cuatro dígitos ni vencimiento—, y en producción la captura ocurre fuera de este servidor: no hay de dónde deducirlos. Se descartó abortar el alta si la bóveda no contesta esa segunda vez: la tarjeta ya está tokenizada y tirar la fila dejaría un token vivo del que nadie sabría ni que existe, así que se guarda con lo que se sabe y `ultimos4`/`vence_*` quedan **anulables** en el contrato. También se descartó adjuntar la segunda tarjeta al customer del asistente —la forma de la doc 12 §2—: mandar `paymentInformation.customer.id` junto con los datos de tarjeta devuelve **400 INVALID_DATA**, medido, así que hoy cada tarjeta estrena su propio customer y el borrado recorre los customers DISTINTOS. Y la marca desconocida no cae a visa, que es lo que hace Boletu (§0.3): aquí la marca decide la regla de encadenado del `networkTransactionId` y una Amex tratada como Visa falla semanas después, en otro cobro.
+
+**Garantías.** **El borrado empieza en Cybersource y solo entonces toca esta base.** Si la bóveda falla, la fila NO se borra y la petición revienta: una fila que desaparece con el token vivo es una tarjeta que el asistente cree haber quitado y sigue siendo cobrable — y ya no queda dónde mirar el id. Lo mismo en `DELETE /cuenta`: si un token no se puede borrar, la cuenta no se borra. «Ya no está» (**404 o 410**, los dos medidos) sí cuenta como borrado, para que un token quitado por fuera no deje la fila atascada para siempre. **El desenlace incierto tiene su propio `409 verificacion_incierta`** y jamás se disfraza de rechazo: un rechazo invita a reintentar y un reintento tras un corte duplica el cobro; ahí no se guarda fila. Una marca que no reconocemos sale como `desconocida`, nunca como visa. Sin `consentimiento: true` no se sale a la red: el `422 consentimiento_requerido` ocurre ANTES de cobrar nada. En la fila no hay PAN, ni CVV, ni el JWT de captura, ni el cuerpo de la respuesta de Cybersource — un test enumera las columnas para que añadir una cueste explicarlo. Y el aislamiento entre asistentes lo sostiene que TODA consulta arranque de la cuenta del token: ver, marcar o borrar la tarjeta de otro es un `404 tarjeta_desconocida` que ni llega a la bóveda. **Marcar por defecto es un `set`, no un interruptor**: marcar la que ya lo era no cambia nada, y `por_defecto: false` es un 422 — «ninguna elegida» no es un estado al que se pueda llegar desde la app. **Ningún mensaje de Cybersource llega a un log o a una respuesta sin pasar por `MensajeDeCybersource`.** **Un cobro de verificación que no se pudo devolver deja fila, no solo línea de log**: mientras `verification_voided_at` siga en null hay un cargo real pegado a la tarjeta de alguien, y esa fila se encuentra con una consulta. **La pareja (customer, payment instrument) se escribe una vez y no se reescribe**: de eso depende que un 404 del TMS signifique «esta tarjeta ya no está» y no «ese customer no es el suyo».
+
+**Lo que cazaron los refutadores, y cómo se cerró.** Dos lentes independientes encontraron **el mismo grave**: la credencial de cobro salía ENTERA al log. No por una línea descuidada, sino porque el mensaje de `ApiException` del SDK es «[401] Error connecting to the API ($url)» y esa URL del TMS lleva dentro el `customerTokenId` y el `paymentInstrumentId`; de ahí se interpolaba en `PaymentsException` y acababa en `Log::error` y —con `APP_DEBUG=true`, que es como corre el backend hoy— en el cuerpo del 500 que recibe el teléfono. El peor camino no era ni siquiera un error visible: un alta que contesta 201 con la lectura del TMS fallando dejaba la credencial escrita sin que nadie se enterara. Se cerró **en el origen y no por sitio**: nace `MensajeDeCybersource`, y la redacción se aplica en el **constructor** de `PaymentsException` —no en cada fábrica— porque esto fue un olvido y los olvidos se repiten; un test barre los tres caminos (alta, borrar tarjeta, borrar cuenta) buscando los tokens completos en lo que sale por el log y en el cuerpo del 500. El segundo grave era que el `PATCH` **desmarcaba** la tarjeta que ya era la de por defecto —el modelo cargado fuera de la transacción se quedaba viejo tras el `update` masivo, `getDirty()` salía vacío y el `save()` no emitía nada—, dejando la cuenta con tarjetas y ninguna elegida: el estado que el propio código declara irresoluble, y a un doble toque de distancia. Ahora es un `set` idempotente. Y de los medios: el cobro de verificación tiene **rastro durable** (`verification_reference`, `verification_transaction_id`, `verification_voided_at`) en vez de un `Log::warning`, con `EventAppCard::pendientesDeAnular()` como puerta de la reconciliación; la fila se escribe **antes** de anular, porque un token vivo que ninguna fila nombra es peor que un peso retenido; la pareja (customer, payment instrument) es **inmutable** después de crearse, que es lo único que hace cierta la lectura «404 = esta tarjeta ya no está»; y `DELETE /cuenta` pregunta si otra cuenta usa el customer antes de borrarlo, igual que ya hacía el borrado de una tarjeta suelta.
+
+**Pendiente.** La forma de adjuntar una tarjeta a un customer existente se descubrirá con la captura real de Unified Checkout (cuarto slice), que es de donde vendrá el `transientTokenJwt`. Hasta entonces, un asistente con N tarjetas tiene N customers en la bóveda. **Y eso es una precondición del cuarto slice, no una curiosidad:** el relevo de la tarjeta por defecto al borrar es hoy SOLO local, y el TMS rechaza borrar el instrumento marcado como defecto de un customer que tiene otros. En cuanto varias tarjetas cuelguen del mismo customer hay que construir antes el `PATCH /tms/v2/customers/{c}/payment-instruments/{pi}` con `default: true` sobre la heredera; sin él, esa tarjeta sería **imposible de borrar** para el asistente — fila viva, token vivo y un botón que nunca funciona. Anotado también en `OlvidarTarjetaDelAsistente` y en el contrato.
+
+#### [Plataforma] Las tarjetas guardadas del asistente, y la credencial que se colaba por el log
+<sub>`(dominio EventApp + Payments)`</sub>
+
+**Qué.** El asistente guarda su tarjeta una vez y la gestiona desde su cuenta: tabla `event_app_cards` colgando de `event_app_accounts` (de PLATAFORMA, sin `tenant_id`, registrada como excepción en las dos convenciones), cuatro endpoints en la puerta `event-app` —listar, guardar, marcar por defecto, borrar—, y el borrado de cuenta ampliado para vaciar también la bóveda. Del lado Payments: acciones sobre TMS (borrar instrumento, borrar cliente, buscar) y `AnularCobro`. **Verificado contra apitest.cybersource.com**: tokeniza, borra el instrumento de la bóveda y confirma que ya no está, y anula el cobro de verificación.
+
+**Por qué.** Guardamos ids de token, marca, últimos cuatro y vencimiento — nunca PAN ni CVV. Y la invariante que gobierna el slice: **una tarjeta que ya no está en Cybersource no está**; el borrado va primero a la bóveda y si allá falla, aquí NO se borra, porque una fila que desaparece con el token vivo es una tarjeta que el asistente cree haber quitado y sigue siendo cobrable. Los dos refutadores encontraron por separado el mismo grave: el mensaje de error del SDK es `"[401] Error connecting to the API (https://…/tms/v2/customers/{token}/payment-instruments/{token})"` — **la URL lleva los dos tokens dentro**, y ese texto acababa entero en el log y, con `APP_DEBUG=true`, en el cuerpo del 500 que recibe el teléfono. Con `paymentInformation.customer.id` se cobra: era el error de Boletu (§0.3, «cualquiera que lea la tabla ve la credencial») mudado de la tabla al log, y en el camino que NO falla — el alta contesta 201 y nadie ve nada raro. El segundo grave: marcar por defecto una tarjeta que ya lo era la DESMARCABA, dejando la cuenta con tarjetas y ninguna elegida.
+
+**Garantías.** La redacción de mensajes de Cybersource se aplica en el **constructor de `PaymentsException`**, no en cada fábrica: ninguna que alguien añada mañana puede saltársela. Reconoce el token por posición (el segmento tras una colección del TMS) y por forma, y deja pasar a propósito el id de transacción, que no es credencial y es lo único con lo que se reconcilia un cargo atascado. El PATCH de «por defecto» es idempotente y `por_defecto: false` se rechaza: «ninguna por defecto» no es un estado válido. La pareja (customer, instrumento) es **inmutable tras crearse**, que es lo que hace cierta la lectura «404 = esta tarjeta ya no está». El cobro de verificación deja rastro durable (`verification_voided_at` NULL = pendiente), porque un peso pegado en la tarjeta de alguien sin más rastro que un warning es una llamada al soporte. Y el aislamiento aguantó todo: con el token de una cuenta, los tres verbos sobre la tarjeta de otra devuelven un 404 byte a byte idéntico al de un id inexistente.
+
+**Precondición del siguiente slice, escrita en tres sitios:** hoy cada alta estrena su propio customer con un solo instrumento, así que borrar nunca choca con el `defaultPaymentInstrument` de TMS. En cuanto se cuelguen N tarjetas del mismo customer hay que reasignar ese defecto en Cybersource ANTES de borrar, o esa tarjeta queda **imposible de borrar**: fila viva, token vivo, botón que nunca funciona.
+
 ---
 
 ## Índice de garantías transversales
@@ -871,11 +895,27 @@
   autoriza el reintento por sí solo: la búsqueda tarda ~5 s en indexar, así que la
   autorización la da `ConciliacionDeCobro::sePuedeReintentar($segundos)`. Si la búsqueda
   no se puede hacer, revienta: «no existe» y «no pude mirar» son decisiones opuestas.
+- **Una tarjeta guardada se borra PRIMERO en Cybersource y solo después aquí.** Si la
+  bóveda no contesta, la fila local NO se borra y la petición revienta — vale también
+  para `DELETE /cuenta`, que borra cada payment instrument y después cada customer, sin
+  confiar en ninguna cascada. «Ya no está» son **dos** códigos, 404 y 410, y los dos
+  cuentan como borrado: si no, un token quitado por fuera dejaría la fila atascada para
+  siempre. Una fila que desaparece con el token vivo es una tarjeta cobrable que su
+  dueño cree haber quitado.
+- **Una marca de tarjeta que no reconocemos es `desconocida`, jamás `visa`.** No es
+  cosmética: la marca decide la regla de encadenado del `networkTransactionId`, y el
+  fallo aparece semanas después en otro cobro. Es lo que Boletu hace mal (doc 12 §0.3).
 - **Ninguna credencial entera en el log.** Ni `customer.id`, ni `paymentInstrument.id`,
-  ni `instrumentIdentifier.id`, ni PAN, ni CVV, ni el JWT. Las rutas a tapar viven en una
-  lista dentro de `redactado()`, no en un `if` por campo: añadir una credencial al cuerpo
-  obliga a añadirla ahí. El log propio del SDK va apagado explícitamente — escribe el
-  cuerpo entero a su fichero, fuera del alcance de `redactado()` y de `paraLog()`.
+  ni `instrumentIdentifier.id`, ni PAN, ni CVV, ni el JWT. Y **tampoco dentro de un
+  mensaje de error**: el SDK compone el suyo como «[401] Error connecting to the API
+  ($url)» y la URL del TMS lleva los dos tokens dentro, así que **todo texto que venga de
+  Cybersource pasa por `MensajeDeCybersource`** antes de poder llegar a un log o a una
+  respuesta. La aduana está en el **constructor** de `PaymentsException` —no en cada
+  fábrica— para que una fábrica nueva no pueda saltársela. Las rutas del cuerpo a tapar
+  viven en una lista dentro de `redactado()`, no en un `if` por campo: añadir una
+  credencial al cuerpo obliga a añadirla ahí. El log propio del SDK va apagado
+  explícitamente — escribe el cuerpo entero a su fichero, fuera del alcance de
+  `redactado()` y de `paraLog()`.
 
 ### La historia no se reescribe
 

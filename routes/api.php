@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Domains\Tenancy\Middleware\SetTenantContext;
 use App\Http\Controllers\EventApp\EventAppAccountController;
+use App\Http\Controllers\EventApp\EventAppCardController;
 use App\Http\Controllers\EventApp\EventAppManifestController;
 use App\Http\Controllers\EventApp\EventAppMenuController;
 use App\Http\Controllers\EventApp\EventAppVendorsController;
@@ -106,5 +107,20 @@ Route::prefix('event-app/cuenta')
             Route::patch('', [EventAppAccountController::class, 'actualizar']);
             Route::post('/salir', [EventAppAccountController::class, 'salir']);
             Route::delete('', [EventAppAccountController::class, 'borrar']);
+
+            // Las tarjetas cuelgan de la CUENTA y no del evento, igual que
+            // ella: quien guardó su tarjeta en Bocao la tiene en el próximo
+            // festival. Por eso viven bajo este prefijo y no bajo
+            // `/eventos/{codigo}`.
+            //
+            // El id va acotado a dígitos para que un `{tarjeta}` con letras
+            // sea un 404 de enrutado y no llegue al controlador convertido en
+            // un `0` por el casteo del parámetro — un 0 que consultaría la
+            // tabla con una clave que no existe y contestaría lo mismo, pero
+            // habiendo gastado la consulta.
+            Route::get('/tarjetas', [EventAppCardController::class, 'index']);
+            Route::post('/tarjetas', [EventAppCardController::class, 'store']);
+            Route::patch('/tarjetas/{tarjeta}', [EventAppCardController::class, 'actualizar'])->whereNumber('tarjeta');
+            Route::delete('/tarjetas/{tarjeta}', [EventAppCardController::class, 'borrar'])->whereNumber('tarjeta');
         });
     });

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domains\Payments\Exceptions;
 
+use App\Domains\Payments\Services\MensajeDeCybersource;
 use RuntimeException;
 use Throwable;
 
@@ -15,6 +16,18 @@ use Throwable;
  *
  * La distinción que importa aquí no es «error» vs «no error», sino
  * **¿se movió dinero?**. Los constructores están agrupados por esa pregunta.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * EL MENSAJE SE REDACTA EN EL CONSTRUCTOR, NO EN CADA FÁBRICA.
+ * ─────────────────────────────────────────────────────────────────────────
+ * Varias de estas fábricas interpolan el mensaje de una `ApiException` del
+ * SDK, y ese mensaje lleva DENTRO la URL del TMS con el `customerTokenId` y
+ * el `paymentInstrumentId` enteros — o sea, la credencial con la que se cobra
+ * (ver `MensajeDeCybersource`). Como de aquí el texto va a un `Log::error` y,
+ * con `APP_DEBUG=true`, al cuerpo del 500 que recibe el teléfono, la
+ * redacción tiene que ser imposible de olvidar: se aplica al mensaje entero,
+ * una sola vez, en el sitio por el que pasan TODAS — incluida la fábrica que
+ * alguien añada mañana sin haber leído esto.
  */
 class PaymentsException extends RuntimeException
 {
@@ -23,7 +36,7 @@ class PaymentsException extends RuntimeException
         public readonly string $errorCode = 'payments_error',
         ?Throwable $previous = null,
     ) {
-        parent::__construct($message, 0, $previous);
+        parent::__construct(MensajeDeCybersource::redactado($message), 0, $previous);
     }
 
     // ── Configuración: revientan antes de tocar la red ──────────────────
@@ -183,6 +196,54 @@ class PaymentsException extends RuntimeException
             .'NO reintentes el cobro: sin esta respuesta no se sabe si la referencia ya existe. '
             .'Si el MID no tiene habilitada la búsqueda de transacciones, hay que pedírsela a PortalDOM.',
             'busqueda_no_disponible',
+        );
+    }
+
+    /**
+     * La bóveda (TMS) no contestó lo que se esperaba.
+     *
+     * Se falla ruidoso por el mismo motivo que la búsqueda: quien llama tiene
+     * que poder distinguir «la tarjeta ya no está allí» —que es un 404 o un
+     * 410 y se trata como éxito— de «no pude hablar con la bóveda». Confundir
+     * el segundo con el primero es borrar la fila local dejando el token
+     * VIVO: una tarjeta que el asistente cree haber quitado y que se sigue
+     * pudiendo cobrar.
+     *
+     * `$operacion` es la ruta del TMS con marcadores, no el id: los
+     * identificadores de la bóveda son credenciales de cobro y no se escriben
+     * enteros en ningún sitio (garantía transversal del cobro con tarjeta).
+     * `$detalle` viene del SDK y por tanto trae la URL real con los dos
+     * tokens dentro — de eso se encarga la aduana del constructor, que es
+     * quien sostiene la garantía y no la buena memoria de quien llama.
+     */
+    public static function bovedaNoDisponible(string $operacion, int $httpStatus, string $detalle): self
+    {
+        return new self(
+            "No se pudo completar `{$operacion}` en la bóveda de Cybersource (HTTP {$httpStatus}): {$detalle}. "
+            .'NO borres la fila local: sin esta respuesta no se sabe si el token sigue vivo, y una fila '
+            .'borrada con el token vivo es una tarjeta que se puede seguir cobrando.',
+            'boveda_no_disponible',
+        );
+    }
+
+    /**
+     * La anulación del cobro de verificación no se pudo hacer.
+     *
+     * NO es un fallo del alta: la tarjeta quedó guardada y utilizable, que es
+     * lo que el asistente pidió. Lo que queda pendiente es devolverle el
+     * importe simbólico de la verificación, y eso NO se resuelve mirando el
+     * log: el rastro durable es la fila, que guarda la referencia y el id de
+     * transacción y se queda con `verification_voided_at` en null hasta que
+     * alguien la reconcilie (`EventAppCard::pendientesDeAnular()`). La
+     * excepción los lleva igual porque el log sigue siendo el sitio donde se
+     * ve QUÉ falló.
+     */
+    public static function anulacionNoRealizada(string $referencia, ?string $transactionId, string $detalle): self
+    {
+        return new self(
+            "[{$referencia}] no se pudo anular el cobro de verificación (txn {$transactionId}): {$detalle}. "
+            .'La tarjeta SÍ quedó guardada; lo que falta es devolver el importe de la verificación.',
+            'anulacion_no_realizada',
         );
     }
 
